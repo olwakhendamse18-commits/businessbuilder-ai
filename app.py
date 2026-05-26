@@ -242,12 +242,16 @@ def signup():
     try:
         conn = db()
         cur = conn.cursor()
-        cur.execute("INSERT INTO users (email, password) VALUES (?, ?)", (email, password))
+        cur.execute(
+            "INSERT INTO users (email, password) VALUES (?, ?)",
+            (email, password)
+        )
         conn.commit()
         conn.close()
         return redirect("/login")
+
     except:
-    return redirect("/login")
+        return redirect("/login")
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
