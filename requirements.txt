@@ -1,0 +1,8 @@
+flask
+openai
+python-dotenv
+werkzeug
+gunicorn
+pypdf
+python-docx
+pillow

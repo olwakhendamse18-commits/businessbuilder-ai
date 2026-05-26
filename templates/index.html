@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="app">
+
+    <aside class="sidebar">
+
+        <h2>BusinessBuilder AI</h2>
+
+        <p>Your AI business creation assistant.</p>
+
+        <a href="/dashboard">Dashboard</a>
+        <a href="/logout">Logout</a>
+
+        <div class="tool-box">
+
+            <a href="/new_chat">+ New Chat</a>
+
+            <h3>Chat History</h3>
+
+            {% for chat in chats %}
+
+                <a href="/switch_chat/{{ chat[0] }}">
+                    {{ chat[1] }}
+                </a>
+
+            {% endfor %}
+
+            <h3>Tools Coming Soon</h3>
+
+            <button>Connect Shopify</button>
+            <button>Connect Canva</button>
+            <button>Create Invoice</button>
+
+        </div>
+
+    </aside>
+
+    <main class="chat-area">
+
+        <div class="header">
+
+            <h1>Build your business with AI</h1>
+
+            <p>
+                Ask me to create a business idea,
+                brand, Shopify plan, or marketing strategy.
+            </p>
+
+        </div>
+
+        <div id="chatBox" class="chat-box">
+
+            <div class="message ai">
+                Hi, I’m BusinessBuilder AI.
+                Tell me what type of business you want to start.
+            </div>
+
+        </div>
+
+        <div class="input-area">
+
+            <input
+                id="userInput"
+                type="text"
+                placeholder="Example: I want to start a clothing brand"
+            >
+
+            <button onclick="sendMessage()">
+                Send
+            </button>
+
+        </div>
+
+    </main>
+
+</div>
+
+<script>
+
+async function sendMessage() {
+
+    const input = document.getElementById("userInput");
+
+    const chatBox = document.getElementById("chatBox");
+
+    const message = input.value.trim();
+
+    if (!message) return;
+
+    chatBox.innerHTML += `
+        <div class="message user">
+            ${message}
+        </div>
+    `;
+
+    input.value = "";
+
+    chatBox.innerHTML += `
+        <div class="message ai">
+            Thinking...
+        </div>
+    `;
+
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    const response = await fetch("/chat", {
+
+        method: "POST",
+
+        headers: {
+            "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify({
+            message
+        })
+
+    });
+
+    const data = await response.json();
+
+    const thinkingMessages =
+        document.querySelectorAll(".message.ai");
+
+    const aiMessage =
+        thinkingMessages[thinkingMessages.length - 1];
+
+    aiMessage.innerText = "";
+
+    let i = 0;
+
+    function typeText() {
+
+        if (i < data.reply.length) {
+
+            aiMessage.innerText +=
+                data.reply.charAt(i);
+
+            i++;
+
+            chatBox.scrollTop =
+                chatBox.scrollHeight;
+
+            setTimeout(typeText, 15);
+
+        }
+
+    }
+
+    typeText();
+
+}
+
+async function loadMessages() {
+    const chatBox = document.getElementById("chatBox");
+
+    const response = await fetch("/messages");
+    const messages = await response.json();
+
+    if (messages.length === 0) {
+        return;
+    }
+
+    chatBox.innerHTML = "";
+
+    messages.forEach(function(message) {
+        const cssClass =
+            message.role === "user" ? "user" : "ai";
+
+        chatBox.innerHTML += `
+            <div class="message ${cssClass}">
+                ${message.content}
+            </div>
+        `;
+    });
+
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+loadMessages();
+
+document
+    .getElementById("userInput")
+    .addEventListener("keydown", function(event) {
+
+        if (event.key === "Enter") {
+
+            sendMessage();
+
+        }
+
+    });
+
+</script>
+
+</body>
+</html>

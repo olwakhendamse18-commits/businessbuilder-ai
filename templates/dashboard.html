@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+        <h2>BusinessBuilder AI</h2>
+        <p>Business workspace</p>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <h1>Your Business Dashboard</h1>
+            <p>Manage your saved projects, uploaded files, and business progress.</p>
+        </div>
+
+        <section class="project-form">
+            <h2>Upload Business File</h2>
+            <p>Upload TXT files for AI analysis. PDF, DOCX, and image analysis can be added next.</p>
+
+            <form method="POST" action="/upload" enctype="multipart/form-data">
+                <input type="file" name="file" required>
+                <button type="submit">Upload File</button>
+            </form>
+        </section>
+
+        <section class="project-form">
+            <h2>Create New Business Project</h2>
+            <p>Save a business idea so you can build on it later.</p>
+
+            <form method="POST" action="/create_project">
+
+                <label>Project Name</label>
+                <input
+                    type="text"
+                    name="title"
+                    placeholder="Example: Student Clothing Brand"
+                    required
+                >
+
+                <label>Business Type</label>
+                <input
+                    type="text"
+                    name="business_type"
+                    placeholder="Example: Fashion / Shopify Store"
+                    required
+                >
+
+                <label>Description</label>
+                <textarea
+                    name="description"
+                    placeholder="Describe your business idea, target customers, products, or goals..."
+                    required
+                ></textarea>
+
+                <button type="submit">Save Project</button>
+
+            </form>
+        </section>
+
+        <section>
+            <h2>Saved Projects</h2>
+
+            <div class="cards">
+
+                {% for project in projects %}
+
+                    <div class="card">
+
+                        <h3>{{ project[0] }}</h3>
+
+                        <p>
+                            <strong>Type:</strong>
+                            {{ project[1] }}
+                        </p>
+
+                        <p>{{ project[2] }}</p>
+
+                    </div>
+
+                {% endfor %}
+
+            </div>
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>
