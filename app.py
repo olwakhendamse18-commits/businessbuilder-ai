@@ -247,7 +247,7 @@ def signup():
         conn.close()
         return redirect("/login")
     except:
-        return "User already exists. Go to /login"
+    return redirect("/login")
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
