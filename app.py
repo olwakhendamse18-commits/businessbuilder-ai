@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 import sqlite3
 import os
 import base64
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
@@ -29,31 +31,40 @@ Do not pretend real Shopify, Canva, or payment tools are connected yet.
 """
 
 def db():
+    database_url = os.getenv("DATABASE_URL")
+
+    if database_url:
+        return psycopg2.connect(database_url)
+
     return sqlite3.connect("business_ai.db")
 
 def init_db():
     conn = db()
     cur = conn.cursor()
 
-    cur.execute("""
+    using_postgres = os.getenv("DATABASE_URL") is not None
+
+    id_type = "SERIAL PRIMARY KEY" if using_postgres else "INTEGER PRIMARY KEY AUTOINCREMENT"
+
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_type},
             email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL
         )
     """)
 
-    cur.execute("""
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS chats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_type},
             user_id INTEGER NOT NULL,
             title TEXT NOT NULL DEFAULT 'New Chat'
         )
     """)
 
-    cur.execute("""
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_type},
             user_id INTEGER NOT NULL,
             chat_id INTEGER,
             role TEXT NOT NULL,
@@ -61,9 +72,9 @@ def init_db():
         )
     """)
 
-    cur.execute("""
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS projects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_type},
             user_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             business_type TEXT NOT NULL,
@@ -71,9 +82,9 @@ def init_db():
         )
     """)
 
-    cur.execute("""
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS uploads (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_type},
             user_id INTEGER NOT NULL,
             filename TEXT NOT NULL,
             filepath TEXT NOT NULL
@@ -83,7 +94,7 @@ def init_db():
     try:
         cur.execute("ALTER TABLE messages ADD COLUMN chat_id INTEGER")
     except:
-        pass
+        conn.rollback()
 
     conn.commit()
     conn.close()
