@@ -240,7 +240,13 @@ def home():
         return redirect("/login")
 
     chats = get_chats(session["user_id"])
-    return render_template("index.html", chats=chats)
+
+    return render_template(
+        "index.html",
+        chats=chats,
+        paddle_client_token=os.getenv("PADDLE_CLIENT_TOKEN"),
+        paddle_price_id=os.getenv("PADDLE_PRICE_ID")
+    )
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -295,7 +301,13 @@ def dashboard():
         return redirect("/login")
 
     projects = get_projects(session["user_id"])
-    return render_template("dashboard.html", projects=projects)
+
+    return render_template(
+        "dashboard.html",
+        projects=projects,
+        paddle_client_token=os.getenv("PADDLE_CLIENT_TOKEN"),
+        paddle_price_id=os.getenv("PADDLE_PRICE_ID")
+    )
 
 @app.route("/create_project", methods=["POST"])
 def create_project():

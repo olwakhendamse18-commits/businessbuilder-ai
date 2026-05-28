@@ -26,6 +26,15 @@
         </div>
 
         <section class="project-form">
+            <h2>BusinessBuilder AI Starter Package</h2>
+            <p>Pay once to unlock a guided business setup workflow.</p>
+
+            <button type="button" onclick="openPaddleCheckout()">
+                Pay Now
+            </button>
+        </section>
+
+        <section class="project-form">
             <h2>Upload Business File</h2>
             <p>Upload TXT files for AI analysis. PDF, DOCX, and image analysis can be added next.</p>
 
@@ -97,6 +106,23 @@
     </main>
 
 </div>
+<script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
 
+<script>
+    Paddle.Initialize({
+        token: "{{ paddle_client_token }}"
+    });
+
+    function openPaddleCheckout() {
+        Paddle.Checkout.open({
+            items: [
+                {
+                    priceId: "{{ paddle_price_id }}",
+                    quantity: 1
+                }
+            ]
+        });
+    }
+</script>
 </body>
 </html>
