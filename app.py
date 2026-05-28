@@ -254,6 +254,27 @@ def user_has_paid(user_id):
 
     return payment is not None
 
+def get_latest_payment(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT provider, amount, status, reference
+        FROM payments
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (user_id,)
+    )
+
+    payment = cur.fetchone()
+
+    conn.close()
+
+    return payment
+
 def extract_file_text(filepath):
     if filepath.endswith(".txt"):
         with open(filepath, "r", encoding="utf-8") as f:
@@ -353,11 +374,13 @@ def dashboard():
 
     projects = get_projects(user_id)
     paid = user_has_paid(user_id)
+    latest_payment = get_latest_payment(user_id)
 
     return render_template(
         "dashboard.html",
         projects=projects,
-        paid=paid
+        paid=paid,
+        latest_payment=latest_payment
     )
 
 @app.route("/create_project", methods=["POST"])

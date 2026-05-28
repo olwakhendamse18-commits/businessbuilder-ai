@@ -39,6 +39,34 @@
        <section class="project-form">
     {% if paid %}
 
+    {% if latest_payment %}
+
+    <div class="card">
+        <h3>Payment Details</h3>
+
+        <p>
+            <strong>Provider:</strong>
+            {{ latest_payment[0] }}
+        </p>
+
+        <p>
+            <strong>Amount:</strong>
+            R{{ latest_payment[1] / 100 }}
+        </p>
+
+        <p>
+            <strong>Status:</strong>
+            {{ latest_payment[2] }}
+        </p>
+
+        <p>
+            <strong>Reference:</strong>
+            {{ latest_payment[3] }}
+        </p>
+    </div>
+
+{% endif %}
+
         <h2>Package Active</h2>
         <p>Your BusinessBuilder AI Starter Package is active.</p>
 
