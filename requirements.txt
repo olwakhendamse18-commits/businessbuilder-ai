@@ -7,3 +7,4 @@ pypdf
 python-docx
 pillow
 psycopg2-binary
+requests

@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, render_template, redirect, session
 from openai import OpenAI
 from dotenv import load_dotenv
+import requests
 import sqlite3
 import os
 import base64
@@ -394,6 +395,65 @@ def privacy():
 @app.route("/refund")
 def refund():
     return render_template("refund.html")
+
+@app.route("/paystack_checkout")
+def paystack_checkout():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    paystack_secret = os.getenv("PAYSTACK_SECRET_KEY")
+
+    if not paystack_secret:
+        return "Paystack secret key is missing."
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute("SELECT email FROM users WHERE id = ?", (session["user_id"],))
+    user = cur.fetchone()
+    conn.close()
+
+    if not user:
+        return redirect("/login")
+
+    email = user[0]
+    amount = 49900
+
+    headers = {
+        "Authorization": f"Bearer {paystack_secret}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "email": email,
+        "amount": amount,
+        "currency": "ZAR",
+        "callback_url": request.host_url + "payment_success"
+    }
+
+    response = requests.post(
+        "https://api.paystack.co/transaction/initialize",
+        headers=headers,
+        json=data
+    )
+
+    result = response.json()
+
+    if result.get("status"):
+        return redirect(result["data"]["authorization_url"])
+
+    return "Could not create Paystack checkout: " + str(result)
+
+
+@app.route("/payment_success")
+def payment_success():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    return """
+    <h1>Payment Successful</h1>
+    <p>Thank you. Your BusinessBuilder AI package has been activated.</p>
+    <a href="/dashboard">Return to Dashboard</a>
+    """
 
 @app.route("/chat", methods=["POST"])
 def chat():

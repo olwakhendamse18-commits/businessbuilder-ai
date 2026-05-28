@@ -31,14 +31,14 @@
             <p>Manage your saved projects, uploaded files, and business progress.</p>
         </div>
 
-        <section class="project-form">
-            <h2>BusinessBuilder AI Starter Package</h2>
-            <p>Pay once to unlock a guided business setup workflow.</p>
+       <section class="project-form">
+    <h2>BusinessBuilder AI Starter Package</h2>
+    <p>Pay once to unlock a guided business setup workflow.</p>
 
-            <button type="button" onclick="openPaddleCheckout()">
-                Pay Now
-            </button>
-        </section>
+    <a href="/paystack_checkout">
+        <button type="button">Pay R499</button>
+    </a>
+</section>
 
         <section class="project-form">
             <h2>Upload Business File</h2>
@@ -112,26 +112,6 @@
     </main>
 
 </div>
-
-<script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
-
-<script>
-
-    Paddle.Initialize({
-        token: "{{ paddle_client_token }}"
-    });
-
-    function openPaddleCheckout() {
-        Paddle.Checkout.open({
-            items: [
-                {
-                    priceId: "{{ paddle_price_id }}",
-                    quantity: 1
-                }
-            ]
-        });
-    }
-</script>
 
 </body>
 </html>
