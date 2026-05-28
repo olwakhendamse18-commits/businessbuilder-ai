@@ -92,6 +92,17 @@ def init_db():
         )
     """)
 
+    cur.execute(f"""
+    CREATE TABLE IF NOT EXISTS payments (
+        id {id_type},
+        user_id INTEGER NOT NULL,
+        provider TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        reference TEXT
+    )
+""")
+
     try:
         cur.execute("ALTER TABLE messages ADD COLUMN chat_id INTEGER")
     except:
@@ -206,6 +217,43 @@ def get_latest_uploaded_file(user_id):
     conn.close()
     return file[0] if file else None
 
+def save_payment(user_id, provider, amount, status, reference):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        INSERT INTO payments (user_id, provider, amount, status, reference)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (user_id, provider, amount, status, reference)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def user_has_paid(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT id
+        FROM payments
+        WHERE user_id = ?
+        AND status = ?
+        LIMIT 1
+        """,
+        (user_id, "success")
+    )
+
+    payment = cur.fetchone()
+
+    conn.close()
+
+    return payment is not None
+
 def extract_file_text(filepath):
     if filepath.endswith(".txt"):
         with open(filepath, "r", encoding="utf-8") as f:
@@ -301,13 +349,15 @@ def dashboard():
     if "user_id" not in session:
         return redirect("/login")
 
-    projects = get_projects(session["user_id"])
+    user_id = session["user_id"]
+
+    projects = get_projects(user_id)
+    paid = user_has_paid(user_id)
 
     return render_template(
         "dashboard.html",
         projects=projects,
-        paddle_client_token=os.getenv("PADDLE_CLIENT_TOKEN"),
-        paddle_price_id=os.getenv("PADDLE_PRICE_ID")
+        paid=paid
     )
 
 @app.route("/create_project", methods=["POST"])
@@ -443,17 +493,22 @@ def paystack_checkout():
 
     return "Could not create Paystack checkout: " + str(result)
 
-
 @app.route("/payment_success")
 def payment_success():
     if "user_id" not in session:
         return redirect("/login")
 
-    return """
-    <h1>Payment Successful</h1>
-    <p>Thank you. Your BusinessBuilder AI package has been activated.</p>
-    <a href="/dashboard">Return to Dashboard</a>
-    """
+    reference = request.args.get("reference", "manual-success")
+
+    save_payment(
+        session["user_id"],
+        "paystack",
+        49900,
+        "success",
+        reference
+    )
+
+    return redirect("/dashboard")
 
 @app.route("/chat", methods=["POST"])
 def chat():

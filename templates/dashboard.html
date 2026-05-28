@@ -32,12 +32,21 @@
         </div>
 
        <section class="project-form">
-    <h2>BusinessBuilder AI Starter Package</h2>
-    <p>Pay once to unlock a guided business setup workflow.</p>
+    {% if paid %}
 
-    <a href="/paystack_checkout">
-        <button type="button">Pay R499</button>
-    </a>
+        <h2>Package Active</h2>
+        <p>Your BusinessBuilder AI Starter Package is active.</p>
+
+    {% else %}
+
+        <h2>BusinessBuilder AI Starter Package</h2>
+        <p>Pay once to unlock a guided business setup workflow.</p>
+
+        <a href="/paystack_checkout">
+            <button type="button">Pay R499</button>
+        </a>
+
+    {% endif %}
 </section>
 
         <section class="project-form">
