@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ step_name }} - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div class="brand-logo">B</div>
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Workflow step</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/business_workflow">Business Workflow</a>
+        <a href="/logout">Logout</a>
+
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <h1>Step {{ step_number }}: {{ step_name }}</h1>
+            <p>{{ question }}</p>
+        </div>
+
+        <section class="project-form">
+            <form method="POST">
+
+                <label>Your Answer</label>
+
+                <textarea
+                    name="answer"
+                    placeholder="Write your answer here..."
+                    required
+                >{{ existing_answer }}</textarea>
+
+                <button type="submit">Save Step</button>
+
+            </form>
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>

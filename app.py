@@ -112,7 +112,125 @@ def init_db():
         status TEXT NOT NULL DEFAULT 'completed'
     )
 """)
+    
+    cur.execute(f"""
+    CREATE TABLE IF NOT EXISTS workflow_answers (
+        id {id_type},
+        user_id INTEGER NOT NULL,
+        step_number INTEGER NOT NULL,
+        step_name TEXT NOT NULL,
+        answer TEXT NOT NULL
+    )
+""")
+    
+def save_workflow_answer(user_id, step_number, step_name, answer):
+    conn = db()
+    cur = conn.cursor()
 
+    cur.execute(
+        """
+        SELECT id
+        FROM workflow_answers
+        WHERE user_id = ?
+        AND step_number = ?
+        """,
+        (user_id, step_number)
+    )
+
+    existing = cur.fetchone()
+
+    if existing:
+        cur.execute(
+            """
+            UPDATE workflow_answers
+            SET answer = ?
+            WHERE user_id = ?
+            AND step_number = ?
+            """,
+            (answer, user_id, step_number)
+        )
+    else:
+        cur.execute(
+            """
+            INSERT INTO workflow_answers
+            (user_id, step_number, step_name, answer)
+            VALUES (?, ?, ?, ?)
+            """,
+            (user_id, step_number, step_name, answer)
+        )
+
+    conn.commit()
+    conn.close()
+
+
+def get_workflow_answer(user_id, step_number):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT answer
+        FROM workflow_answers
+        WHERE user_id = ?
+        AND step_number = ?
+        LIMIT 1
+        """,
+        (user_id, step_number)
+    )
+
+    row = cur.fetchone()
+    conn.close()
+
+    if row:
+        return row[0]
+
+    return ""
+
+def get_workflow_answer(user_id, step_number):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT answer
+        FROM workflow_answers
+        WHERE user_id = ?
+        AND step_number = ?
+        LIMIT 1
+        """,
+        (user_id, step_number)
+    )
+
+    row = cur.fetchone()
+    conn.close()
+
+    if row:
+        return row[0]
+
+    return ""
+
+def get_workflow_answer(user_id, step_number):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT answer
+        FROM workflow_answers
+        WHERE user_id = ?
+        AND step_number = ?
+        LIMIT 1
+        """,
+        (user_id, step_number)
+    )
+
+    row = cur.fetchone()
+    conn.close()
+
+    if row:
+        return row[0]
+
+    return ""
 
     try:
         cur.execute("ALTER TABLE messages ADD COLUMN chat_id INTEGER")
@@ -634,6 +752,89 @@ def complete_step(step_number, step_name):
     )
 
     return redirect("/business_workflow")
+
+WORKFLOW_STEPS = {
+    1: {
+        "name": "Business Idea",
+        "question": "Describe your business idea. What problem does it solve, who is it for, and what makes it valuable?"
+    },
+    2: {
+        "name": "Brand Name",
+        "question": "Describe the type of brand name, slogan, personality, and identity you want for your business."
+    },
+    3: {
+        "name": "Target Market",
+        "question": "Describe your ideal customer. Include their age, location, interests, problems, buying behavior, and where you can reach them."
+    },
+    4: {
+        "name": "Products / Services",
+        "question": "Describe the products or services your business will offer, including packages, features, benefits, and value."
+    },
+    5: {
+        "name": "Pricing",
+        "question": "Describe your pricing ideas, package options, target profit margins, discounts, and launch offers."
+    },
+    6: {
+        "name": "Marketing Plan",
+        "question": "Describe your marketing goals, social media ideas, launch strategy, customer acquisition channels, and content ideas."
+    },
+    7: {
+        "name": "Shopify Setup Plan",
+        "question": "Describe how you want your Shopify store to work, including pages, products, collections, policies, and checkout flow."
+    },
+    8: {
+        "name": "Canva Branding Plan",
+        "question": "Describe your visual branding needs, including logo direction, colors, fonts, social templates, banners, and product graphics."
+    },
+    9: {
+        "name": "Launch Checklist",
+        "question": "Describe what still needs to be completed before launch, including branding, products, website, payments, marketing, and customer support."
+    }
+}
+
+
+@app.route("/workflow_step/<int:step_number>", methods=["GET", "POST"])
+def workflow_step(step_number):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    step = WORKFLOW_STEPS.get(step_number)
+
+    if not step:
+        return redirect("/business_workflow")
+
+    if request.method == "POST":
+        answer = request.form["answer"]
+
+        save_workflow_answer(
+            user_id,
+            step_number,
+            step["name"],
+            answer
+        )
+
+        mark_workflow_step_complete(
+            user_id,
+            step_number,
+            step["name"]
+        )
+
+        return redirect("/business_workflow")
+
+    existing_answer = get_workflow_answer(user_id, step_number)
+
+    return render_template(
+        "workflow_step.html",
+        step_number=step_number,
+        step_name=step["name"],
+        question=step["question"],
+        existing_answer=existing_answer
+    )
 
 @app.route("/chat", methods=["POST"])
 def chat():
