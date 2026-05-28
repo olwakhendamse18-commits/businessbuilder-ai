@@ -646,3 +646,12 @@ a {
     border-radius: 999px;
     transition: width 0.3s ease;
 }
+
+.business-plan-output {
+    white-space: pre-wrap;
+    font-family: Inter, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.7;
+    color: #e5e7eb;
+    margin: 0;
+}

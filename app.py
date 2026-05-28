@@ -828,12 +828,98 @@ def workflow_step(step_number):
 
     existing_answer = get_workflow_answer(user_id, step_number)
 
+    def get_all_workflow_answers(user_id):
+        conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT step_number, step_name, answer
+        FROM workflow_answers
+        WHERE user_id = ?
+        ORDER BY step_number ASC
+        """,
+        (user_id,)
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return rows
+
     return render_template(
         "workflow_step.html",
         step_number=step_number,
         step_name=step["name"],
         question=step["question"],
         existing_answer=existing_answer
+    )
+
+@app.route("/generate_business_plan")
+def generate_business_plan():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    answers = get_all_workflow_answers(user_id)
+
+    if not answers:
+        return redirect("/business_workflow")
+
+    workflow_text = ""
+
+    for step_number, step_name, answer in answers:
+        workflow_text += f"""
+Step {step_number}: {step_name}
+Answer:
+{answer}
+
+"""
+
+    prompt = f"""
+Create a complete professional business plan using the user's saved workflow answers.
+
+The business plan must include:
+
+1. Executive Summary
+2. Business Idea
+3. Brand Name and Brand Identity
+4. Target Market
+5. Products or Services
+6. Pricing Strategy
+7. Marketing Plan
+8. Shopify Setup Plan
+9. Canva Branding Plan
+10. Launch Checklist
+11. Next 30-Day Action Plan
+
+User workflow answers:
+{workflow_text}
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    business_plan = response.choices[0].message.content
+
+    return render_template(
+        "business_plan.html",
+        business_plan=business_plan
     )
 
 @app.route("/chat", methods=["POST"])

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Plan - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div class="brand-logo">B</div>
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Generated business plan</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/business_workflow">Business Workflow</a>
+        <a href="/logout">Logout</a>
+
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <h1>Your Business Plan</h1>
+            <p>This plan was generated from your saved workflow answers.</p>
+        </div>
+
+        <section class="project-form">
+            <pre class="business-plan-output">{{ business_plan }}</pre>
+        </section>
+
+        <a href="/business_workflow">
+            <button type="button">Back to Workflow</button>
+        </a>
+
+    </main>
+
+</div>
+
+</body>
+</html>
