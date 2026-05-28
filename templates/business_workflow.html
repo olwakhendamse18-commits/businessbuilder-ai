@@ -34,6 +34,25 @@
             <p>Complete these 9 steps to build a strong business foundation.</p>
         </div>
 
+        <section class="project-form">
+    <h2>Business Setup Progress</h2>
+
+    <p>
+        {{ completed_count }} / {{ total_steps }} steps completed
+    </p>
+
+    <div class="progress-track">
+        <div
+            class="progress-fill"
+            style="width: {{ progress_percent }}%;"
+        ></div>
+    </div>
+
+    <p>
+        {{ progress_percent }}% complete
+    </p>
+</section>
+
         <div class="cards">
 
             <div class="card">

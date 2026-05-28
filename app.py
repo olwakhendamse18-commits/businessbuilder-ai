@@ -607,10 +607,16 @@ def business_workflow():
         return redirect("/dashboard")
 
     completed_steps = get_completed_steps(user_id)
+    completed_count = len(completed_steps)
+    total_steps = 9
+    progress_percent = int((completed_count / total_steps) * 100)
 
     return render_template(
         "business_workflow.html",
-        completed_steps=completed_steps
+        completed_steps=completed_steps,
+        completed_count=completed_count,
+        total_steps=total_steps,
+        progress_percent=progress_percent
     )
 
 @app.route("/complete_step/<int:step_number>/<step_name>")
