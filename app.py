@@ -378,6 +378,9 @@ def create_project():
 def upload_file():
     if "user_id" not in session:
         return redirect("/login")
+    
+    if not user_has_paid(session["user_id"]):
+        return redirect("/dashboard")
 
     file = request.files.get("file")
 
@@ -509,6 +512,16 @@ def payment_success():
     )
 
     return redirect("/dashboard")
+
+@app.route("/business_workflow")
+def business_workflow():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    if not user_has_paid(session["user_id"]):
+        return redirect("/dashboard")
+
+    return render_template("business_workflow.html")
 
 @app.route("/chat", methods=["POST"])
 def chat():

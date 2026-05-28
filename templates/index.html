@@ -191,6 +191,19 @@ async function loadMessages() {
 
 loadMessages();
 
+function loadPromptFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const prompt = params.get("prompt");
+
+    if (prompt) {
+        const input = document.getElementById("userInput");
+        input.value = prompt;
+        input.focus();
+    }
+}
+
+loadPromptFromUrl();
+
 document
     .getElementById("userInput")
     .addEventListener("keydown", function(event) {

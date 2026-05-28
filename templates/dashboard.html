@@ -20,8 +20,13 @@
 </div>
 
         <a href="/">Chat</a>
-        <a href="/dashboard">Dashboard</a>
-        <a href="/logout">Logout</a>
+<a href="/dashboard">Dashboard</a>
+
+{% if paid %}
+    <a href="/business_workflow">Business Workflow</a>
+{% endif %}
+
+<a href="/logout">Logout</a>
     </aside>
 
     <main class="dashboard-main">
@@ -47,17 +52,42 @@
         </a>
 
     {% endif %}
+
+    {% if paid %}
+
+<section class="project-form">
+    <h2>Guided Business Setup Workflow</h2>
+    <p>Use a structured step-by-step workflow to build your business foundation.</p>
+
+    <a href="/business_workflow">
+        <button type="button">Open Workflow</button>
+    </a>
 </section>
 
-        <section class="project-form">
-            <h2>Upload Business File</h2>
-            <p>Upload TXT files for AI analysis. PDF, DOCX, and image analysis can be added next.</p>
+{% endif %}
 
-            <form method="POST" action="/upload" enctype="multipart/form-data">
-                <input type="file" name="file" required>
-                <button type="submit">Upload File</button>
-            </form>
-        </section>
+</section>
+
+        {% if paid %}
+
+<section class="project-form">
+    <h2>Upload Business File</h2>
+    <p>Upload TXT, PDF, DOCX, or image files for AI analysis.</p>
+
+    <form method="POST" action="/upload" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+        <button type="submit">Upload File</button>
+    </form>
+</section>
+
+{% else %}
+
+<section class="project-form">
+    <h2>File Analysis Locked</h2>
+    <p>Upgrade to the Starter Package to upload files and get AI document/image analysis.</p>
+</section>
+
+{% endif %}
 
         <section class="project-form">
             <h2>Create New Business Project</h2>
