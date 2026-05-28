@@ -102,6 +102,17 @@ def init_db():
         reference TEXT
     )
 """)
+    
+    cur.execute(f"""
+    CREATE TABLE IF NOT EXISTS workflow_progress (
+        id {id_type},
+        user_id INTEGER NOT NULL,
+        step_number INTEGER NOT NULL,
+        step_name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'completed'
+    )
+""")
+
 
     try:
         cur.execute("ALTER TABLE messages ADD COLUMN chat_id INTEGER")
@@ -253,6 +264,55 @@ def user_has_paid(user_id):
     conn.close()
 
     return payment is not None
+
+def mark_workflow_step_complete(user_id, step_number, step_name):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT id
+        FROM workflow_progress
+        WHERE user_id = ?
+        AND step_number = ?
+        """,
+        (user_id, step_number)
+    )
+
+    existing = cur.fetchone()
+
+    if not existing:
+        cur.execute(
+            """
+            INSERT INTO workflow_progress
+            (user_id, step_number, step_name, status)
+            VALUES (?, ?, ?, ?)
+            """,
+            (user_id, step_number, step_name, "completed")
+        )
+
+    conn.commit()
+    conn.close()
+
+
+def get_completed_steps(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT step_number
+        FROM workflow_progress
+        WHERE user_id = ?
+        AND status = ?
+        """,
+        (user_id, "completed")
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return [row[0] for row in rows]
 
 def get_latest_payment(user_id):
     conn = db()
@@ -541,10 +601,33 @@ def business_workflow():
     if "user_id" not in session:
         return redirect("/login")
 
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    completed_steps = get_completed_steps(user_id)
+
+    return render_template(
+        "business_workflow.html",
+        completed_steps=completed_steps
+    )
+
+@app.route("/complete_step/<int:step_number>/<step_name>")
+def complete_step(step_number, step_name):
+    if "user_id" not in session:
+        return redirect("/login")
+
     if not user_has_paid(session["user_id"]):
         return redirect("/dashboard")
 
-    return render_template("business_workflow.html")
+    mark_workflow_step_complete(
+        session["user_id"],
+        step_number,
+        step_name
+    )
+
+    return redirect("/business_workflow")
 
 @app.route("/chat", methods=["POST"])
 def chat():
