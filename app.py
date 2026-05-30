@@ -644,16 +644,30 @@ def save_business_plan(user_id, title, content):
     conn = db()
     cur = conn.cursor()
 
-    cur.execute(
-        sql("""
+    if using_postgres():
+        cur.execute(
+            """
+            INSERT INTO business_plans (user_id, title, content)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (user_id, title, content)
+        )
+        plan_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            """
             INSERT INTO business_plans (user_id, title, content)
             VALUES (?, ?, ?)
-        """),
-        (user_id, title, content)
-    )
+            """,
+            (user_id, title, content)
+        )
+        plan_id = cur.lastrowid
 
     conn.commit()
     conn.close()
+
+    return plan_id
 
 
 def get_business_plans(user_id):
@@ -674,6 +688,27 @@ def get_business_plans(user_id):
     conn.close()
 
     return plans
+
+
+def get_business_plan(user_id, plan_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, content
+            FROM business_plans
+            WHERE id = ?
+            AND user_id = ?
+            LIMIT 1
+        """),
+        (plan_id, user_id)
+    )
+
+    plan = cur.fetchone()
+    conn.close()
+
+    return plan
 
 
 # -----------------------------
@@ -774,7 +809,27 @@ def dashboard():
         "dashboard.html",
         projects=projects,
         paid=paid,
-        latest_payment=latest_payment
+        latest_payment=latest_payment,
+        business_plans=business_plans
+    )
+
+
+@app.route("/business_plan/<int:plan_id>")
+def business_plan(plan_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    plan = get_business_plan(
+        session["user_id"],
+        plan_id
+    )
+
+    if not plan:
+        return redirect("/dashboard")
+
+    return render_template(
+        "business_plan.html",
+        plan=plan
     )
 
 
@@ -992,6 +1047,7 @@ def business_workflow():
 
     completed_steps = get_completed_steps(user_id)
     completed_count = len(completed_steps)
+    answer_count = len(get_all_workflow_answers(user_id))
     total_steps = 9
     progress_percent = int((completed_count / total_steps) * 100)
 
@@ -999,6 +1055,7 @@ def business_workflow():
         "business_workflow.html",
         completed_steps=completed_steps,
         completed_count=completed_count,
+        answer_count=answer_count,
         total_steps=total_steps,
         progress_percent=progress_percent
     )
@@ -1083,7 +1140,7 @@ def generate_business_plan():
     answers = get_all_workflow_answers(user_id)
 
     if not answers:
-        return redirect("/business_workflow")
+        return redirect("/business_workflow?plan_error=no_answers")
 
     workflow_text = ""
 
@@ -1132,16 +1189,13 @@ User workflow answers:
 
     business_plan = response.choices[0].message.content
 
-    save_business_plan(
+    plan_id = save_business_plan(
         user_id,
         "Generated Business Plan",
         business_plan
     )
 
-    return render_template(
-        "business_plan.html",
-        business_plan=business_plan
-    )
+    return redirect(f"/business_plan/{plan_id}")
 
 
 # -----------------------------

@@ -176,23 +176,29 @@
             </div>
         </section>
 
-        <section>
+<section>
     <h2>Saved Business Plans</h2>
+    <p>Open a generated plan whenever you want to review your business strategy.</p>
 
     <div class="cards">
 
         {% for plan in business_plans %}
 
-            <div class="card">
+            <div class="card plan-card">
                 <h3>{{ plan[1] }}</h3>
 
-                <p>
-                    {{ plan[2][:250] }}...
-                </p>
+                <p>{{ plan[2][:250] }}{% if plan[2]|length > 250 %}...{% endif %}</p>
 
-                <a href="/business_plan/{{ plan[0] }}">
+                <a href="/business_plan/{{ plan[0] }}" class="button-link">
                     <button type="button">View Plan</button>
                 </a>
+            </div>
+
+        {% else %}
+
+            <div class="card empty-card">
+                <h3>No saved plans yet</h3>
+                <p>Complete your guided workflow, then generate a business plan to save it here.</p>
             </div>
 
         {% endfor %}

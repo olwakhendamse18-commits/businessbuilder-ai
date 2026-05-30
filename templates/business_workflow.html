@@ -57,9 +57,20 @@
     <h2>Generate Complete Business Plan</h2>
     <p>Create a full business plan using your saved answers from the workflow.</p>
 
+    {% if request.args.get("plan_error") == "no_answers" %}
+        <p class="form-notice">
+            Save at least one workflow answer before generating a business plan.
+        </p>
+    {% endif %}
+
+    {% if answer_count > 0 %}
     <a href="/generate_business_plan">
         <button type="button">Generate Business Plan</button>
     </a>
+    {% else %}
+        <button type="button" disabled>Generate Business Plan</button>
+        <p class="form-help">Open a workflow step and save an answer to unlock plan generation.</p>
+    {% endif %}
 </section>
 
         <div class="cards">

@@ -29,18 +29,32 @@
 
     <main class="dashboard-main">
 
-        <div class="dashboard-header">
-            <h1>Your Business Plan</h1>
-            <p>This plan was generated from your saved workflow answers.</p>
+        <div class="dashboard-header plan-header">
+            <div>
+                <p class="eyebrow">Saved Business Plan</p>
+                <h1>{{ plan[1] }}</h1>
+                <p>This plan was generated from your saved workflow answers and is available from your dashboard.</p>
+            </div>
+
+            <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
         </div>
 
-        <section class="project-form">
-            <pre class="business-plan-output">{{ business_plan }}</pre>
+        <section class="business-plan-document">
+            <div class="business-plan-document-header">
+                <div class="brand-logo">B</div>
+                <div>
+                    <p class="eyebrow">BusinessBuilder AI</p>
+                    <h2>{{ plan[1] }}</h2>
+                </div>
+            </div>
+
+            <div class="business-plan-output">{{ plan[2] }}</div>
         </section>
 
-        <a href="/business_workflow">
-            <button type="button">Back to Workflow</button>
-        </a>
+        <div class="plan-actions">
+            <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
+            <a href="/business_workflow" class="primary-button">Open Workflow</a>
+        </div>
 
     </main>
 

@@ -346,6 +346,27 @@ a {
     box-shadow: 0 18px 38px rgba(59, 130, 246, 0.35);
 }
 
+.project-form button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    transform: none;
+    box-shadow: none;
+}
+
+.form-notice {
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #fde68a !important;
+}
+
+.form-help {
+    margin-bottom: 0;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
 .cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
@@ -649,9 +670,123 @@ a {
 
 .business-plan-output {
     white-space: pre-wrap;
-    font-family: Inter, Arial, sans-serif;
+    overflow-wrap: anywhere;
+    font-family: Georgia, "Times New Roman", serif;
     font-size: 16px;
-    line-height: 1.7;
-    color: #e5e7eb;
+    line-height: 1.85;
+    color: #334155;
     margin: 0;
+}
+
+.plan-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+}
+
+.eyebrow {
+    margin: 0 0 8px;
+    color: #60a5fa !important;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.business-plan-document {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 54px;
+    border-radius: 22px;
+    background: #f8fafc;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    box-shadow: 0 30px 75px rgba(0, 0, 0, 0.3);
+}
+
+.business-plan-document-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding-bottom: 26px;
+    margin-bottom: 30px;
+    border-bottom: 1px solid #cbd5e1;
+}
+
+.business-plan-document-header h2 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 30px;
+    letter-spacing: -0.04em;
+}
+
+.plan-actions {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 24px;
+}
+
+.primary-button,
+.secondary-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 14px 20px;
+    border-radius: 15px;
+    color: white;
+    font-weight: 900;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.primary-button {
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+}
+
+.secondary-button {
+    background: rgba(255, 255, 255, 0.09);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.primary-button:hover,
+.secondary-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 32px rgba(59, 130, 246, 0.25);
+}
+
+.empty-card {
+    border-style: dashed;
+}
+
+.button-link {
+    display: inline-block;
+}
+
+@media (max-width: 850px) {
+    .plan-header {
+        display: block;
+    }
+
+    .plan-header .secondary-button {
+        margin-top: 14px;
+    }
+
+    .business-plan-document {
+        padding: 28px 22px;
+        border-radius: 18px;
+    }
+
+    .business-plan-document-header h2 {
+        font-size: 25px;
+    }
+
+    .business-plan-output {
+        font-size: 15px;
+        line-height: 1.75;
+    }
+
+    .plan-actions {
+        display: grid;
+    }
 }
