@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Launch Package - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div class="brand-logo">B</div>
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Final launch package</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/launch_package">Launch Package</a>
+        <a href="/business_workflow">Business Workflow</a>
+        <a href="/logout">Logout</a>
+
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header plan-header">
+            <div>
+                <p class="eyebrow">Final Business Launch Package</p>
+                <h1>Launch Package Summary</h1>
+                <p>Review your saved strategy, brand direction, Shopify drafts, Canva assets, and launch priorities in one place.</p>
+            </div>
+
+            <a href="/build_center" class="secondary-button">Back to Build Center</a>
+        </div>
+
+        <section class="quote-summary-grid">
+            <div class="quote-summary-card">
+                <p>Shopify Products</p>
+                <h3>{{ shopify_products|length }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Shopify Collections</p>
+                <h3>{{ shopify_collections|length }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Shopify Pages</p>
+                <h3>{{ shopify_pages|length }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Canva Drafts</p>
+                <h3>{{ canva_designs|length }}</h3>
+            </div>
+        </section>
+
+        <div class="launch-package-grid">
+            <section class="launch-package-section">
+                <p class="eyebrow">Foundation</p>
+                <h2>Business Summary</h2>
+                <div class="summary-copy">{{ answers_by_step.get(1, {}).get("answer", "Complete workflow step 1 to add your business summary.") }}</div>
+
+                {% if latest_business_plan %}
+                    <div class="card-actions">
+                        <a href="/business_plan/{{ latest_business_plan[0] }}" class="primary-button">View Latest Business Plan</a>
+                        <a href="/download_business_plan/{{ latest_business_plan[0] }}" class="secondary-button">Download PDF</a>
+                    </div>
+                {% endif %}
+            </section>
+
+            <section class="launch-package-section">
+                <p class="eyebrow">Brand</p>
+                <h2>Brand Summary</h2>
+                <div class="summary-copy">{{ answers_by_step.get(2, {}).get("answer", "Complete workflow step 2 to add your brand summary.") }}</div>
+
+                {% if latest_canva_branding_package %}
+                    <div class="card-actions">
+                        <a href="/canva_branding/{{ latest_canva_branding_package[0] }}" class="primary-button">View Branding Package</a>
+                    </div>
+                {% endif %}
+            </section>
+
+            <section class="launch-package-section">
+                <p class="eyebrow">Audience</p>
+                <h2>Target Market</h2>
+                <div class="summary-copy">{{ answers_by_step.get(3, {}).get("answer", "Complete workflow step 3 to define your target market.") }}</div>
+            </section>
+
+            <section class="launch-package-section">
+                <p class="eyebrow">Offer</p>
+                <h2>Products / Services</h2>
+                <div class="summary-copy">{{ answers_by_step.get(4, {}).get("answer", "Complete workflow step 4 to define your products or services.") }}</div>
+            </section>
+
+            <section class="launch-package-section">
+                <p class="eyebrow">Revenue</p>
+                <h2>Pricing</h2>
+                <div class="summary-copy">{{ answers_by_step.get(5, {}).get("answer", "Complete workflow step 5 to add your pricing strategy.") }}</div>
+            </section>
+
+            <section class="launch-package-section">
+                <p class="eyebrow">Growth</p>
+                <h2>Marketing Plan</h2>
+                <div class="summary-copy">{{ answers_by_step.get(6, {}).get("answer", "Complete workflow step 6 to add your marketing plan.") }}</div>
+            </section>
+        </div>
+
+        <section class="launch-package-section">
+            <p class="eyebrow">Store Build</p>
+            <h2>Shopify Assets Created</h2>
+            <p>Your saved Shopify assets remain draft or unpublished until you review and publish them manually.</p>
+
+            {% if latest_shopify_plan %}
+                <div class="card-actions">
+                    <a href="/shopify_plan/{{ latest_shopify_plan[0] }}" class="primary-button">View Latest Shopify Setup Plan</a>
+                    <a href="/shopify_build_summary" class="secondary-button">Open Shopify Build Summary</a>
+                </div>
+            {% endif %}
+
+            <div class="asset-summary-grid">
+                <div class="asset-summary-list">
+                    <h3>Products</h3>
+                    {% for product in shopify_products %}
+                        <p><strong>{{ product[0] }}</strong><br>{{ product[3] }}</p>
+                    {% else %}
+                        <p>No draft Shopify products created yet.</p>
+                    {% endfor %}
+                </div>
+
+                <div class="asset-summary-list">
+                    <h3>Collections</h3>
+                    {% for collection in shopify_collections %}
+                        <p><strong>{{ collection[0] }}</strong><br>{{ collection[3] }}</p>
+                    {% else %}
+                        <p>No unpublished Shopify collections created yet.</p>
+                    {% endfor %}
+                </div>
+
+                <div class="asset-summary-list">
+                    <h3>Pages</h3>
+                    {% for page in shopify_pages %}
+                        <p><strong>{{ page[0] }}</strong><br>{{ page[4] }}</p>
+                    {% else %}
+                        <p>No unpublished Shopify pages created yet.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <section class="launch-package-section">
+            <p class="eyebrow">Visual Assets</p>
+            <h2>Canva Assets Created</h2>
+
+            {% if latest_canva_design_brief %}
+                <div class="card-actions">
+                    <a href="/canva_design_brief/{{ latest_canva_design_brief[0] }}" class="primary-button">View Latest Canva Design Brief</a>
+                    <a href="/create_canva_designs" class="secondary-button">Create Canva Design Drafts</a>
+                </div>
+            {% endif %}
+
+            <div class="cards">
+                {% for design in canva_designs %}
+                    <div class="card plan-card">
+                        <h3>{{ design[0] }}</h3>
+                        <p><strong>Status:</strong> {{ design[4] }}</p>
+                        {% if design[2] or design[3] %}
+                            <a
+                                href="{{ design[2] or design[3] }}"
+                                class="primary-button"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            >Open in Canva</a>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <div class="card empty-card">
+                        <h3>No Canva drafts created yet</h3>
+                        <p>Generate a Canva design brief, connect Canva, and create your editable design drafts.</p>
+                    </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="launch-package-section">
+            <p class="eyebrow">Final Checks</p>
+            <h2>Launch Checklist</h2>
+            <div class="summary-copy">{{ answers_by_step.get(9, {}).get("answer", "Complete workflow step 9 to add your launch checklist.") }}</div>
+
+            {% if latest_build_quote %}
+                <div class="card-actions">
+                    <a href="/build_quote/{{ latest_build_quote[0] }}" class="secondary-button">View Latest Store + Branding Quote</a>
+                </div>
+            {% endif %}
+        </section>
+
+        <section class="launch-package-section launch-action-plan">
+            <p class="eyebrow">Next Steps</p>
+            <h2>Next 30-Day Action Plan</h2>
+
+            <div class="asset-summary-grid">
+                <div class="asset-summary-list">
+                    <h3>Days 1–7</h3>
+                    <p>Review your business plan, validate pricing, and refine your product or service offer.</p>
+                </div>
+
+                <div class="asset-summary-list">
+                    <h3>Days 8–14</h3>
+                    <p>Review Shopify draft products, collections, and pages. Add final images and publish only approved assets.</p>
+                </div>
+
+                <div class="asset-summary-list">
+                    <h3>Days 15–21</h3>
+                    <p>Edit your Canva drafts, prepare social content, and schedule your launch marketing.</p>
+                </div>
+
+                <div class="asset-summary-list">
+                    <h3>Days 22–30</h3>
+                    <p>Run checkout tests, complete the launch checklist, publish approved assets, and monitor your first customer feedback.</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="plan-actions">
+            <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
+            <a href="/build_center" class="primary-button">Open Build Center</a>
+        </div>
+
+    </main>
+
+</div>
+
+</body>
+</html>

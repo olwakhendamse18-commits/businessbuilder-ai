@@ -2502,6 +2502,57 @@ def build_center():
     )
 
 
+@app.route("/launch_package")
+def launch_package():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    workflow_answers = get_all_workflow_answers(user_id)
+    answers_by_step = {
+        step_number: {
+            "name": step_name,
+            "answer": answer
+        }
+        for step_number, step_name, answer in workflow_answers
+    }
+    business_plans = get_business_plans(user_id)
+    shopify_plans = get_shopify_plans(user_id)
+    shopify_products = get_shopify_products(user_id)
+    shopify_collections = get_shopify_collections(user_id)
+    shopify_pages = get_shopify_pages(user_id)
+    canva_branding_packages = get_canva_branding_packages(user_id)
+    canva_design_briefs = get_canva_design_briefs(user_id)
+    canva_designs = get_canva_designs(user_id)
+    build_quotes = get_build_quotes(user_id)
+
+    return render_template(
+        "launch_package.html",
+        answers_by_step=answers_by_step,
+        latest_business_plan=business_plans[0] if business_plans else None,
+        latest_shopify_plan=shopify_plans[0] if shopify_plans else None,
+        shopify_products=shopify_products,
+        shopify_collections=shopify_collections,
+        shopify_pages=shopify_pages,
+        latest_canva_branding_package=(
+            canva_branding_packages[0]
+            if canva_branding_packages
+            else None
+        ),
+        latest_canva_design_brief=(
+            canva_design_briefs[0]
+            if canva_design_briefs
+            else None
+        ),
+        canva_designs=canva_designs,
+        latest_build_quote=build_quotes[0] if build_quotes else None
+    )
+
+
 @app.route("/business_plan/<int:plan_id>")
 def business_plan(plan_id):
     if "user_id" not in session:
