@@ -75,6 +75,24 @@
         </p>
     {% endif %}
 
+    {% if request.args.get("product_error") == "shopify_connection" %}
+        <p class="form-notice">
+            Connect and test your Shopify store before creating a product.
+        </p>
+    {% elif request.args.get("product_error") == "no_answers" %}
+        <p class="form-notice">
+            Save at least one workflow answer before creating a Shopify product.
+        </p>
+    {% elif request.args.get("product_error") == "ai_response" %}
+        <p class="form-notice">
+            The product details could not be generated. Please try again.
+        </p>
+    {% elif request.args.get("product_error") == "create_failed" %}
+        <p class="form-notice">
+            Shopify could not create the draft product. Check your Admin API permissions and try again.
+        </p>
+    {% endif %}
+
     {% if answer_count > 0 %}
         <div class="generator-actions">
             <a href="/generate_business_plan">
@@ -82,6 +100,9 @@
             </a>
             <a href="/generate_shopify_plan">
                 <button type="button">Generate Shopify Setup Plan</button>
+            </a>
+            <a href="/create_shopify_product">
+                <button type="button">Create Shopify Product</button>
             </a>
             <a href="/generate_build_quote">
                 <button type="button">Generate Store + Branding Quote</button>
@@ -91,6 +112,7 @@
         <div class="generator-actions">
             <button type="button" disabled>Generate Business Plan</button>
             <button type="button" disabled>Generate Shopify Setup Plan</button>
+            <button type="button" disabled>Create Shopify Product</button>
             <button type="button" disabled>Generate Store + Branding Quote</button>
         </div>
         <p class="form-help">Open a workflow step and save an answer to unlock plan generation.</p>

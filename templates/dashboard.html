@@ -36,6 +36,10 @@
             <p>Manage your saved projects, uploaded files, and business progress.</p>
         </div>
 
+        {% if request.args.get("shopify_product") == "created" %}
+            <p class="success-notice">Draft Shopify product created successfully.</p>
+        {% endif %}
+
        <section class="project-form">
     {% if paid %}
 
@@ -224,6 +228,35 @@
             <div class="card empty-card">
                 <h3>No saved plans yet</h3>
                 <p>Complete your guided workflow, then generate a business plan to save it here.</p>
+            </div>
+
+        {% endfor %}
+
+    </div>
+</section>
+
+<section>
+    <h2>Created Shopify Products</h2>
+    <p>Review draft products created from your saved workflow answers.</p>
+
+    <div class="cards">
+
+        {% for product in shopify_products %}
+
+            <div class="card plan-card">
+                <h3>{{ product[0] }}</h3>
+
+                <p>{{ product[1][:250] }}{% if product[1]|length > 250 %}...{% endif %}</p>
+
+                <p><strong>Shopify Product ID:</strong> {{ product[2] }}</p>
+                <p><strong>Status:</strong> {{ product[3] }}</p>
+            </div>
+
+        {% else %}
+
+            <div class="card empty-card">
+                <h3>No Shopify products created yet</h3>
+                <p>Connect Shopify, save your workflow answers, then create a draft product from the workflow page.</p>
             </div>
 
         {% endfor %}

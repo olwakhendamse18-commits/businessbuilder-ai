@@ -361,6 +361,14 @@ a {
     color: #fde68a !important;
 }
 
+.success-notice {
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(34, 197, 94, 0.14);
+    border: 1px solid rgba(34, 197, 94, 0.38);
+    color: #bbf7d0 !important;
+}
+
 .form-help {
     margin-bottom: 0;
     color: var(--text-muted);

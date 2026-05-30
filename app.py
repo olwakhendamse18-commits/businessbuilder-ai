@@ -18,6 +18,7 @@ import os
 import base64
 import psycopg2
 import re
+import json
 from io import BytesIO
 from xml.sax.saxutils import escape
 
@@ -193,6 +194,17 @@ def init_db():
             user_id INTEGER NOT NULL,
             shop_domain TEXT NOT NULL,
             access_token TEXT NOT NULL,
+            status TEXT NOT NULL
+        )
+    """)
+
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS shopify_products (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            shopify_product_id TEXT NOT NULL,
             status TEXT NOT NULL
         )
     """)
@@ -1074,6 +1086,139 @@ def test_shopify_connection(shop_domain, access_token):
     return True, f"Connected to {shop['name']} ({shop['myshopifyDomain']})."
 
 
+def save_shopify_product(
+    user_id,
+    title,
+    description,
+    shopify_product_id,
+    status
+):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            INSERT INTO shopify_products (
+                user_id,
+                title,
+                description,
+                shopify_product_id,
+                status
+            )
+            VALUES (?, ?, ?, ?, ?)
+        """),
+        (user_id, title, description, shopify_product_id, status)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_shopify_products(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT title, description, shopify_product_id, status
+            FROM shopify_products
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+
+    products = cur.fetchall()
+    conn.close()
+
+    return products
+
+
+def create_shopify_product(user_id, title, description):
+    connection = get_shopify_connection(user_id)
+
+    if not connection or connection[3] != "connected":
+        return None, None, "Connect and test your Shopify store before creating products."
+
+    shop_domain = connection[1]
+    access_token = connection[2]
+    endpoint = (
+        f"https://{shop_domain}/admin/api/"
+        f"{SHOPIFY_ADMIN_API_VERSION}/graphql.json"
+    )
+    mutation = """
+    mutation CreateProduct($product: ProductCreateInput!) {
+        productCreate(product: $product) {
+            product {
+                id
+                status
+            }
+            userErrors {
+                field
+                message
+            }
+        }
+    }
+    """
+    product_input = {
+        "title": title,
+        "descriptionHtml": f"<p>{escape(description).replace(chr(10), '<br>')}</p>",
+        "vendor": "BusinessBuilder AI",
+        "status": "DRAFT"
+    }
+
+    def send_product_create(input_data):
+        try:
+            response = requests.post(
+                endpoint,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Shopify-Access-Token": access_token
+                },
+                json={
+                    "query": mutation,
+                    "variables": {"product": input_data}
+                },
+                timeout=10
+            )
+            return response.status_code, response.json()
+        except requests.RequestException:
+            return None, None
+        except ValueError:
+            return None, None
+
+    status_code, result = send_product_create(product_input)
+
+    if not result:
+        return None, None, "Could not reach Shopify. Try again after checking your connection."
+
+    graphql_errors = result.get("errors", [])
+    product_create = result.get("data", {}).get("productCreate") or {}
+    user_errors = product_create.get("userErrors", [])
+    all_errors = graphql_errors + user_errors
+
+    if all_errors and any("status" in str(error).lower() for error in all_errors):
+        product_input.pop("status", None)
+        status_code, result = send_product_create(product_input)
+
+        if not result:
+            return None, None, "Could not reach Shopify. Try again after checking your connection."
+
+        graphql_errors = result.get("errors", [])
+        product_create = result.get("data", {}).get("productCreate") or {}
+        user_errors = product_create.get("userErrors", [])
+
+    if status_code != 200 or graphql_errors or user_errors:
+        return None, None, "Shopify could not create the draft product. Check your Admin API permissions."
+
+    product = product_create.get("product")
+
+    if not product:
+        return None, None, "Shopify did not return the created draft product."
+
+    return product["id"], product.get("status", "DRAFT"), None
+
+
 def create_business_plan_pdf(title, content):
     pdf_buffer = BytesIO()
     document = SimpleDocTemplate(
@@ -1259,6 +1404,7 @@ def dashboard():
     shopify_plans = get_shopify_plans(user_id)
     build_quotes = get_build_quotes(user_id)
     shopify_connection = get_shopify_connection(user_id)
+    shopify_products = get_shopify_products(user_id)
 
     shopify_connection_summary = None
 
@@ -1276,7 +1422,8 @@ def dashboard():
         business_plans=business_plans,
         shopify_plans=shopify_plans,
         build_quotes=build_quotes,
-        shopify_connection=shopify_connection_summary
+        shopify_connection=shopify_connection_summary,
+        shopify_products=shopify_products
     )
 
 
@@ -1944,6 +2091,94 @@ User workflow answers:
     )
 
     return redirect(f"/build_quote/{quote_id}")
+
+
+@app.route("/create_shopify_product")
+def create_shopify_product_from_workflow():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    connection = get_shopify_connection(user_id)
+
+    if not connection or connection[3] != "connected":
+        return redirect("/business_workflow?product_error=shopify_connection")
+
+    answers = get_all_workflow_answers(user_id)
+
+    if not answers:
+        return redirect("/business_workflow?product_error=no_answers")
+
+    workflow_text = ""
+
+    for step_number, step_name, answer in answers:
+        workflow_text += f"""
+Step {step_number}: {step_name}
+Answer:
+{answer}
+
+"""
+
+    prompt = f"""
+Create one Shopify product from the user's saved workflow answers.
+Return JSON only with exactly these keys:
+- title
+- description
+
+The title must be concise and suitable for an online store.
+The description must be a clear customer-facing product description in plain text.
+
+User workflow answers:
+{workflow_text}
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    try:
+        product_details = json.loads(response.choices[0].message.content)
+        title = product_details["title"].strip()
+        description = product_details["description"].strip()
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return redirect("/business_workflow?product_error=ai_response")
+
+    if not title or not description:
+        return redirect("/business_workflow?product_error=ai_response")
+
+    shopify_product_id, status, error = create_shopify_product(
+        user_id,
+        title,
+        description
+    )
+
+    if error:
+        return redirect("/business_workflow?product_error=create_failed")
+
+    save_shopify_product(
+        user_id,
+        title,
+        description,
+        shopify_product_id,
+        status
+    )
+
+    return redirect("/dashboard?shopify_product=created")
 
 
 # -----------------------------
