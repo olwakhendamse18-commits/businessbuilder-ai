@@ -1134,7 +1134,13 @@ def get_shopify_products(user_id):
     return products
 
 
-def create_shopify_product(user_id, title, description):
+def create_shopify_product(
+    user_id,
+    title,
+    description,
+    suggested_price=None,
+    category=None
+):
     connection = get_shopify_connection(user_id)
 
     if not connection or connection[3] != "connected":
@@ -1160,12 +1166,24 @@ def create_shopify_product(user_id, title, description):
         }
     }
     """
+    description_lines = [description]
+
+    if suggested_price:
+        description_lines.append(f"Suggested price: {suggested_price}")
+
+    if category:
+        description_lines.append(f"Collection / category: {category}")
+
+    full_description = "\n\n".join(description_lines)
     product_input = {
         "title": title,
-        "descriptionHtml": f"<p>{escape(description).replace(chr(10), '<br>')}</p>",
+        "descriptionHtml": f"<p>{escape(full_description).replace(chr(10), '<br>')}</p>",
         "vendor": "BusinessBuilder AI",
         "status": "DRAFT"
     }
+
+    if category:
+        product_input["productType"] = category
 
     def send_product_create(input_data):
         try:
@@ -2179,6 +2197,132 @@ User workflow answers:
     )
 
     return redirect("/dashboard?shopify_product=created")
+
+
+@app.route("/create_shopify_products")
+def create_shopify_products_from_workflow():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    connection = get_shopify_connection(user_id)
+
+    if not connection or connection[3] != "connected":
+        return redirect("/business_workflow?product_error=shopify_connection")
+
+    answers = get_all_workflow_answers(user_id)
+
+    if not answers:
+        return redirect("/business_workflow?product_error=no_answers")
+
+    workflow_text = ""
+
+    for step_number, step_name, answer in answers:
+        workflow_text += f"""
+Step {step_number}: {step_name}
+Answer:
+{answer}
+
+"""
+
+    prompt = f"""
+Create 3 to 5 Shopify products from the user's saved workflow answers.
+Return JSON only with one top-level key named "products".
+The value of "products" must be an array of 3 to 5 objects.
+Each object must contain exactly these keys:
+- title
+- description
+- suggested_price
+- category
+
+Each title must be concise and suitable for an online store.
+Each description must be clear customer-facing product copy in plain text.
+Each suggested_price must be a plain-text price suggestion.
+Each category must be a concise Shopify product type or collection suggestion.
+
+User workflow answers:
+{workflow_text}
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    try:
+        product_details = json.loads(response.choices[0].message.content)
+        products = product_details["products"]
+
+        if not isinstance(products, list) or not 3 <= len(products) <= 5:
+            raise ValueError
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return redirect("/business_workflow?product_error=batch_ai_response")
+
+    created_count = 0
+    failed_count = 0
+
+    for product in products:
+        try:
+            title = product["title"].strip()
+            description = product["description"].strip()
+            suggested_price = product["suggested_price"].strip()
+            category = product["category"].strip()
+        except (AttributeError, KeyError, TypeError):
+            failed_count += 1
+            continue
+
+        if not title or not description or not suggested_price or not category:
+            failed_count += 1
+            continue
+
+        saved_description = (
+            f"{description}\n\n"
+            f"Suggested price: {suggested_price}\n"
+            f"Collection / category: {category}"
+        )
+        shopify_product_id, status, error = create_shopify_product(
+            user_id,
+            title,
+            description,
+            suggested_price,
+            category
+        )
+
+        if error:
+            failed_count += 1
+            continue
+
+        save_shopify_product(
+            user_id,
+            title,
+            saved_description,
+            shopify_product_id,
+            status
+        )
+        created_count += 1
+
+    if not created_count:
+        return redirect("/business_workflow?product_error=batch_create_failed")
+
+    return redirect(
+        f"/dashboard?shopify_products=created"
+        f"&created_count={created_count}"
+        f"&failed_count={failed_count}"
+    )
 
 
 # -----------------------------

@@ -91,6 +91,14 @@
         <p class="form-notice">
             Shopify could not create the draft product. Check your Admin API permissions and try again.
         </p>
+    {% elif request.args.get("product_error") == "batch_ai_response" %}
+        <p class="form-notice">
+            The product list could not be generated. Please try again.
+        </p>
+    {% elif request.args.get("product_error") == "batch_create_failed" %}
+        <p class="form-notice">
+            Shopify could not create any draft products. Check your Admin API permissions and try again.
+        </p>
     {% endif %}
 
     {% if answer_count > 0 %}
@@ -104,6 +112,9 @@
             <a href="/create_shopify_product">
                 <button type="button">Create Shopify Product</button>
             </a>
+            <a href="/create_shopify_products">
+                <button type="button">Create Multiple Shopify Products</button>
+            </a>
             <a href="/generate_build_quote">
                 <button type="button">Generate Store + Branding Quote</button>
             </a>
@@ -113,6 +124,7 @@
             <button type="button" disabled>Generate Business Plan</button>
             <button type="button" disabled>Generate Shopify Setup Plan</button>
             <button type="button" disabled>Create Shopify Product</button>
+            <button type="button" disabled>Create Multiple Shopify Products</button>
             <button type="button" disabled>Generate Store + Branding Quote</button>
         </div>
         <p class="form-help">Open a workflow step and save an answer to unlock plan generation.</p>

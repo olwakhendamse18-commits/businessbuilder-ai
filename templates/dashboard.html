@@ -40,6 +40,15 @@
             <p class="success-notice">Draft Shopify product created successfully.</p>
         {% endif %}
 
+        {% if request.args.get("shopify_products") == "created" %}
+            <p class="success-notice">
+                {{ request.args.get("created_count", "0") }} draft Shopify products created successfully.
+                {% if request.args.get("failed_count", "0") != "0" %}
+                    {{ request.args.get("failed_count") }} products could not be created.
+                {% endif %}
+            </p>
+        {% endif %}
+
        <section class="project-form">
     {% if paid %}
 
