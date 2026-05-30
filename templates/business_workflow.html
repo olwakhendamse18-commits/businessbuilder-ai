@@ -63,12 +63,26 @@
         </p>
     {% endif %}
 
+    {% if request.args.get("shopify_error") == "no_answers" %}
+        <p class="form-notice">
+            Save at least one workflow answer before generating a Shopify setup plan.
+        </p>
+    {% endif %}
+
     {% if answer_count > 0 %}
-    <a href="/generate_business_plan">
-        <button type="button">Generate Business Plan</button>
-    </a>
+        <div class="generator-actions">
+            <a href="/generate_business_plan">
+                <button type="button">Generate Business Plan</button>
+            </a>
+            <a href="/generate_shopify_plan">
+                <button type="button">Generate Shopify Setup Plan</button>
+            </a>
+        </div>
     {% else %}
-        <button type="button" disabled>Generate Business Plan</button>
+        <div class="generator-actions">
+            <button type="button" disabled>Generate Business Plan</button>
+            <button type="button" disabled>Generate Shopify Setup Plan</button>
+        </div>
         <p class="form-help">Open a workflow step and save an answer to unlock plan generation.</p>
     {% endif %}
 </section>

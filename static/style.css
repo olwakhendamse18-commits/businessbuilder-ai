@@ -367,6 +367,12 @@ a {
     font-size: 14px;
 }
 
+.generator-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
 .cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
@@ -804,6 +810,10 @@ a {
     }
 
     .card-actions {
+        display: grid;
+    }
+
+    .generator-actions {
         display: grid;
     }
 }

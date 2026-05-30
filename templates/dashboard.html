@@ -207,6 +207,36 @@
     </div>
 </section>
 
+<section>
+    <h2>Saved Shopify Setup Plans</h2>
+    <p>Open a saved Shopify plan to review your store structure, copy, policies, and launch checklist.</p>
+
+    <div class="cards">
+
+        {% for plan in shopify_plans %}
+
+            <div class="card plan-card">
+                <h3>{{ plan[1] }}</h3>
+
+                <p>{{ plan[2][:250] }}{% if plan[2]|length > 250 %}...{% endif %}</p>
+
+                <div class="card-actions">
+                    <a href="/shopify_plan/{{ plan[0] }}" class="primary-button">View Plan</a>
+                </div>
+            </div>
+
+        {% else %}
+
+            <div class="card empty-card">
+                <h3>No saved Shopify plans yet</h3>
+                <p>Save your workflow answers, then generate a Shopify setup plan to add it here.</p>
+            </div>
+
+        {% endfor %}
+
+    </div>
+</section>
+
     </main>
 
 </div>

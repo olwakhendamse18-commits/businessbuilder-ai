@@ -161,6 +161,15 @@ def init_db():
         )
     """)
 
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS shopify_plans (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -720,6 +729,77 @@ def get_business_plan(user_id, plan_id):
     return plan
 
 
+def save_shopify_plan(user_id, title, content):
+    conn = db()
+    cur = conn.cursor()
+
+    if using_postgres():
+        cur.execute(
+            """
+            INSERT INTO shopify_plans (user_id, title, content)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (user_id, title, content)
+        )
+        plan_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            """
+            INSERT INTO shopify_plans (user_id, title, content)
+            VALUES (?, ?, ?)
+            """,
+            (user_id, title, content)
+        )
+        plan_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return plan_id
+
+
+def get_shopify_plans(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, content
+            FROM shopify_plans
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+
+    plans = cur.fetchall()
+    conn.close()
+
+    return plans
+
+
+def get_shopify_plan(user_id, plan_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, content
+            FROM shopify_plans
+            WHERE id = ?
+            AND user_id = ?
+            LIMIT 1
+        """),
+        (plan_id, user_id)
+    )
+
+    plan = cur.fetchone()
+    conn.close()
+
+    return plan
+
+
 def create_business_plan_pdf(title, content):
     pdf_buffer = BytesIO()
     document = SimpleDocTemplate(
@@ -902,13 +982,15 @@ def dashboard():
     paid = user_has_paid(user_id)
     latest_payment = get_latest_payment(user_id)
     business_plans = get_business_plans(user_id)
+    shopify_plans = get_shopify_plans(user_id)
 
     return render_template(
         "dashboard.html",
         projects=projects,
         paid=paid,
         latest_payment=latest_payment,
-        business_plans=business_plans
+        business_plans=business_plans,
+        shopify_plans=shopify_plans
     )
 
 
@@ -952,6 +1034,25 @@ def download_business_plan(plan_id):
         mimetype="application/pdf",
         as_attachment=True,
         download_name=f"{filename}.pdf"
+    )
+
+
+@app.route("/shopify_plan/<int:plan_id>")
+def shopify_plan(plan_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    plan = get_shopify_plan(
+        session["user_id"],
+        plan_id
+    )
+
+    if not plan:
+        return redirect("/dashboard")
+
+    return render_template(
+        "shopify_plan.html",
+        plan=plan
     )
 
 
@@ -1318,6 +1419,78 @@ User workflow answers:
     )
 
     return redirect(f"/business_plan/{plan_id}")
+
+
+@app.route("/generate_shopify_plan")
+def generate_shopify_plan():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    answers = get_all_workflow_answers(user_id)
+
+    if not answers:
+        return redirect("/business_workflow?shopify_error=no_answers")
+
+    workflow_text = ""
+
+    for step_number, step_name, answer in answers:
+        workflow_text += f"""
+Step {step_number}: {step_name}
+Answer:
+{answer}
+
+"""
+
+    prompt = f"""
+Create a complete professional Shopify store setup plan using the user's saved workflow answers.
+Provide practical copy and recommendations that the user can apply while building their Shopify store.
+
+The Shopify setup plan must include:
+
+1. Store Name Suggestion
+2. Shopify Homepage Structure
+3. Product Titles
+4. Product Descriptions
+5. Collections
+6. Navigation Menu
+7. About Page Copy
+8. Contact Page Copy
+9. Shipping Policy Draft
+10. Refund Policy Draft
+11. Store Launch Checklist
+
+User workflow answers:
+{workflow_text}
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    shopify_plan_content = response.choices[0].message.content
+
+    plan_id = save_shopify_plan(
+        user_id,
+        "Generated Shopify Setup Plan",
+        shopify_plan_content
+    )
+
+    return redirect(f"/shopify_plan/{plan_id}")
 
 
 # -----------------------------
