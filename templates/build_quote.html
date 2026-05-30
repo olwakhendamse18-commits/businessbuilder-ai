@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Store + Branding Build Quote - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div class="brand-logo">B</div>
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Store and branding quote</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/business_workflow">Business Workflow</a>
+        <a href="/logout">Logout</a>
+
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header plan-header">
+            <div>
+                <p class="eyebrow">Saved Build Quote</p>
+                <h1>{{ quote[1] }}</h1>
+                <p>This is an informational estimate. Shopify and Canva external costs depend on your final choices.</p>
+            </div>
+
+            <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
+        </div>
+
+        <section class="quote-summary-grid">
+            <div class="quote-summary-card">
+                <p>Shopify Recommendation</p>
+                <h3>{{ quote[2] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Canva Recommendation</p>
+                <h3>{{ quote[3] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Shopify External Cost</p>
+                <h3>{{ quote[4] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Canva External Cost</p>
+                <h3>{{ quote[5] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>BusinessBuilder AI Service Fee</p>
+                <h3>{{ quote[6] }}</h3>
+            </div>
+
+            <div class="quote-summary-card quote-total">
+                <p>Total Estimated Setup Cost</p>
+                <h3>{{ quote[7] }}</h3>
+            </div>
+        </section>
+
+        <section class="business-plan-document">
+            <div class="business-plan-document-header">
+                <div class="brand-logo">B</div>
+                <div>
+                    <p class="eyebrow">BusinessBuilder AI</p>
+                    <h2>{{ quote[1] }}</h2>
+                </div>
+            </div>
+
+            <div class="business-plan-output">{{ quote[8] }}</div>
+        </section>
+
+        <div class="plan-actions">
+            <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
+            <a href="/business_workflow" class="primary-button">Open Workflow</a>
+        </div>
+
+    </main>
+
+</div>
+
+</body>
+</html>

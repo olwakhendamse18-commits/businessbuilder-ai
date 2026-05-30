@@ -237,6 +237,36 @@
     </div>
 </section>
 
+<section>
+    <h2>Saved Store + Branding Quotes</h2>
+    <p>Review informational estimates for your Shopify store build and Canva branding package.</p>
+
+    <div class="cards">
+
+        {% for quote in build_quotes %}
+
+            <div class="card plan-card">
+                <h3>{{ quote[1] }}</h3>
+
+                <p>{{ quote[2][:250] }}{% if quote[2]|length > 250 %}...{% endif %}</p>
+
+                <div class="card-actions">
+                    <a href="/build_quote/{{ quote[0] }}" class="primary-button">View Quote</a>
+                </div>
+            </div>
+
+        {% else %}
+
+            <div class="card empty-card">
+                <h3>No saved quotes yet</h3>
+                <p>Save your workflow answers, then generate a store and branding quote to add it here.</p>
+            </div>
+
+        {% endfor %}
+
+    </div>
+</section>
+
     </main>
 
 </div>

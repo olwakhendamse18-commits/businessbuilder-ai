@@ -170,6 +170,21 @@ def init_db():
         )
     """)
 
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS build_quotes (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            shopify_plan TEXT NOT NULL,
+            canva_plan TEXT NOT NULL,
+            estimated_shopify_cost TEXT NOT NULL,
+            estimated_canva_cost TEXT NOT NULL,
+            service_fee TEXT NOT NULL,
+            total_estimate TEXT NOT NULL,
+            content TEXT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -800,6 +815,136 @@ def get_shopify_plan(user_id, plan_id):
     return plan
 
 
+def save_build_quote(
+    user_id,
+    title,
+    shopify_plan,
+    canva_plan,
+    estimated_shopify_cost,
+    estimated_canva_cost,
+    service_fee,
+    total_estimate,
+    content
+):
+    conn = db()
+    cur = conn.cursor()
+
+    if using_postgres():
+        cur.execute(
+            """
+            INSERT INTO build_quotes (
+                user_id,
+                title,
+                shopify_plan,
+                canva_plan,
+                estimated_shopify_cost,
+                estimated_canva_cost,
+                service_fee,
+                total_estimate,
+                content
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                user_id,
+                title,
+                shopify_plan,
+                canva_plan,
+                estimated_shopify_cost,
+                estimated_canva_cost,
+                service_fee,
+                total_estimate,
+                content
+            )
+        )
+        quote_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            """
+            INSERT INTO build_quotes (
+                user_id,
+                title,
+                shopify_plan,
+                canva_plan,
+                estimated_shopify_cost,
+                estimated_canva_cost,
+                service_fee,
+                total_estimate,
+                content
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                title,
+                shopify_plan,
+                canva_plan,
+                estimated_shopify_cost,
+                estimated_canva_cost,
+                service_fee,
+                total_estimate,
+                content
+            )
+        )
+        quote_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return quote_id
+
+
+def get_build_quotes(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, content
+            FROM build_quotes
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+
+    quotes = cur.fetchall()
+    conn.close()
+
+    return quotes
+
+
+def get_build_quote(user_id, quote_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT
+                id,
+                title,
+                shopify_plan,
+                canva_plan,
+                estimated_shopify_cost,
+                estimated_canva_cost,
+                service_fee,
+                total_estimate,
+                content
+            FROM build_quotes
+            WHERE id = ?
+            AND user_id = ?
+            LIMIT 1
+        """),
+        (quote_id, user_id)
+    )
+
+    quote = cur.fetchone()
+    conn.close()
+
+    return quote
+
+
 def create_business_plan_pdf(title, content):
     pdf_buffer = BytesIO()
     document = SimpleDocTemplate(
@@ -983,6 +1128,7 @@ def dashboard():
     latest_payment = get_latest_payment(user_id)
     business_plans = get_business_plans(user_id)
     shopify_plans = get_shopify_plans(user_id)
+    build_quotes = get_build_quotes(user_id)
 
     return render_template(
         "dashboard.html",
@@ -990,7 +1136,8 @@ def dashboard():
         paid=paid,
         latest_payment=latest_payment,
         business_plans=business_plans,
-        shopify_plans=shopify_plans
+        shopify_plans=shopify_plans,
+        build_quotes=build_quotes
     )
 
 
@@ -1053,6 +1200,25 @@ def shopify_plan(plan_id):
     return render_template(
         "shopify_plan.html",
         plan=plan
+    )
+
+
+@app.route("/build_quote/<int:quote_id>")
+def build_quote(quote_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    quote = get_build_quote(
+        session["user_id"],
+        quote_id
+    )
+
+    if not quote:
+        return redirect("/dashboard")
+
+    return render_template(
+        "build_quote.html",
+        quote=quote
     )
 
 
@@ -1491,6 +1657,98 @@ User workflow answers:
     )
 
     return redirect(f"/shopify_plan/{plan_id}")
+
+
+@app.route("/generate_build_quote")
+def generate_build_quote():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    answers = get_all_workflow_answers(user_id)
+
+    if not answers:
+        return redirect("/business_workflow?quote_error=no_answers")
+
+    workflow_text = ""
+
+    for step_number, step_name, answer in answers:
+        workflow_text += f"""
+Step {step_number}: {step_name}
+Answer:
+{answer}
+
+"""
+
+    shopify_plan = "Recommended Shopify plan based on the store requirements"
+    canva_plan = "Recommended Canva plan based on the branding requirements"
+    estimated_shopify_cost = "Depends on Shopify plan, domain, apps, and theme"
+    estimated_canva_cost = "Depends on Canva plan and premium assets"
+    service_fee = "R499"
+    total_estimate = "R499 + Shopify/Canva external costs"
+
+    prompt = f"""
+Create a professional Store + Branding Build Quote using the user's saved workflow answers.
+This is an informational estimate only. Do not claim that Shopify or Canva APIs are connected.
+Do not claim that external Shopify or Canva costs will be charged.
+Explain that external costs depend on the user's final choices.
+
+The quote must include:
+
+1. Store Build Summary
+2. Shopify Setup Items
+3. Canva Branding Items
+4. Recommended Shopify Plan
+5. Recommended Canva Plan
+6. Estimated Shopify External Cost
+7. Estimated Canva External Cost
+8. BusinessBuilder AI Service Fee
+9. Total Estimated Setup Cost
+10. What Happens After Approval
+
+Use these exact placeholder estimates:
+- Estimated Shopify external cost: {estimated_shopify_cost}
+- Estimated Canva external cost: {estimated_canva_cost}
+- BusinessBuilder AI service fee: {service_fee}
+- Total estimated setup cost: {total_estimate}
+
+User workflow answers:
+{workflow_text}
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    quote_content = response.choices[0].message.content
+
+    quote_id = save_build_quote(
+        user_id,
+        "Store + Branding Build Quote",
+        shopify_plan,
+        canva_plan,
+        estimated_shopify_cost,
+        estimated_canva_cost,
+        service_fee,
+        total_estimate,
+        quote_content
+    )
+
+    return redirect(f"/build_quote/{quote_id}")
 
 
 # -----------------------------

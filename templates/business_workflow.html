@@ -69,6 +69,12 @@
         </p>
     {% endif %}
 
+    {% if request.args.get("quote_error") == "no_answers" %}
+        <p class="form-notice">
+            Save at least one workflow answer before generating a store and branding quote.
+        </p>
+    {% endif %}
+
     {% if answer_count > 0 %}
         <div class="generator-actions">
             <a href="/generate_business_plan">
@@ -77,11 +83,15 @@
             <a href="/generate_shopify_plan">
                 <button type="button">Generate Shopify Setup Plan</button>
             </a>
+            <a href="/generate_build_quote">
+                <button type="button">Generate Store + Branding Quote</button>
+            </a>
         </div>
     {% else %}
         <div class="generator-actions">
             <button type="button" disabled>Generate Business Plan</button>
             <button type="button" disabled>Generate Shopify Setup Plan</button>
+            <button type="button" disabled>Generate Store + Branding Quote</button>
         </div>
         <p class="form-help">Open a workflow step and save an answer to unlock plan generation.</p>
     {% endif %}

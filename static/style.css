@@ -726,6 +726,42 @@ a {
     letter-spacing: -0.04em;
 }
 
+.quote-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    max-width: 980px;
+    margin: 0 auto 24px;
+}
+
+.quote-summary-card {
+    padding: 20px;
+    border-radius: 18px;
+    background: rgba(15, 23, 42, 0.76);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    box-shadow: var(--shadow);
+}
+
+.quote-summary-card p {
+    margin: 0 0 8px;
+    color: #93c5fd;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.quote-summary-card h3 {
+    margin: 0;
+    color: white;
+    font-size: 17px;
+    line-height: 1.45;
+}
+
+.quote-total {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.65), rgba(124, 58, 237, 0.65));
+}
+
 .plan-actions {
     display: flex;
     justify-content: center;
