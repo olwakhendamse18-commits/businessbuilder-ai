@@ -29,7 +29,15 @@ from xml.sax.saxutils import escape
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = "businessbuilder-secret-2026"
+secret_key = os.getenv("SECRET_KEY")
+
+if not secret_key:
+    if os.getenv("DATABASE_URL"):
+        raise RuntimeError("SECRET_KEY must be configured in production.")
+
+    secret_key = "businessbuilder-local-development-secret"
+
+app.secret_key = secret_key
 
 UPLOAD_FOLDER = "uploads"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -90,7 +98,10 @@ def init_db():
 
     id_type = "SERIAL PRIMARY KEY" if using_postgres() else "INTEGER PRIMARY KEY AUTOINCREMENT"
 
-    cur.execute(f"""
+    def execute_schema(query):
+        cur.execute(sql(query))
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS users (
             id {id_type},
             email TEXT UNIQUE NOT NULL,
@@ -98,7 +109,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS chats (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -106,7 +117,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS messages (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -116,7 +127,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS projects (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -126,7 +137,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS uploads (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -135,7 +146,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS payments (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -146,7 +157,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS workflow_progress (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -156,7 +167,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS workflow_answers (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -166,7 +177,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS business_plans (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -175,7 +186,23 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    cur.execute(sql("""
+        DELETE FROM payments
+        WHERE reference IS NOT NULL
+        AND id NOT IN (
+            SELECT MIN(id)
+            FROM payments
+            WHERE reference IS NOT NULL
+            GROUP BY reference
+        )
+    """))
+
+    cur.execute(sql("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_reference_unique
+        ON payments (reference)
+    """))
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS shopify_plans (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -184,7 +211,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS canva_branding_packages (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -193,7 +220,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS canva_design_briefs (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -202,7 +229,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS canva_designs (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -214,7 +241,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS build_quotes (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -229,7 +256,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS shopify_connections (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -239,7 +266,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS canva_connections (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -250,7 +277,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS canva_oauth_sessions (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -259,7 +286,7 @@ def init_db():
         )
     """)
 
-    cur.execute(f"""
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS shopify_products (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -357,11 +384,11 @@ def create_chat(user_id, title="New Chat"):
 
     if using_postgres():
         cur.execute(
-            """
+            sql("""
             INSERT INTO chats (user_id, title)
             VALUES (%s, %s)
             RETURNING id
-            """,
+            """),
             (user_id, title)
         )
 
@@ -369,10 +396,10 @@ def create_chat(user_id, title="New Chat"):
 
     else:
         cur.execute(
-            """
+            sql("""
             INSERT INTO chats (user_id, title)
             VALUES (?, ?)
-            """,
+            """),
             (user_id, title)
         )
 
@@ -530,13 +557,18 @@ def save_payment(user_id, provider, amount, status, reference):
     conn = db()
     cur = conn.cursor()
 
-    cur.execute(
-        sql("""
-            INSERT INTO payments (user_id, provider, amount, status, reference)
-            VALUES (?, ?, ?, ?, ?)
-        """),
-        (user_id, provider, amount, status, reference)
-    )
+    try:
+        cur.execute(
+            sql("""
+                INSERT INTO payments (user_id, provider, amount, status, reference)
+                VALUES (?, ?, ?, ?, ?)
+            """),
+            (user_id, provider, amount, status, reference)
+        )
+    except (sqlite3.IntegrityError, psycopg2.IntegrityError):
+        conn.rollback()
+        conn.close()
+        return False
 
     conn.commit()
     conn.close()
@@ -822,20 +854,20 @@ def save_business_plan(user_id, title, content):
 
     if using_postgres():
         cur.execute(
-            """
+            sql("""
             INSERT INTO business_plans (user_id, title, content)
             VALUES (%s, %s, %s)
             RETURNING id
-            """,
+            """),
             (user_id, title, content)
         )
         plan_id = cur.fetchone()[0]
     else:
         cur.execute(
-            """
+            sql("""
             INSERT INTO business_plans (user_id, title, content)
             VALUES (?, ?, ?)
-            """,
+            """),
             (user_id, title, content)
         )
         plan_id = cur.lastrowid
@@ -893,20 +925,20 @@ def save_shopify_plan(user_id, title, content):
 
     if using_postgres():
         cur.execute(
-            """
+            sql("""
             INSERT INTO shopify_plans (user_id, title, content)
             VALUES (%s, %s, %s)
             RETURNING id
-            """,
+            """),
             (user_id, title, content)
         )
         plan_id = cur.fetchone()[0]
     else:
         cur.execute(
-            """
+            sql("""
             INSERT INTO shopify_plans (user_id, title, content)
             VALUES (?, ?, ?)
-            """,
+            """),
             (user_id, title, content)
         )
         plan_id = cur.lastrowid
@@ -964,20 +996,20 @@ def save_canva_branding_package(user_id, title, content):
 
     if using_postgres():
         cur.execute(
-            """
+            sql("""
             INSERT INTO canva_branding_packages (user_id, title, content)
             VALUES (%s, %s, %s)
             RETURNING id
-            """,
+            """),
             (user_id, title, content)
         )
         package_id = cur.fetchone()[0]
     else:
         cur.execute(
-            """
+            sql("""
             INSERT INTO canva_branding_packages (user_id, title, content)
             VALUES (?, ?, ?)
-            """,
+            """),
             (user_id, title, content)
         )
         package_id = cur.lastrowid
@@ -1035,20 +1067,20 @@ def save_canva_design_brief(user_id, title, content):
 
     if using_postgres():
         cur.execute(
-            """
+            sql("""
             INSERT INTO canva_design_briefs (user_id, title, content)
             VALUES (%s, %s, %s)
             RETURNING id
-            """,
+            """),
             (user_id, title, content)
         )
         brief_id = cur.fetchone()[0]
     else:
         cur.execute(
-            """
+            sql("""
             INSERT INTO canva_design_briefs (user_id, title, content)
             VALUES (?, ?, ?)
-            """,
+            """),
             (user_id, title, content)
         )
         brief_id = cur.lastrowid
@@ -1194,7 +1226,7 @@ def save_build_quote(
 
     if using_postgres():
         cur.execute(
-            """
+            sql("""
             INSERT INTO build_quotes (
                 user_id,
                 title,
@@ -1208,7 +1240,7 @@ def save_build_quote(
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
-            """,
+            """),
             (
                 user_id,
                 title,
@@ -1224,7 +1256,7 @@ def save_build_quote(
         quote_id = cur.fetchone()[0]
     else:
         cur.execute(
-            """
+            sql("""
             INSERT INTO build_quotes (
                 user_id,
                 title,
@@ -1237,7 +1269,7 @@ def save_build_quote(
                 content
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+            """),
             (
                 user_id,
                 title,
@@ -2478,6 +2510,33 @@ def canva_callback():
     )
 
     return redirect("/canva_settings?canva_oauth=connected")
+
+
+@app.route("/health_check")
+def health_check():
+    if "user_id" not in session:
+        return jsonify({"error": "Authentication required."}), 401
+
+    database_connected = False
+    conn = None
+
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(sql("SELECT 1"))
+        database_connected = cur.fetchone() is not None
+    except (sqlite3.Error, psycopg2.Error):
+        database_connected = False
+    finally:
+        if conn:
+            conn.close()
+
+    return jsonify({
+        "database_connected": database_connected,
+        "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
+        "paystack_configured": bool(os.getenv("PAYSTACK_SECRET_KEY")),
+        "database_type": "postgres" if using_postgres() else "sqlite"
+    })
 
 
 @app.route("/pricing")
