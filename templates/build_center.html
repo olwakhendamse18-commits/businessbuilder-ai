@@ -81,6 +81,12 @@
                                 rel="noopener noreferrer"
                             {% endif %}
                         >{{ item["action"] }}</a>
+
+                        {% if item.get("secondary_url") %}
+                            <a href="{{ item['secondary_url'] }}" class="secondary-button">
+                                {{ item["secondary_action"] }}
+                            </a>
+                        {% endif %}
                     </div>
                 </div>
             {% endfor %}

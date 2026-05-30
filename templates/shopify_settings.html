@@ -39,6 +39,15 @@
             {% if connection and connection["status"] == "connected" %}
                 <p class="connection-status connected">Shopify Connected</p>
                 <p><strong>Connected store:</strong> {{ connection["shop_domain"] }}</p>
+
+                <div class="generator-actions">
+                    <a href="/build_shopify_store_draft">
+                        <button type="button">Build Shopify Store Draft</button>
+                    </a>
+                    <a href="/shopify_build_summary">
+                        <button type="button">View Shopify Build Summary</button>
+                    </a>
+                </div>
             {% elif connection %}
                 <p class="connection-status not-connected">Shopify Not Connected</p>
                 <p><strong>Last tested store:</strong> {{ connection["shop_domain"] }}</p>

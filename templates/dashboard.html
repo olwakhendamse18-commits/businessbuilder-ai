@@ -311,6 +311,28 @@
     </div>
 </section>
 
+{% if paid %}
+
+<section>
+    <h2>Shopify Store Draft</h2>
+    <p>Review unpublished collections and page drafts created for your connected Shopify store.</p>
+
+    <div class="cards">
+        <div class="card plan-card">
+            <h3>Draft Store Build Summary</h3>
+            <p><strong>Collections:</strong> {{ shopify_collections|length }}</p>
+            <p><strong>Pages:</strong> {{ shopify_pages|length }}</p>
+
+            <div class="card-actions">
+                <a href="/shopify_build_summary" class="primary-button">View Shopify Build Summary</a>
+                <a href="/build_shopify_store_draft" class="secondary-button">Build Shopify Store Draft</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endif %}
+
 <section>
     <h2>Saved Shopify Setup Plans</h2>
     <p>Open a saved Shopify plan to review your store structure, copy, policies, and launch checklist.</p>

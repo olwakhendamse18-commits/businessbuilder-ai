@@ -488,6 +488,16 @@ a {
     gap: 12px;
 }
 
+.summary-actions {
+    margin-bottom: 30px;
+}
+
+.summary-copy {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.65;
+}
+
 .cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));

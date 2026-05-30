@@ -297,6 +297,29 @@ def init_db():
         )
     """)
 
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS shopify_collections (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            shopify_collection_id TEXT NOT NULL,
+            status TEXT NOT NULL
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS shopify_pages (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            page_type TEXT NOT NULL,
+            content TEXT NOT NULL,
+            shopify_page_id TEXT NOT NULL,
+            status TEXT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -1707,6 +1730,227 @@ def get_shopify_products(user_id):
     return products
 
 
+def save_shopify_collection(
+    user_id,
+    title,
+    description,
+    shopify_collection_id,
+    status
+):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            INSERT INTO shopify_collections (
+                user_id,
+                title,
+                description,
+                shopify_collection_id,
+                status
+            )
+            VALUES (?, ?, ?, ?, ?)
+        """),
+        (user_id, title, description, shopify_collection_id, status)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_shopify_collections(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT title, description, shopify_collection_id, status
+            FROM shopify_collections
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+
+    collections = cur.fetchall()
+    conn.close()
+
+    return collections
+
+
+def save_shopify_page(
+    user_id,
+    title,
+    page_type,
+    content,
+    shopify_page_id,
+    status
+):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            INSERT INTO shopify_pages (
+                user_id,
+                title,
+                page_type,
+                content,
+                shopify_page_id,
+                status
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+        """),
+        (user_id, title, page_type, content, shopify_page_id, status)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_shopify_pages(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT title, page_type, content, shopify_page_id, status
+            FROM shopify_pages
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+
+    pages = cur.fetchall()
+    conn.close()
+
+    return pages
+
+
+def send_shopify_graphql(user_id, query, variables):
+    connection = get_shopify_connection(user_id)
+
+    if not connection or connection[3] != "connected":
+        return None, "Connect and test your Shopify store before building store drafts."
+
+    shop_domain = connection[1]
+    access_token = connection[2]
+    endpoint = (
+        f"https://{shop_domain}/admin/api/"
+        f"{SHOPIFY_ADMIN_API_VERSION}/graphql.json"
+    )
+
+    try:
+        response = requests.post(
+            endpoint,
+            headers={
+                "Content-Type": "application/json",
+                "X-Shopify-Access-Token": access_token
+            },
+            json={
+                "query": query,
+                "variables": variables
+            },
+            timeout=10
+        )
+        result = response.json()
+    except requests.RequestException:
+        return None, "Could not reach Shopify. Check your connection and try again."
+    except ValueError:
+        return None, "Shopify returned an unexpected response."
+
+    if response.status_code != 200 or result.get("errors"):
+        return None, "Shopify could not create the requested draft item."
+
+    return result, None
+
+
+def create_shopify_collection(user_id, title, description):
+    mutation = """
+    mutation CreateCollection($input: CollectionInput!) {
+        collectionCreate(input: $input) {
+            collection {
+                id
+            }
+            userErrors {
+                field
+                message
+            }
+        }
+    }
+    """
+    result, error = send_shopify_graphql(
+        user_id,
+        mutation,
+        {
+            "input": {
+                "title": title,
+                "descriptionHtml": (
+                    f"<p>{escape(description).replace(chr(10), '<br>')}</p>"
+                )
+            }
+        }
+    )
+
+    if error:
+        return None, None, error
+
+    collection_create = result.get("data", {}).get("collectionCreate") or {}
+
+    if collection_create.get("userErrors"):
+        return None, None, "Shopify could not create the unpublished collection."
+
+    collection = collection_create.get("collection")
+
+    if not collection:
+        return None, None, "Shopify did not return the created collection."
+
+    return collection["id"], "unpublished", None
+
+
+def create_shopify_page(user_id, title, content):
+    mutation = """
+    mutation CreatePage($page: PageCreateInput!) {
+        pageCreate(page: $page) {
+            page {
+                id
+            }
+            userErrors {
+                field
+                message
+            }
+        }
+    }
+    """
+    result, error = send_shopify_graphql(
+        user_id,
+        mutation,
+        {
+            "page": {
+                "title": title,
+                "body": f"<p>{escape(content).replace(chr(10), '<br>')}</p>",
+                "isPublished": False
+            }
+        }
+    )
+
+    if error:
+        return None, None, error
+
+    page_create = result.get("data", {}).get("pageCreate") or {}
+
+    if page_create.get("userErrors"):
+        return None, None, "Shopify could not create the unpublished page."
+
+    page = page_create.get("page")
+
+    if not page:
+        return None, None, "Shopify did not return the created page."
+
+    return page["id"], "draft", None
+
+
 def create_shopify_product(
     user_id,
     title,
@@ -2000,6 +2244,8 @@ def dashboard():
     shopify_connection = get_shopify_connection(user_id)
     canva_connection = get_canva_connection(user_id)
     shopify_products = get_shopify_products(user_id)
+    shopify_collections = get_shopify_collections(user_id)
+    shopify_pages = get_shopify_pages(user_id)
 
     shopify_connection_summary = None
 
@@ -2029,7 +2275,9 @@ def dashboard():
         build_quotes=build_quotes,
         shopify_connection=shopify_connection_summary,
         canva_connection=canva_connection_summary,
-        shopify_products=shopify_products
+        shopify_products=shopify_products,
+        shopify_collections=shopify_collections,
+        shopify_pages=shopify_pages
     )
 
 
@@ -2051,6 +2299,8 @@ def build_center():
     business_plans = get_business_plans(user_id)
     shopify_plans = get_shopify_plans(user_id)
     shopify_products = get_shopify_products(user_id)
+    shopify_collections = get_shopify_collections(user_id)
+    shopify_pages = get_shopify_pages(user_id)
     canva_branding_packages = get_canva_branding_packages(user_id)
     canva_design_briefs = get_canva_design_briefs(user_id)
     canva_designs = get_canva_designs(user_id)
@@ -2141,6 +2391,26 @@ def build_center():
             "url": "/business_workflow",
             "action": "Open Product Tools",
             "count": f"{len(shopify_products)} created"
+        },
+        {
+            "title": "Shopify Store Draft",
+            "status": status_for(
+                shopify_collections and shopify_pages,
+                bool(shopify_products or shopify_collections or shopify_pages)
+            ),
+            "description": "Create draft products, unpublished collections, and unpublished store pages in one guided build.",
+            "url": "/build_shopify_store_draft",
+            "action": "Build Shopify Store Draft",
+            "secondary_url": (
+                "/shopify_build_summary"
+                if shopify_collections or shopify_pages
+                else ""
+            ),
+            "secondary_action": "View Summary",
+            "count": (
+                f"{len(shopify_collections)} collections / "
+                f"{len(shopify_pages)} pages"
+            )
         },
         {
             "title": "Canva Branding Package",
@@ -2402,6 +2672,24 @@ def shopify_settings():
         "shopify_settings.html",
         connection=connection_summary,
         message=message
+    )
+
+
+@app.route("/shopify_build_summary")
+def shopify_build_summary():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    return render_template(
+        "shopify_build_summary.html",
+        shopify_products=get_shopify_products(user_id),
+        shopify_collections=get_shopify_collections(user_id),
+        shopify_pages=get_shopify_pages(user_id)
     )
 
 
@@ -3386,20 +3674,23 @@ User workflow answers:
 {workflow_text}
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        response_format={"type": "json_object"},
-        messages=[
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
+    except Exception:
+        return redirect("/business_workflow?product_error=ai_response")
 
     try:
         product_details = json.loads(response.choices[0].message.content)
@@ -3429,6 +3720,233 @@ User workflow answers:
     )
 
     return redirect("/dashboard?shopify_product=created")
+
+
+@app.route("/build_shopify_store_draft")
+def build_shopify_store_draft():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    connection = get_shopify_connection(user_id)
+
+    if not connection or connection[3] != "connected":
+        return redirect("/business_workflow?store_draft_error=shopify_connection")
+
+    answers = get_all_workflow_answers(user_id)
+
+    if not answers:
+        return redirect("/business_workflow?store_draft_error=no_answers")
+
+    workflow_text = ""
+
+    for step_number, step_name, answer in answers:
+        workflow_text += f"""
+Step {step_number}: {step_name}
+Answer:
+{answer}
+
+"""
+
+    prompt = f"""
+Create a Shopify draft store build package from the user's saved workflow answers.
+Return JSON only with exactly these top-level keys:
+- products
+- collections
+- pages
+
+The "products" value must be an array of 3 to 5 objects.
+Each product object must contain exactly:
+- title
+- description
+- suggested_price
+- category
+
+The "collections" value must be an array of 2 to 4 objects.
+Each collection object must contain exactly:
+- title
+- description
+
+The "pages" value must be an object with exactly:
+- about
+- contact
+- shipping_policy
+- refund_policy
+
+Each page value must contain clear customer-facing plain-text copy.
+Do not include HTML. Do not claim the store is published or live.
+
+User workflow answers:
+{workflow_text}
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
+    except Exception:
+        return redirect("/business_workflow?store_draft_error=ai_response")
+
+    try:
+        draft_details = json.loads(response.choices[0].message.content)
+        products = draft_details["products"]
+        collections = draft_details["collections"]
+        pages = draft_details["pages"]
+
+        if not isinstance(products, list) or not 3 <= len(products) <= 5:
+            raise ValueError
+
+        if not isinstance(collections, list) or not 2 <= len(collections) <= 4:
+            raise ValueError
+
+        if not isinstance(pages, dict):
+            raise ValueError
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return redirect("/business_workflow?store_draft_error=ai_response")
+
+    created_product_count = 0
+    created_collection_count = 0
+    created_page_count = 0
+    failed_count = 0
+
+    for product in products:
+        try:
+            title = product["title"].strip()
+            description = product["description"].strip()
+            suggested_price = product["suggested_price"].strip()
+            category = product["category"].strip()
+        except (AttributeError, KeyError, TypeError):
+            failed_count += 1
+            continue
+
+        if not title or not description or not suggested_price or not category:
+            failed_count += 1
+            continue
+
+        saved_description = (
+            f"{description}\n\n"
+            f"Suggested price: {suggested_price}\n"
+            f"Collection / category: {category}"
+        )
+        shopify_product_id, status, error = create_shopify_product(
+            user_id,
+            title,
+            description,
+            suggested_price,
+            category
+        )
+
+        if error:
+            failed_count += 1
+            continue
+
+        save_shopify_product(
+            user_id,
+            title,
+            saved_description,
+            shopify_product_id,
+            status
+        )
+        created_product_count += 1
+
+    for collection in collections:
+        try:
+            title = collection["title"].strip()
+            description = collection["description"].strip()
+        except (AttributeError, KeyError, TypeError):
+            failed_count += 1
+            continue
+
+        if not title or not description:
+            failed_count += 1
+            continue
+
+        shopify_collection_id, status, error = create_shopify_collection(
+            user_id,
+            title,
+            description
+        )
+
+        if error:
+            failed_count += 1
+            continue
+
+        save_shopify_collection(
+            user_id,
+            title,
+            description,
+            shopify_collection_id,
+            status
+        )
+        created_collection_count += 1
+
+    page_titles = {
+        "about": "About Us",
+        "contact": "Contact Us",
+        "shipping_policy": "Shipping Policy",
+        "refund_policy": "Refund Policy"
+    }
+
+    for page_type, title in page_titles.items():
+        try:
+            content = pages[page_type].strip()
+        except (AttributeError, KeyError, TypeError):
+            failed_count += 1
+            continue
+
+        if not content:
+            failed_count += 1
+            continue
+
+        shopify_page_id, status, error = create_shopify_page(
+            user_id,
+            title,
+            content
+        )
+
+        if error:
+            failed_count += 1
+            continue
+
+        save_shopify_page(
+            user_id,
+            title,
+            page_type,
+            content,
+            shopify_page_id,
+            status
+        )
+        created_page_count += 1
+
+    if not (
+        created_product_count
+        or created_collection_count
+        or created_page_count
+    ):
+        return redirect("/business_workflow?store_draft_error=create_failed")
+
+    return redirect(
+        f"/shopify_build_summary?draft_store=created"
+        f"&product_count={created_product_count}"
+        f"&collection_count={created_collection_count}"
+        f"&page_count={created_page_count}"
+        f"&failed_count={failed_count}"
+    )
 
 
 @app.route("/create_shopify_products")

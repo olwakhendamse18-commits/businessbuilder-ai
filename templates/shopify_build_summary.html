@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopify Build Summary - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div class="brand-logo">B</div>
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Shopify draft build</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/business_workflow">Business Workflow</a>
+        <a href="/shopify_settings">Shopify Connection</a>
+        <a href="/logout">Logout</a>
+
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <p class="eyebrow">Unpublished Shopify Assets</p>
+            <h1>Shopify Build Summary</h1>
+            <p>Review draft products, unpublished collections, and unpublished pages before making anything public.</p>
+        </div>
+
+        {% if request.args.get("draft_store") == "created" %}
+            <p class="success-notice">
+                Shopify draft build completed:
+                {{ request.args.get("product_count", "0") }} products,
+                {{ request.args.get("collection_count", "0") }} collections,
+                and {{ request.args.get("page_count", "0") }} pages created.
+                {% if request.args.get("failed_count", "0") != "0" %}
+                    {{ request.args.get("failed_count") }} items could not be created.
+                {% endif %}
+            </p>
+        {% endif %}
+
+        <section class="quote-summary-grid">
+            <div class="quote-summary-card">
+                <p>Draft Products</p>
+                <h3>{{ shopify_products|length }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Unpublished Collections</p>
+                <h3>{{ shopify_collections|length }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Unpublished Pages</p>
+                <h3>{{ shopify_pages|length }}</h3>
+            </div>
+        </section>
+
+        <div class="generator-actions summary-actions">
+            <a href="/build_shopify_store_draft" class="primary-button">Build Another Draft</a>
+            <a href="/shopify_settings" class="secondary-button">Manage Shopify Connection</a>
+            <a href="/build_center" class="secondary-button">Back to Build Center</a>
+        </div>
+
+        <section>
+            <h2>Draft Products</h2>
+            <p>Products are created as draft or unpublished items for review inside Shopify.</p>
+
+            <div class="cards">
+                {% for product in shopify_products %}
+                    <div class="card plan-card">
+                        <h3>{{ product[0] }}</h3>
+                        <p>{{ product[1] }}</p>
+                        <p><strong>Shopify Product ID:</strong> {{ product[2] }}</p>
+                        <p><strong>Status:</strong> {{ product[3] }}</p>
+                    </div>
+                {% else %}
+                    <div class="card empty-card">
+                        <h3>No draft products yet</h3>
+                        <p>Build a Shopify store draft to create product suggestions in Shopify.</p>
+                    </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section>
+            <h2>Unpublished Collections</h2>
+            <p>Collections are created without publication calls so they remain unavailable to customers.</p>
+
+            <div class="cards">
+                {% for collection in shopify_collections %}
+                    <div class="card plan-card">
+                        <h3>{{ collection[0] }}</h3>
+                        <p>{{ collection[1] }}</p>
+                        <p><strong>Shopify Collection ID:</strong> {{ collection[2] }}</p>
+                        <p><strong>Status:</strong> {{ collection[3] }}</p>
+                    </div>
+                {% else %}
+                    <div class="card empty-card">
+                        <h3>No unpublished collections yet</h3>
+                        <p>Build a Shopify store draft to organize generated products.</p>
+                    </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section>
+            <h2>Unpublished Pages</h2>
+            <p>Page drafts remain unpublished until you review and publish them manually in Shopify.</p>
+
+            <div class="cards">
+                {% for page in shopify_pages %}
+                    <div class="card plan-card">
+                        <p class="build-count">{{ page[1]|replace("_", " ")|title }}</p>
+                        <h3>{{ page[0] }}</h3>
+                        <p class="summary-copy">{{ page[2] }}</p>
+                        <p><strong>Shopify Page ID:</strong> {{ page[3] }}</p>
+                        <p><strong>Status:</strong> {{ page[4] }}</p>
+                    </div>
+                {% else %}
+                    <div class="card empty-card">
+                        <h3>No unpublished pages yet</h3>
+                        <p>Build a Shopify store draft to create About, Contact, Shipping, and Refund page drafts.</p>
+                    </div>
+                {% endfor %}
+            </div>
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>
