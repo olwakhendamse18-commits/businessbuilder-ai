@@ -143,6 +143,15 @@ def init_db():
         )
     """)
 
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS business_plans (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -631,6 +640,41 @@ def get_all_workflow_answers(user_id):
 
     return rows
 
+def save_business_plan(user_id, title, content):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            INSERT INTO business_plans (user_id, title, content)
+            VALUES (?, ?, ?)
+        """),
+        (user_id, title, content)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_business_plans(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, content
+            FROM business_plans
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+
+    plans = cur.fetchall()
+    conn.close()
+
+    return plans
+
 
 # -----------------------------
 # PAGE ROUTES
@@ -724,6 +768,7 @@ def dashboard():
     projects = get_projects(user_id)
     paid = user_has_paid(user_id)
     latest_payment = get_latest_payment(user_id)
+    business_plans = get_business_plans(user_id)
 
     return render_template(
         "dashboard.html",
@@ -1086,6 +1131,12 @@ User workflow answers:
     )
 
     business_plan = response.choices[0].message.content
+
+    save_business_plan(
+        user_id,
+        "Generated Business Plan",
+        business_plan
+    )
 
     return render_template(
         "business_plan.html",

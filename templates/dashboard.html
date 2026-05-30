@@ -176,6 +176,30 @@
             </div>
         </section>
 
+        <section>
+    <h2>Saved Business Plans</h2>
+
+    <div class="cards">
+
+        {% for plan in business_plans %}
+
+            <div class="card">
+                <h3>{{ plan[1] }}</h3>
+
+                <p>
+                    {{ plan[2][:250] }}...
+                </p>
+
+                <a href="/business_plan/{{ plan[0] }}">
+                    <button type="button">View Plan</button>
+                </a>
+            </div>
+
+        {% endfor %}
+
+    </div>
+</section>
+
     </main>
 
 </div>
