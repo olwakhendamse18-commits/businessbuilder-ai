@@ -208,6 +208,17 @@ def init_db():
     """)
 
     cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS canva_connections (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            connected_email TEXT,
+            access_token TEXT,
+            refresh_token TEXT
+        )
+    """)
+
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS shopify_products (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -1114,6 +1125,76 @@ def get_shopify_connection(user_id):
     return connection
 
 
+def get_canva_connection(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT
+                id,
+                user_id,
+                status,
+                connected_email,
+                access_token,
+                refresh_token
+            FROM canva_connections
+            WHERE user_id = ?
+            LIMIT 1
+        """),
+        (user_id,)
+    )
+
+    connection = cur.fetchone()
+    conn.close()
+
+    return connection
+
+
+def save_canva_connection_placeholder(user_id, status):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id
+            FROM canva_connections
+            WHERE user_id = ?
+            LIMIT 1
+        """),
+        (user_id,)
+    )
+
+    connection = cur.fetchone()
+
+    if connection:
+        cur.execute(
+            sql("""
+                UPDATE canva_connections
+                SET status = ?
+                WHERE user_id = ?
+            """),
+            (status, user_id)
+        )
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO canva_connections (
+                    user_id,
+                    status,
+                    connected_email,
+                    access_token,
+                    refresh_token
+                )
+                VALUES (?, ?, ?, ?, ?)
+            """),
+            (user_id, status, "", "", "")
+        )
+
+    conn.commit()
+    conn.close()
+
+
 def normalize_shopify_domain(shop_domain):
     domain = shop_domain.strip().lower()
     domain = re.sub(r"^https?://", "", domain)
@@ -1503,6 +1584,7 @@ def dashboard():
     canva_branding_packages = get_canva_branding_packages(user_id)
     build_quotes = get_build_quotes(user_id)
     shopify_connection = get_shopify_connection(user_id)
+    canva_connection = get_canva_connection(user_id)
     shopify_products = get_shopify_products(user_id)
 
     shopify_connection_summary = None
@@ -1511,6 +1593,13 @@ def dashboard():
         shopify_connection_summary = {
             "shop_domain": shopify_connection[1],
             "status": shopify_connection[3]
+        }
+
+    canva_connection_summary = None
+
+    if canva_connection:
+        canva_connection_summary = {
+            "status": canva_connection[2]
         }
 
     return render_template(
@@ -1523,6 +1612,7 @@ def dashboard():
         canva_branding_packages=canva_branding_packages,
         build_quotes=build_quotes,
         shopify_connection=shopify_connection_summary,
+        canva_connection=canva_connection_summary,
         shopify_products=shopify_products
     )
 
@@ -1678,6 +1768,44 @@ def shopify_settings():
 
     return render_template(
         "shopify_settings.html",
+        connection=connection_summary,
+        message=message
+    )
+
+
+@app.route("/canva_settings", methods=["GET", "POST"])
+def canva_settings():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    connection = get_canva_connection(user_id)
+    message = None
+
+    if request.method == "POST":
+        status = connection[2] if connection else "not_connected"
+
+        save_canva_connection_placeholder(
+            user_id,
+            status
+        )
+
+        connection = get_canva_connection(user_id)
+        message = "Canva connection preparation saved. Full Canva OAuth is coming next."
+
+    connection_summary = None
+
+    if connection:
+        connection_summary = {
+            "status": connection[2]
+        }
+
+    return render_template(
+        "canva_settings.html",
         connection=connection_summary,
         message=message
     )

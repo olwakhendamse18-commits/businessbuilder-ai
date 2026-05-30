@@ -154,6 +154,26 @@
 
 {% endif %}
 
+{% if paid %}
+
+<section class="project-form">
+    <h2>Canva Connection</h2>
+
+    {% if canva_connection and canva_connection["status"] == "connected" %}
+        <p class="connection-status connected">Canva Connected</p>
+        <p>Your Canva OAuth connection is ready for future design creation features.</p>
+    {% else %}
+        <p class="connection-status not-connected">Canva Not Connected</p>
+        <p>Prepare your Canva connection settings for the upcoming OAuth integration.</p>
+    {% endif %}
+
+    <a href="/canva_settings">
+        <button type="button">Open Canva Settings</button>
+    </a>
+</section>
+
+{% endif %}
+
         <section class="project-form">
             <h2>Create New Business Project</h2>
             <p>Save a business idea so you can build on it later.</p>

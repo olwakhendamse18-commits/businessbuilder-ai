@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canva Connection - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div class="brand-logo">B</div>
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Canva connection</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/business_workflow">Business Workflow</a>
+        <a href="/logout">Logout</a>
+
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <h1>Canva Connection</h1>
+            <p>Canva OAuth connection will allow future design creation features from your saved branding packages.</p>
+        </div>
+
+        <section class="project-form settings-panel">
+            <h2>Connection Status</h2>
+
+            {% if connection and connection["status"] == "connected" %}
+                <p class="connection-status connected">Canva Connected</p>
+            {% else %}
+                <p class="connection-status not-connected">Canva Not Connected</p>
+            {% endif %}
+
+            <p>Full Canva OAuth is coming next. This page prepares your account for that future connection flow.</p>
+
+            {% if message %}
+                <p class="success-notice">{{ message }}</p>
+            {% endif %}
+
+            <form method="POST" action="/canva_settings">
+                <button type="submit">Prepare Canva Connection</button>
+            </form>
+        </section>
+
+        <div class="plan-actions">
+            <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
+        </div>
+
+    </main>
+
+</div>
+
+</body>
+</html>
