@@ -1519,7 +1519,7 @@ def save_canva_connection(
     conn.close()
 
 
-def create_canva_design(user_id, title):
+def create_canva_design(user_id, title, width=1080, height=1080):
     connection = get_canva_connection(user_id)
 
     if not connection or connection[2] != "connected":
@@ -1541,8 +1541,8 @@ def create_canva_design(user_id, title):
                 "type": "type_and_asset",
                 "design_type": {
                     "type": "custom",
-                    "width": 1080,
-                    "height": 1080
+                    "width": width,
+                    "height": height
                 },
                 "title": title
             },
@@ -1554,8 +1554,8 @@ def create_canva_design(user_id, title):
     except ValueError:
         return None, None, None, None, "Canva returned an unexpected response. Please try again."
 
-    design = result.get("design", {})
-    canva_design_id = design.get("id")
+    design = result.get("design") or result.get("data", {}).get("design") or {}
+    canva_design_id = design.get("id") or design.get("design_id")
 
     if response.status_code != 200 or not canva_design_id:
         return None, None, None, None, "Canva could not create the design draft. Reconnect Canva or try again."
@@ -1564,8 +1564,8 @@ def create_canva_design(user_id, title):
 
     return (
         canva_design_id,
-        urls.get("edit_url", ""),
-        urls.get("view_url", ""),
+        urls.get("edit_url") or design.get("edit_url", ""),
+        urls.get("view_url") or design.get("view_url", ""),
         "draft",
         None
     )
@@ -2451,9 +2451,11 @@ def build_center():
             "title": "Canva Design Drafts",
             "status": status_for(canva_designs, bool(canva_design_briefs)),
             "description": f"{len(canva_designs)} editable Canva design drafts created.",
-            "url": latest_canva_design_url or "/create_canva_design",
-            "action": "Open Latest Canva Draft" if latest_canva_design_url else "Create Canva Draft",
-            "external": bool(latest_canva_design_url),
+            "url": "/create_canva_designs",
+            "action": "Create Canva Design Drafts",
+            "secondary_url": latest_canva_design_url,
+            "secondary_action": "Open Latest Canva Draft",
+            "secondary_external": bool(latest_canva_design_url),
             "count": f"{len(canva_designs)} created"
         },
         {
@@ -3537,6 +3539,73 @@ def create_canva_design_from_brief():
     )
 
     return redirect("/dashboard?canva_design=created")
+
+
+@app.route("/create_canva_designs")
+def create_canva_designs_from_brief():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    connection = get_canva_connection(user_id)
+
+    if not connection or connection[2] != "connected":
+        return redirect("/business_workflow?canva_design_error=connection")
+
+    brief = get_latest_canva_design_brief(user_id)
+
+    if not brief:
+        return redirect("/business_workflow?canva_design_error=no_brief")
+
+    base_title = brief[1][:180]
+    draft_specs = [
+        ("Logo Concept", 1080, 1080),
+        ("Shopify Homepage Banner", 1800, 700),
+        ("Instagram Post Template", 1080, 1080),
+        ("Instagram Story Template", 1080, 1920),
+        ("TikTok Reels Cover", 1080, 1920),
+        ("Business Card", 1050, 600)
+    ]
+    created_count = 0
+    failed_count = 0
+
+    for label, width, height in draft_specs:
+        title = f"{base_title} - {label}"[:255]
+        canva_design_id, edit_url, view_url, status, error = (
+            create_canva_design(
+                user_id,
+                title,
+                width,
+                height
+            )
+        )
+
+        if error:
+            failed_count += 1
+            continue
+
+        save_canva_design(
+            user_id,
+            title,
+            canva_design_id,
+            edit_url,
+            view_url,
+            status
+        )
+        created_count += 1
+
+    if not created_count:
+        return redirect("/business_workflow?canva_design_error=batch_create_failed")
+
+    return redirect(
+        f"/dashboard?canva_designs=created"
+        f"&created_count={created_count}"
+        f"&failed_count={failed_count}"
+    )
 
 
 @app.route("/generate_build_quote")

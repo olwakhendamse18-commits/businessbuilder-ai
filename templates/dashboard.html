@@ -54,6 +54,15 @@
             <p class="success-notice">Canva design draft created successfully.</p>
         {% endif %}
 
+        {% if request.args.get("canva_designs") == "created" %}
+            <p class="success-notice">
+                {{ request.args.get("created_count", "0") }} Canva design drafts created successfully.
+                {% if request.args.get("failed_count", "0") != "0" %}
+                    {{ request.args.get("failed_count") }} drafts could not be created.
+                {% endif %}
+            </p>
+        {% endif %}
+
        <section class="project-form">
     {% if paid %}
 

@@ -83,7 +83,14 @@
                         >{{ item["action"] }}</a>
 
                         {% if item.get("secondary_url") %}
-                            <a href="{{ item['secondary_url'] }}" class="secondary-button">
+                            <a
+                                href="{{ item['secondary_url'] }}"
+                                class="secondary-button"
+                                {% if item.get("secondary_external") %}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                {% endif %}
+                            >
                                 {{ item["secondary_action"] }}
                             </a>
                         {% endif %}

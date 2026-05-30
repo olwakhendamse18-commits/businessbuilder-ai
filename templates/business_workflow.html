@@ -100,6 +100,10 @@
         <p class="form-notice">
             Canva could not create the design draft. Reconnect Canva or try again.
         </p>
+    {% elif request.args.get("canva_design_error") == "batch_create_failed" %}
+        <p class="form-notice">
+            Canva could not create any design drafts. Reconnect Canva or try again.
+        </p>
     {% endif %}
 
     {% if request.args.get("product_error") == "shopify_connection" %}
@@ -163,6 +167,9 @@
             <a href="/create_canva_design">
                 <button type="button">Create Canva Design Draft</button>
             </a>
+            <a href="/create_canva_designs">
+                <button type="button">Create Canva Design Drafts</button>
+            </a>
             <a href="/create_shopify_product">
                 <button type="button">Create Shopify Product</button>
             </a>
@@ -183,6 +190,7 @@
             <button type="button" disabled>Generate Canva Branding Package</button>
             <button type="button" disabled>Generate Canva Design Brief</button>
             <button type="button" disabled>Create Canva Design Draft</button>
+            <button type="button" disabled>Create Canva Design Drafts</button>
             <button type="button" disabled>Create Shopify Product</button>
             <button type="button" disabled>Create Multiple Shopify Products</button>
             <button type="button" disabled>Build Shopify Store Draft</button>
