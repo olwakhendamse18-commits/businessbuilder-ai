@@ -1,16 +1,25 @@
-from flask import Flask, request, jsonify, render_template, redirect, session
+from flask import Flask, request, jsonify, render_template, redirect, session, send_file
 from openai import OpenAI
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from pypdf import PdfReader
 from docx import Document
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 import requests
 import sqlite3
 import os
 import base64
 import psycopg2
+import re
+from io import BytesIO
+from xml.sax.saxutils import escape
 
 
 load_dotenv()
@@ -711,6 +720,95 @@ def get_business_plan(user_id, plan_id):
     return plan
 
 
+def create_business_plan_pdf(title, content):
+    pdf_buffer = BytesIO()
+    document = SimpleDocTemplate(
+        pdf_buffer,
+        pagesize=A4,
+        rightMargin=20 * mm,
+        leftMargin=20 * mm,
+        topMargin=18 * mm,
+        bottomMargin=18 * mm
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "BusinessPlanTitle",
+        parent=styles["Title"],
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#172554"),
+        fontSize=22,
+        leading=28,
+        spaceAfter=8
+    )
+    brand_style = ParagraphStyle(
+        "BusinessPlanBrand",
+        parent=styles["Normal"],
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#2563eb"),
+        fontSize=10,
+        leading=14,
+        spaceAfter=14
+    )
+    heading_style = ParagraphStyle(
+        "BusinessPlanHeading",
+        parent=styles["Heading2"],
+        textColor=colors.HexColor("#1e3a8a"),
+        fontSize=14,
+        leading=18,
+        spaceBefore=10,
+        spaceAfter=5
+    )
+    body_style = ParagraphStyle(
+        "BusinessPlanBody",
+        parent=styles["BodyText"],
+        textColor=colors.HexColor("#334155"),
+        fontSize=10.5,
+        leading=15,
+        spaceAfter=6
+    )
+
+    story = [
+        Paragraph("BusinessBuilder AI", brand_style),
+        Paragraph(escape(title), title_style),
+        Spacer(1, 5 * mm)
+    ]
+
+    for line in content.splitlines():
+        text = line.strip()
+
+        if not text:
+            story.append(Spacer(1, 2.5 * mm))
+            continue
+
+        clean_text = escape(text)
+        is_heading = (
+            text.startswith("#")
+            or (
+                len(text) <= 90
+                and (
+                    text.endswith(":")
+                    or text[0].isdigit() and "." in text[:4]
+                )
+            )
+        )
+
+        if text.startswith("#"):
+            clean_text = escape(text.lstrip("#").strip())
+
+        story.append(
+            Paragraph(
+                clean_text,
+                heading_style if is_heading else body_style
+            )
+        )
+
+    document.build(story)
+    pdf_buffer.seek(0)
+
+    return pdf_buffer
+
+
 # -----------------------------
 # PAGE ROUTES
 # -----------------------------
@@ -830,6 +928,30 @@ def business_plan(plan_id):
     return render_template(
         "business_plan.html",
         plan=plan
+    )
+
+
+@app.route("/download_business_plan/<int:plan_id>")
+def download_business_plan(plan_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    plan = get_business_plan(
+        session["user_id"],
+        plan_id
+    )
+
+    if not plan:
+        return redirect("/dashboard")
+
+    filename = re.sub(r"[_-]+", "-", secure_filename(plan[1])).strip("-")
+    filename = filename or "business-plan"
+
+    return send_file(
+        create_business_plan_pdf(plan[1], plan[2]),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"{filename}.pdf"
     )
 
 

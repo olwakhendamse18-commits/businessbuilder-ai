@@ -763,6 +763,19 @@ a {
     display: inline-block;
 }
 
+.card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.card-actions .primary-button,
+.card-actions .secondary-button {
+    padding: 12px 16px;
+    font-size: 14px;
+}
+
 @media (max-width: 850px) {
     .plan-header {
         display: block;
@@ -787,6 +800,10 @@ a {
     }
 
     .plan-actions {
+        display: grid;
+    }
+
+    .card-actions {
         display: grid;
     }
 }

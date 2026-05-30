@@ -189,9 +189,10 @@
 
                 <p>{{ plan[2][:250] }}{% if plan[2]|length > 250 %}...{% endif %}</p>
 
-                <a href="/business_plan/{{ plan[0] }}" class="button-link">
-                    <button type="button">View Plan</button>
-                </a>
+                <div class="card-actions">
+                    <a href="/business_plan/{{ plan[0] }}" class="primary-button">View Plan</a>
+                    <a href="/download_business_plan/{{ plan[0] }}" class="secondary-button">Download PDF</a>
+                </div>
             </div>
 
         {% else %}

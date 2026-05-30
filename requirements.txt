@@ -8,3 +8,4 @@ python-docx
 pillow
 psycopg2-binary
 requests
+reportlab
