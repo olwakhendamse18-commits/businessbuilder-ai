@@ -3,6 +3,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import HTTPException
 from pypdf import PdfReader
 from docx import Document
 from reportlab.lib import colors
@@ -43,7 +44,8 @@ UPLOAD_FOLDER = "uploads"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai_api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
 SYSTEM_PROMPT = """
 You are BusinessBuilder AI, an AI assistant that helps users create businesses.
@@ -61,6 +63,71 @@ CANVA_SCOPES = os.getenv(
     "CANVA_SCOPES",
     "design:meta:read design:content:write profile:read"
 )
+
+
+# -----------------------------
+# VALIDATION / ERROR HELPERS
+# -----------------------------
+
+class ExternalServiceError(Exception):
+    pass
+
+
+def render_error(message, status_code=500, back_url="/dashboard"):
+    return render_template(
+        "error.html",
+        message=message,
+        back_url=back_url
+    ), status_code
+
+
+def is_valid_email(email):
+    return bool(
+        email
+        and len(email) <= 254
+        and re.fullmatch(
+            r"[^@\s]+@[^@\s]+\.[^@\s]+",
+            email
+        )
+    )
+
+
+def safe_openai_chat_completion(**kwargs):
+    if not client:
+        raise ExternalServiceError(
+            "AI generation is temporarily unavailable. Please try again later."
+        )
+
+    try:
+        return client.chat.completions.create(**kwargs)
+    except Exception:
+        raise ExternalServiceError(
+            "AI generation is temporarily unavailable. Please try again later."
+        )
+
+
+@app.errorhandler(ExternalServiceError)
+def handle_external_service_error(error):
+    if request.path == "/chat":
+        return jsonify({"reply": str(error)}), 503
+
+    return render_error(str(error), 503)
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(error):
+    if isinstance(error, HTTPException):
+        return error
+
+    if request.path == "/chat":
+        return jsonify({
+            "reply": "Something went wrong. Please try again."
+        }), 500
+
+    return render_error(
+        "Something went wrong while processing your request. Please try again.",
+        500
+    )
 
 
 # -----------------------------
@@ -955,6 +1022,15 @@ def get_all_workflow_answers(user_id):
     conn.close()
 
     return rows
+
+
+def get_nonempty_workflow_answers(user_id):
+    return [
+        answer
+        for answer in get_all_workflow_answers(user_id)
+        if answer[2] and answer[2].strip()
+    ]
+
 
 def save_business_plan(user_id, title, content):
     conn = db()
@@ -2471,12 +2547,45 @@ def signup():
     if request.method == "GET":
         return render_template("signup.html")
 
-    email = request.form["email"]
-    password = generate_password_hash(request.form["password"])
+    email = request.form.get("email", "").strip().lower()
+    raw_password = request.form.get("password", "")
+
+    if not is_valid_email(email):
+        return render_template(
+            "signup.html",
+            message="Enter a valid email address."
+        ), 400
+
+    if not raw_password:
+        return render_template(
+            "signup.html",
+            message="Enter a password."
+        ), 400
+
+    password = generate_password_hash(raw_password)
+    conn = None
 
     try:
         conn = db()
         cur = conn.cursor()
+
+        cur.execute(
+            sql("""
+                SELECT id
+                FROM users
+                WHERE LOWER(email) = ?
+                LIMIT 1
+            """),
+            (email,)
+        )
+
+        if cur.fetchone():
+            conn.close()
+
+            return render_template(
+                "signup.html",
+                message="An account with that email already exists."
+            ), 400
 
         cur.execute(
             sql("""
@@ -2491,8 +2600,20 @@ def signup():
 
         return redirect("/login")
 
+    except (sqlite3.IntegrityError, psycopg2.IntegrityError):
+        if conn:
+            conn.rollback()
+            conn.close()
+
+        return render_template(
+            "signup.html",
+            message="An account with that email already exists."
+        ), 400
     except Exception:
-        return redirect("/login")
+        if conn:
+            conn.close()
+
+        raise
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -2500,8 +2621,14 @@ def login():
     if request.method == "GET":
         return render_template("login.html")
 
-    email = request.form["email"]
-    password = request.form["password"]
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+
+    if not is_valid_email(email) or not password:
+        return render_template(
+            "login.html",
+            message="Enter a valid email address and password."
+        ), 400
 
     conn = db()
     cur = conn.cursor()
@@ -2510,7 +2637,7 @@ def login():
         sql("""
             SELECT id, password
             FROM users
-            WHERE email = ?
+            WHERE LOWER(email) = ?
         """),
         (email,)
     )
@@ -2522,7 +2649,10 @@ def login():
         session["user_id"] = user[0]
         return redirect("/")
 
-    return "Invalid email or password."
+    return render_template(
+        "login.html",
+        message="Invalid email or password."
+    ), 401
 
 
 @app.route("/logout")
@@ -3421,7 +3551,10 @@ def paystack_checkout():
     paystack_secret = os.getenv("PAYSTACK_SECRET_KEY")
 
     if not paystack_secret:
-        return "Paystack secret key is missing."
+        return render_error(
+            "Payment checkout is temporarily unavailable. Please try again later.",
+            503
+        )
 
     conn = db()
     cur = conn.cursor()
@@ -3456,18 +3589,30 @@ def paystack_checkout():
         "callback_url": request.host_url + "payment_success"
     }
 
-    response = requests.post(
-        "https://api.paystack.co/transaction/initialize",
-        headers=headers,
-        json=data
-    )
+    try:
+        response = requests.post(
+            "https://api.paystack.co/transaction/initialize",
+            headers=headers,
+            json=data,
+            timeout=20
+        )
+        response.raise_for_status()
+        result = response.json()
+    except (requests.RequestException, ValueError):
+        return render_error(
+            "Payment checkout could not be started. Please try again.",
+            503
+        )
 
-    result = response.json()
+    authorization_url = (result.get("data") or {}).get("authorization_url")
 
-    if result.get("status"):
-        return redirect(result["data"]["authorization_url"])
+    if not result.get("status") or not authorization_url:
+        return render_error(
+            "Payment checkout could not be started. Please try again.",
+            503
+        )
 
-    return "Could not create Paystack checkout: " + str(result)
+    return redirect(authorization_url)
 
 
 @app.route("/payment_success")
@@ -3478,7 +3623,10 @@ def payment_success():
     reference = request.args.get("reference")
 
     if not reference:
-        return "Missing Paystack payment reference.", 400
+        return render_error(
+            "The payment reference is missing. Please start checkout again.",
+            400
+        )
 
     if payment_reference_exists(reference):
         return redirect("/dashboard")
@@ -3486,7 +3634,10 @@ def payment_success():
     transaction, error = verify_paystack_transaction(reference)
 
     if error:
-        return error, 400
+        return render_error(
+            "Payment verification could not be completed. Please try again.",
+            400
+        )
 
     save_payment(
         session["user_id"],
@@ -3564,7 +3715,17 @@ def workflow_step(step_number):
         return redirect("/business_workflow")
 
     if request.method == "POST":
-        answer = request.form["answer"]
+        answer = request.form.get("answer", "").strip()
+
+        if not answer:
+            return render_template(
+                "workflow_step.html",
+                step_number=step_number,
+                step_name=step["name"],
+                question=step["question"],
+                existing_answer="",
+                message="Enter an answer before saving this workflow step."
+            ), 400
 
         save_workflow_answer(
             user_id,
@@ -3605,7 +3766,7 @@ def generate_business_plan():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
-    answers = get_all_workflow_answers(user_id)
+    answers = get_nonempty_workflow_answers(user_id)
 
     if not answers:
         return redirect("/business_workflow?plan_error=no_answers")
@@ -3641,7 +3802,7 @@ User workflow answers:
 {workflow_text}
 """
 
-    response = client.chat.completions.create(
+    response = safe_openai_chat_completion(
         model="gpt-4.1-mini",
         messages=[
             {
@@ -3676,7 +3837,7 @@ def generate_shopify_plan():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
-    answers = get_all_workflow_answers(user_id)
+    answers = get_nonempty_workflow_answers(user_id)
 
     if not answers:
         return redirect("/business_workflow?shopify_error=no_answers")
@@ -3713,7 +3874,7 @@ User workflow answers:
 {workflow_text}
 """
 
-    response = client.chat.completions.create(
+    response = safe_openai_chat_completion(
         model="gpt-4.1-mini",
         messages=[
             {
@@ -3748,7 +3909,7 @@ def generate_canva_branding():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
-    answers = get_all_workflow_answers(user_id)
+    answers = get_nonempty_workflow_answers(user_id)
 
     if not answers:
         return redirect("/business_workflow?canva_error=no_answers")
@@ -3787,7 +3948,7 @@ User workflow answers:
 {workflow_text}
 """
 
-    response = client.chat.completions.create(
+    response = safe_openai_chat_completion(
         model="gpt-4.1-mini",
         messages=[
             {
@@ -3822,7 +3983,7 @@ def generate_canva_design_brief():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
-    answers = get_all_workflow_answers(user_id)
+    answers = get_nonempty_workflow_answers(user_id)
 
     if not answers:
         return redirect("/business_workflow?canva_brief_error=no_answers")
@@ -3871,7 +4032,7 @@ User workflow answers:
 {workflow_text}
 """
 
-    response = client.chat.completions.create(
+    response = safe_openai_chat_completion(
         model="gpt-4.1-mini",
         messages=[
             {
@@ -4014,7 +4175,7 @@ def generate_build_quote():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
-    answers = get_all_workflow_answers(user_id)
+    answers = get_nonempty_workflow_answers(user_id)
 
     if not answers:
         return redirect("/business_workflow?quote_error=no_answers")
@@ -4065,7 +4226,7 @@ User workflow answers:
 {workflow_text}
 """
 
-    response = client.chat.completions.create(
+    response = safe_openai_chat_completion(
         model="gpt-4.1-mini",
         messages=[
             {
@@ -4111,7 +4272,7 @@ def create_shopify_product_from_workflow():
     if not connection or connection[3] != "connected":
         return redirect("/business_workflow?product_error=shopify_connection")
 
-    answers = get_all_workflow_answers(user_id)
+    answers = get_nonempty_workflow_answers(user_id)
 
     if not answers:
         return redirect("/business_workflow?product_error=no_answers")
@@ -4140,7 +4301,7 @@ User workflow answers:
 """
 
     try:
-        response = client.chat.completions.create(
+        response = safe_openai_chat_completion(
             model="gpt-4.1-mini",
             response_format={"type": "json_object"},
             messages=[
@@ -4202,7 +4363,7 @@ def build_shopify_store_draft():
     if not connection or connection[3] != "connected":
         return redirect("/business_workflow?store_draft_error=shopify_connection")
 
-    answers = get_all_workflow_answers(user_id)
+    answers = get_nonempty_workflow_answers(user_id)
 
     if not answers:
         return redirect("/business_workflow?store_draft_error=no_answers")
@@ -4250,7 +4411,7 @@ User workflow answers:
 """
 
     try:
-        response = client.chat.completions.create(
+        response = safe_openai_chat_completion(
             model="gpt-4.1-mini",
             response_format={"type": "json_object"},
             messages=[
@@ -4429,7 +4590,7 @@ def create_shopify_products_from_workflow():
     if not connection or connection[3] != "connected":
         return redirect("/business_workflow?product_error=shopify_connection")
 
-    answers = get_all_workflow_answers(user_id)
+    answers = get_nonempty_workflow_answers(user_id)
 
     if not answers:
         return redirect("/business_workflow?product_error=no_answers")
@@ -4463,7 +4624,7 @@ User workflow answers:
 {workflow_text}
 """
 
-    response = client.chat.completions.create(
+    response = safe_openai_chat_completion(
         model="gpt-4.1-mini",
         response_format={"type": "json_object"},
         messages=[
@@ -4553,8 +4714,13 @@ def chat():
 
     user_id = session["user_id"]
 
-    data = request.get_json()
-    user_message = data.get("message", "")
+    data = request.get_json(silent=True) or {}
+    user_message = str(data.get("message", "")).strip()
+
+    if not user_message:
+        return jsonify({
+            "reply": "Enter a message before sending."
+        }), 400
 
     chat_id = session.get("chat_id")
     new_chat_created = False
@@ -4576,7 +4742,7 @@ def chat():
     )
 
     if new_chat_created:
-        title_response = client.chat.completions.create(
+        title_response = safe_openai_chat_completion(
             model="gpt-4.1-mini",
             messages=[
                 {
@@ -4643,7 +4809,7 @@ def chat():
     ):
         image_base64 = image_to_base64(uploaded_file)
 
-        response = client.chat.completions.create(
+        response = safe_openai_chat_completion(
             model="gpt-4.1-mini",
             messages=[
                 {
@@ -4671,7 +4837,7 @@ def chat():
         )
 
     else:
-        response = client.chat.completions.create(
+        response = safe_openai_chat_completion(
             model="gpt-4.1-mini",
             messages=messages
         )

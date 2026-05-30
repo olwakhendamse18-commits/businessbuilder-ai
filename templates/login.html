@@ -8,6 +8,9 @@
 <body class="auth-body">
     <div class="auth-card">
         <h1>Login</h1>
+        {% if message %}
+            <p class="form-notice">{{ message }}</p>
+        {% endif %}
         <form method="POST">
             <input name="email" type="email" placeholder="Email" required>
             <input name="password" type="password" placeholder="Password" required>

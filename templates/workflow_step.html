@@ -36,6 +36,10 @@
         </div>
 
         <section class="project-form">
+            {% if message %}
+                <p class="form-notice">{{ message }}</p>
+            {% endif %}
+
             <form method="POST">
 
                 <label>Your Answer</label>

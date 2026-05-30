@@ -733,6 +733,42 @@ a {
     font-weight: 800;
 }
 
+.error-body {
+    display: grid;
+    min-height: 100vh;
+    place-items: center;
+    padding: 24px;
+    background:
+        radial-gradient(circle at top left, rgba(59, 130, 246, 0.3), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(139, 92, 246, 0.22), transparent 34%),
+        #0b1020;
+}
+
+.error-card {
+    width: min(620px, 100%);
+    padding: 36px;
+    border-radius: 28px;
+    background: rgba(15, 23, 42, 0.82);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    box-shadow: 0 34px 85px rgba(0, 0, 0, 0.34);
+}
+
+.error-card .brand-logo {
+    margin-bottom: 24px;
+}
+
+.error-card h1 {
+    margin: 0;
+    color: white;
+    font-size: 34px;
+    letter-spacing: -0.055em;
+}
+
+.error-card p:not(.eyebrow) {
+    color: var(--text-soft);
+    line-height: 1.65;
+}
+
 /* Scrollbar */
 
 ::-webkit-scrollbar {
