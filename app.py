@@ -48,6 +48,7 @@ SHOPIFY_ADMIN_API_VERSION = "2026-04"
 CANVA_AUTHORIZATION_URL = "https://www.canva.com/api/oauth/authorize"
 CANVA_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token"
 CANVA_PROFILE_URL = "https://api.canva.com/rest/v1/users/me/profile"
+CANVA_DESIGNS_URL = "https://api.canva.com/rest/v1/designs"
 CANVA_SCOPES = os.getenv(
     "CANVA_SCOPES",
     "design:meta:read design:content:write profile:read"
@@ -198,6 +199,18 @@ def init_db():
             user_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             content TEXT NOT NULL
+        )
+    """)
+
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS canva_designs (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            canva_design_id TEXT NOT NULL,
+            edit_url TEXT,
+            view_url TEXT,
+            status TEXT NOT NULL
         )
     """)
 
@@ -1029,6 +1042,84 @@ def get_canva_design_brief(user_id, brief_id):
     return brief
 
 
+def get_latest_canva_design_brief(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, content
+            FROM canva_design_briefs
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+        """),
+        (user_id,)
+    )
+
+    brief = cur.fetchone()
+    conn.close()
+
+    return brief
+
+
+def save_canva_design(
+    user_id,
+    title,
+    canva_design_id,
+    edit_url,
+    view_url,
+    status
+):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            INSERT INTO canva_designs (
+                user_id,
+                title,
+                canva_design_id,
+                edit_url,
+                view_url,
+                status
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+        """),
+        (
+            user_id,
+            title,
+            canva_design_id,
+            edit_url,
+            view_url,
+            status
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_canva_designs(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT title, canva_design_id, edit_url, view_url, status
+            FROM canva_designs
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+
+    designs = cur.fetchall()
+    conn.close()
+
+    return designs
+
+
 def save_build_quote(
     user_id,
     title,
@@ -1313,6 +1404,58 @@ def save_canva_connection(
 
     conn.commit()
     conn.close()
+
+
+def create_canva_design(user_id, title):
+    connection = get_canva_connection(user_id)
+
+    if not connection or connection[2] != "connected":
+        return None, None, None, None, "Connect Canva before creating a design draft."
+
+    access_token = connection[4]
+
+    if not access_token:
+        return None, None, None, None, "Your Canva connection is missing an access token. Reconnect Canva and try again."
+
+    try:
+        response = requests.post(
+            CANVA_DESIGNS_URL,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "type": "type_and_asset",
+                "design_type": {
+                    "type": "custom",
+                    "width": 1080,
+                    "height": 1080
+                },
+                "title": title
+            },
+            timeout=10
+        )
+        result = response.json()
+    except requests.RequestException:
+        return None, None, None, None, "Could not reach Canva. Please try again."
+    except ValueError:
+        return None, None, None, None, "Canva returned an unexpected response. Please try again."
+
+    design = result.get("design", {})
+    canva_design_id = design.get("id")
+
+    if response.status_code != 200 or not canva_design_id:
+        return None, None, None, None, "Canva could not create the design draft. Reconnect Canva or try again."
+
+    urls = design.get("urls", {})
+
+    return (
+        canva_design_id,
+        urls.get("edit_url", ""),
+        urls.get("view_url", ""),
+        "draft",
+        None
+    )
 
 
 def save_canva_oauth_session(user_id, state, code_verifier):
@@ -1762,6 +1905,7 @@ def dashboard():
     shopify_plans = get_shopify_plans(user_id)
     canva_branding_packages = get_canva_branding_packages(user_id)
     canva_design_briefs = get_canva_design_briefs(user_id)
+    canva_designs = get_canva_designs(user_id)
     build_quotes = get_build_quotes(user_id)
     shopify_connection = get_shopify_connection(user_id)
     canva_connection = get_canva_connection(user_id)
@@ -1791,6 +1935,7 @@ def dashboard():
         shopify_plans=shopify_plans,
         canva_branding_packages=canva_branding_packages,
         canva_design_briefs=canva_design_briefs,
+        canva_designs=canva_designs,
         build_quotes=build_quotes,
         shopify_connection=shopify_connection_summary,
         canva_connection=canva_connection_summary,
@@ -2738,6 +2883,47 @@ User workflow answers:
     )
 
     return redirect(f"/canva_design_brief/{brief_id}")
+
+
+@app.route("/create_canva_design")
+def create_canva_design_from_brief():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    connection = get_canva_connection(user_id)
+
+    if not connection or connection[2] != "connected":
+        return redirect("/business_workflow?canva_design_error=connection")
+
+    brief = get_latest_canva_design_brief(user_id)
+
+    if not brief:
+        return redirect("/business_workflow?canva_design_error=no_brief")
+
+    title = f"{brief[1]} Draft"[:255]
+    canva_design_id, edit_url, view_url, status, error = create_canva_design(
+        user_id,
+        title
+    )
+
+    if error:
+        return redirect("/business_workflow?canva_design_error=create_failed")
+
+    save_canva_design(
+        user_id,
+        title,
+        canva_design_id,
+        edit_url,
+        view_url,
+        status
+    )
+
+    return redirect("/dashboard?canva_design=created")
 
 
 @app.route("/generate_build_quote")

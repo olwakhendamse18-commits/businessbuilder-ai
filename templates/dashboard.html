@@ -49,6 +49,10 @@
             </p>
         {% endif %}
 
+        {% if request.args.get("canva_design") == "created" %}
+            <p class="success-notice">Canva design draft created successfully.</p>
+        {% endif %}
+
        <section class="project-form">
     {% if paid %}
 
@@ -161,7 +165,7 @@
 
     {% if canva_connection and canva_connection["status"] == "connected" %}
         <p class="connection-status connected">Canva Connected</p>
-        <p>Your Canva OAuth connection is ready for future design creation features.</p>
+        <p>Your Canva OAuth connection is ready to create editable design drafts.</p>
     {% else %}
         <p class="connection-status not-connected">Canva Not Connected</p>
         <p>Connect your Canva account securely through Canva OAuth.</p>
@@ -406,6 +410,44 @@
             <div class="card empty-card">
                 <h3>No saved Canva design briefs yet</h3>
                 <p>Save your workflow answers, then generate a Canva design brief to add it here.</p>
+            </div>
+
+        {% endfor %}
+
+    </div>
+</section>
+
+<section>
+    <h2>Created Canva Designs</h2>
+    <p>Open a Canva draft to continue editing the design inside Canva.</p>
+
+    <div class="cards">
+
+        {% for design in canva_designs %}
+
+            <div class="card plan-card">
+                <h3>{{ design[0] }}</h3>
+
+                <p><strong>Status:</strong> {{ design[4] }}</p>
+                <p><strong>Canva Design ID:</strong> {{ design[1] }}</p>
+
+                {% if design[2] or design[3] %}
+                    <div class="card-actions">
+                        <a
+                            href="{{ design[2] or design[3] }}"
+                            class="primary-button"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >Open in Canva</a>
+                    </div>
+                {% endif %}
+            </div>
+
+        {% else %}
+
+            <div class="card empty-card">
+                <h3>No Canva designs created yet</h3>
+                <p>Connect Canva, generate a design brief, then create a draft from the workflow page.</p>
             </div>
 
         {% endfor %}

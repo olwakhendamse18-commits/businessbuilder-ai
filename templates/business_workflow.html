@@ -87,6 +87,20 @@
         </p>
     {% endif %}
 
+    {% if request.args.get("canva_design_error") == "connection" %}
+        <p class="form-notice">
+            Connect your Canva account before creating a Canva design draft.
+        </p>
+    {% elif request.args.get("canva_design_error") == "no_brief" %}
+        <p class="form-notice">
+            Generate at least one Canva design brief before creating a Canva design draft.
+        </p>
+    {% elif request.args.get("canva_design_error") == "create_failed" %}
+        <p class="form-notice">
+            Canva could not create the design draft. Reconnect Canva or try again.
+        </p>
+    {% endif %}
+
     {% if request.args.get("product_error") == "shopify_connection" %}
         <p class="form-notice">
             Connect and test your Shopify store before creating a product.
@@ -127,6 +141,9 @@
             <a href="/generate_canva_design_brief">
                 <button type="button">Generate Canva Design Brief</button>
             </a>
+            <a href="/create_canva_design">
+                <button type="button">Create Canva Design Draft</button>
+            </a>
             <a href="/create_shopify_product">
                 <button type="button">Create Shopify Product</button>
             </a>
@@ -143,6 +160,7 @@
             <button type="button" disabled>Generate Shopify Setup Plan</button>
             <button type="button" disabled>Generate Canva Branding Package</button>
             <button type="button" disabled>Generate Canva Design Brief</button>
+            <button type="button" disabled>Create Canva Design Draft</button>
             <button type="button" disabled>Create Shopify Product</button>
             <button type="button" disabled>Create Multiple Shopify Products</button>
             <button type="button" disabled>Generate Store + Branding Quote</button>
