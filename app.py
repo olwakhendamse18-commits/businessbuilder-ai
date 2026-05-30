@@ -18,6 +18,7 @@ import sqlite3
 import os
 import base64
 import hashlib
+import hmac
 import logging
 import secrets
 import psycopg2
@@ -790,6 +791,29 @@ def get_user_email(user_id):
             LIMIT 1
         """),
         (user_id,)
+    )
+
+    user = cur.fetchone()
+    conn.close()
+
+    return user[0] if user else None
+
+
+def get_user_id_by_email(email):
+    if not email:
+        return None
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id
+            FROM users
+            WHERE LOWER(email) = ?
+            LIMIT 1
+        """),
+        (email.strip().lower(),)
     )
 
     user = cur.fetchone()
@@ -3881,6 +3905,83 @@ def payment_success():
         )
 
     return redirect("/dashboard")
+
+
+@app.route("/paystack_webhook", methods=["POST"])
+def paystack_webhook():
+    paystack_secret = os.getenv("PAYSTACK_SECRET_KEY")
+
+    if not paystack_secret:
+        return "", 503
+
+    raw_body = request.get_data(cache=False)
+    received_signature = request.headers.get("X-Paystack-Signature", "")
+    expected_signature = hmac.new(
+        paystack_secret.encode("utf-8"),
+        raw_body,
+        hashlib.sha512
+    ).hexdigest()
+
+    # Verify the signature before parsing JSON so forged requests cannot
+    # mark an account as paid or create fake payment records.
+    if (
+        not received_signature
+        or not hmac.compare_digest(expected_signature, received_signature)
+    ):
+        return "", 400
+
+    try:
+        event = json.loads(raw_body)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return "", 400
+
+    if not isinstance(event, dict):
+        return "", 400
+
+    if event.get("event") != "charge.success":
+        return "", 200
+
+    transaction = event.get("data")
+
+    if not isinstance(transaction, dict):
+        return "", 200
+
+    customer = transaction.get("customer")
+
+    if not isinstance(customer, dict):
+        return "", 200
+
+    reference = transaction.get("reference")
+    amount = transaction.get("amount")
+    status = transaction.get("status")
+    customer_email = customer.get("email")
+
+    if (
+        not isinstance(reference, str)
+        or not reference.strip()
+        or not isinstance(amount, (int, float))
+        or isinstance(amount, bool)
+        or status != "success"
+        or not isinstance(customer_email, str)
+        or not customer_email.strip()
+    ):
+        return "", 200
+
+    reference = reference.strip()
+    user_id = get_user_id_by_email(customer_email)
+
+    if not user_id or payment_reference_exists(reference):
+        return "", 200
+
+    save_payment(
+        user_id,
+        "paystack",
+        amount,
+        "success",
+        reference
+    )
+
+    return "", 200
 
 
 # -----------------------------
