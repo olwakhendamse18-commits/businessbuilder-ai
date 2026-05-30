@@ -2532,7 +2532,7 @@ def create_launch_package_pdf(launch_data):
 @app.route("/")
 def home():
     if "user_id" not in session:
-        return redirect("/login")
+        return redirect("/landing")
 
     chats = get_chats(session["user_id"])
 
@@ -2540,6 +2540,14 @@ def home():
         "index.html",
         chats=chats
     )
+
+
+@app.route("/landing")
+def landing():
+    if "user_id" in session:
+        return redirect("/dashboard")
+
+    return render_template("landing.html")
 
 
 @app.route("/signup", methods=["GET", "POST"])
@@ -2596,9 +2604,24 @@ def signup():
         )
 
         conn.commit()
+        cur.execute(
+            sql("""
+                SELECT id
+                FROM users
+                WHERE LOWER(email) = ?
+                LIMIT 1
+            """),
+            (email,)
+        )
+        user = cur.fetchone()
         conn.close()
 
-        return redirect("/login")
+        if not user:
+            raise RuntimeError("Created user could not be loaded.")
+
+        session["user_id"] = user[0]
+
+        return redirect("/dashboard")
 
     except (sqlite3.IntegrityError, psycopg2.IntegrityError):
         if conn:

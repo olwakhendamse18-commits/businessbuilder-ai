@@ -103,12 +103,33 @@
 
     {% else %}
 
-        <h2>BusinessBuilder AI Starter Package</h2>
-        <p>Pay once to unlock a guided business setup workflow.</p>
+        <p class="eyebrow">Getting Started</p>
+        <h2>Activate your Starter Package</h2>
+        <p>Start with payment, then complete your guided business workflow to unlock your saved plans, store drafts, and branding tools.</p>
 
-        <a href="/paystack_checkout">
-            <button type="button">Pay R499</button>
-        </a>
+        <div class="onboarding-steps">
+            <div class="onboarding-step active">
+                <strong>1</strong>
+                <div>
+                    <h3>Complete your R499 payment</h3>
+                    <p>Pay securely through Paystack to activate your account.</p>
+                </div>
+            </div>
+            <div class="onboarding-step">
+                <strong>2</strong>
+                <div>
+                    <h3>Complete the business workflow</h3>
+                    <p>Answer the guided questions, then generate your business assets.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="generator-actions">
+            <a href="/paystack_checkout">
+                <button type="button">Pay R499 Securely</button>
+            </a>
+            <a href="/pricing" class="secondary-button">Review Package Details</a>
+        </div>
 
     {% endif %}
 
@@ -264,6 +285,13 @@
 
                     </div>
 
+                {% else %}
+
+                    <div class="card empty-card">
+                        <h3>No saved projects yet</h3>
+                        <p>Save your first business idea to keep your notes and direction in one workspace.</p>
+                    </div>
+
                 {% endfor %}
 
             </div>
@@ -293,6 +321,9 @@
             <div class="card empty-card">
                 <h3>No saved plans yet</h3>
                 <p>Complete your guided workflow, then generate a business plan to save it here.</p>
+                {% if paid %}
+                    <a href="/business_workflow" class="primary-button">Open Business Workflow</a>
+                {% endif %}
             </div>
 
         {% endfor %}
@@ -321,7 +352,10 @@
 
             <div class="card empty-card">
                 <h3>No Shopify products created yet</h3>
-                <p>Connect Shopify, save your workflow answers, then create a draft product from the workflow page.</p>
+                <p>Connect Shopify, complete your workflow, and create draft products for review before publishing.</p>
+                {% if paid %}
+                    <a href="/shopify_settings" class="primary-button">Connect Shopify Store</a>
+                {% endif %}
             </div>
 
         {% endfor %}
@@ -501,7 +535,10 @@
 
             <div class="card empty-card">
                 <h3>No Canva designs created yet</h3>
-                <p>Connect Canva, generate a design brief, then create a draft from the workflow page.</p>
+                <p>Connect Canva, generate a design brief, and create editable design drafts for your brand.</p>
+                {% if paid %}
+                    <a href="/canva_settings" class="primary-button">Open Canva Settings</a>
+                {% endif %}
             </div>
 
         {% endfor %}

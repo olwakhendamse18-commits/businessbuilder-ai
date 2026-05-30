@@ -7,7 +7,13 @@
 </head>
 <body class="auth-body">
     <div class="auth-card">
-        <h1>Create Account</h1>
+        <a href="/landing" class="auth-brand">
+            <span class="brand-logo">B</span>
+            <span>BusinessBuilder AI</span>
+        </a>
+        <p class="eyebrow">Start Your Build</p>
+        <h1>Create your workspace</h1>
+        <p>Set up your account, activate the Starter Package, and follow the guided workflow.</p>
         {% if message %}
             <p class="form-notice">{{ message }}</p>
         {% endif %}
@@ -17,6 +23,7 @@
             <button type="submit">Sign Up</button>
         </form>
         <p>Already have an account? <a href="/login">Log in</a></p>
+        <p><a href="/pricing">Review the Starter Package</a></p>
     </div>
 </body>
 </html>
