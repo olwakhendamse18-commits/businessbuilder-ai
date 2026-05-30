@@ -383,6 +383,36 @@
     </div>
 </section>
 
+<section>
+    <h2>Saved Canva Design Briefs</h2>
+    <p>Open a saved design brief to review practical Canva instructions for your brand assets.</p>
+
+    <div class="cards">
+
+        {% for brief in canva_design_briefs %}
+
+            <div class="card plan-card">
+                <h3>{{ brief[1] }}</h3>
+
+                <p>{{ brief[2][:250] }}{% if brief[2]|length > 250 %}...{% endif %}</p>
+
+                <div class="card-actions">
+                    <a href="/canva_design_brief/{{ brief[0] }}" class="primary-button">View Brief</a>
+                </div>
+            </div>
+
+        {% else %}
+
+            <div class="card empty-card">
+                <h3>No saved Canva design briefs yet</h3>
+                <p>Save your workflow answers, then generate a Canva design brief to add it here.</p>
+            </div>
+
+        {% endfor %}
+
+    </div>
+</section>
+
     </main>
 
 </div>

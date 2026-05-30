@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canva Design Brief - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div class="brand-logo">B</div>
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Canva design brief</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/business_workflow">Business Workflow</a>
+        <a href="/logout">Logout</a>
+
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header plan-header">
+            <div>
+                <p class="eyebrow">Saved Canva Design Brief</p>
+                <h1>{{ brief[1] }}</h1>
+                <p>Use this brief as your practical guide when creating brand assets manually inside Canva.</p>
+            </div>
+
+            <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
+        </div>
+
+        <section class="business-plan-document">
+            <div class="business-plan-document-header">
+                <div class="brand-logo">B</div>
+                <div>
+                    <p class="eyebrow">BusinessBuilder AI</p>
+                    <h2>{{ brief[1] }}</h2>
+                </div>
+            </div>
+
+            <div class="business-plan-output">{{ brief[2] }}</div>
+        </section>
+
+        <div class="plan-actions">
+            <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
+            <a href="/business_workflow" class="primary-button">Open Workflow</a>
+        </div>
+
+    </main>
+
+</div>
+
+</body>
+</html>

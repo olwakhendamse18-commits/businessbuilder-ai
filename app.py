@@ -193,6 +193,15 @@ def init_db():
     """)
 
     cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS canva_design_briefs (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL
+        )
+    """)
+
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS build_quotes (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -949,6 +958,77 @@ def get_canva_branding_package(user_id, package_id):
     return package
 
 
+def save_canva_design_brief(user_id, title, content):
+    conn = db()
+    cur = conn.cursor()
+
+    if using_postgres():
+        cur.execute(
+            """
+            INSERT INTO canva_design_briefs (user_id, title, content)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (user_id, title, content)
+        )
+        brief_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            """
+            INSERT INTO canva_design_briefs (user_id, title, content)
+            VALUES (?, ?, ?)
+            """,
+            (user_id, title, content)
+        )
+        brief_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return brief_id
+
+
+def get_canva_design_briefs(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, content
+            FROM canva_design_briefs
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+
+    briefs = cur.fetchall()
+    conn.close()
+
+    return briefs
+
+
+def get_canva_design_brief(user_id, brief_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, content
+            FROM canva_design_briefs
+            WHERE id = ?
+            AND user_id = ?
+            LIMIT 1
+        """),
+        (brief_id, user_id)
+    )
+
+    brief = cur.fetchone()
+    conn.close()
+
+    return brief
+
+
 def save_build_quote(
     user_id,
     title,
@@ -1681,6 +1761,7 @@ def dashboard():
     business_plans = get_business_plans(user_id)
     shopify_plans = get_shopify_plans(user_id)
     canva_branding_packages = get_canva_branding_packages(user_id)
+    canva_design_briefs = get_canva_design_briefs(user_id)
     build_quotes = get_build_quotes(user_id)
     shopify_connection = get_shopify_connection(user_id)
     canva_connection = get_canva_connection(user_id)
@@ -1709,6 +1790,7 @@ def dashboard():
         business_plans=business_plans,
         shopify_plans=shopify_plans,
         canva_branding_packages=canva_branding_packages,
+        canva_design_briefs=canva_design_briefs,
         build_quotes=build_quotes,
         shopify_connection=shopify_connection_summary,
         canva_connection=canva_connection_summary,
@@ -1794,6 +1876,25 @@ def canva_branding(package_id):
     return render_template(
         "canva_branding.html",
         package=package
+    )
+
+
+@app.route("/canva_design_brief/<int:brief_id>")
+def canva_design_brief(brief_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    brief = get_canva_design_brief(
+        session["user_id"],
+        brief_id
+    )
+
+    if not brief:
+        return redirect("/dashboard")
+
+    return render_template(
+        "canva_design_brief.html",
+        brief=brief
     )
 
 
@@ -2553,6 +2654,90 @@ User workflow answers:
     )
 
     return redirect(f"/canva_branding/{package_id}")
+
+
+@app.route("/generate_canva_design_brief")
+def generate_canva_design_brief():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    answers = get_all_workflow_answers(user_id)
+
+    if not answers:
+        return redirect("/business_workflow?canva_brief_error=no_answers")
+
+    workflow_text = ""
+
+    for step_number, step_name, answer in answers:
+        workflow_text += f"""
+Step {step_number}: {step_name}
+Answer:
+{answer}
+
+"""
+
+    branding_packages = get_canva_branding_packages(user_id)
+    branding_package_text = (
+        branding_packages[0][2]
+        if branding_packages
+        else "No saved Canva branding package is available yet."
+    )
+
+    prompt = f"""
+Create a complete professional set of Canva design briefs using the user's saved workflow answers
+and the latest saved Canva branding package when available.
+Provide detailed, practical instructions the user can apply manually inside Canva.
+Do not claim that Canva designs were created automatically and do not call any Canva API.
+
+The Canva design brief document must include:
+
+1. Logo Design Brief
+2. Shopify Homepage Banner Design Brief
+3. Instagram Post Template Brief
+4. Instagram Story Template Brief
+5. TikTok/Reels Cover Brief
+6. Business Card Brief
+7. Product Mockup Brief
+8. Brand Color Usage Instructions
+9. Font Usage Instructions
+10. Canva Keywords to Search
+11. Step-by-Step Canva Creation Checklist
+
+Latest saved Canva branding package:
+{branding_package_text}
+
+User workflow answers:
+{workflow_text}
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    brief_content = response.choices[0].message.content
+
+    brief_id = save_canva_design_brief(
+        user_id,
+        "Generated Canva Design Brief",
+        brief_content
+    )
+
+    return redirect(f"/canva_design_brief/{brief_id}")
 
 
 @app.route("/generate_build_quote")
