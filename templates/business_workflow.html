@@ -75,6 +75,12 @@
         </p>
     {% endif %}
 
+    {% if request.args.get("canva_error") == "no_answers" %}
+        <p class="form-notice">
+            Save at least one workflow answer before generating a Canva branding package.
+        </p>
+    {% endif %}
+
     {% if request.args.get("product_error") == "shopify_connection" %}
         <p class="form-notice">
             Connect and test your Shopify store before creating a product.
@@ -109,6 +115,9 @@
             <a href="/generate_shopify_plan">
                 <button type="button">Generate Shopify Setup Plan</button>
             </a>
+            <a href="/generate_canva_branding">
+                <button type="button">Generate Canva Branding Package</button>
+            </a>
             <a href="/create_shopify_product">
                 <button type="button">Create Shopify Product</button>
             </a>
@@ -123,6 +132,7 @@
         <div class="generator-actions">
             <button type="button" disabled>Generate Business Plan</button>
             <button type="button" disabled>Generate Shopify Setup Plan</button>
+            <button type="button" disabled>Generate Canva Branding Package</button>
             <button type="button" disabled>Create Shopify Product</button>
             <button type="button" disabled>Create Multiple Shopify Products</button>
             <button type="button" disabled>Generate Store + Branding Quote</button>

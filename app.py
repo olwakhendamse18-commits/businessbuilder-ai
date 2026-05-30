@@ -174,6 +174,15 @@ def init_db():
     """)
 
     cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS canva_branding_packages (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL
+        )
+    """)
+
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS build_quotes (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -839,6 +848,77 @@ def get_shopify_plan(user_id, plan_id):
     return plan
 
 
+def save_canva_branding_package(user_id, title, content):
+    conn = db()
+    cur = conn.cursor()
+
+    if using_postgres():
+        cur.execute(
+            """
+            INSERT INTO canva_branding_packages (user_id, title, content)
+            VALUES (%s, %s, %s)
+            RETURNING id
+            """,
+            (user_id, title, content)
+        )
+        package_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            """
+            INSERT INTO canva_branding_packages (user_id, title, content)
+            VALUES (?, ?, ?)
+            """,
+            (user_id, title, content)
+        )
+        package_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return package_id
+
+
+def get_canva_branding_packages(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, content
+            FROM canva_branding_packages
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+
+    packages = cur.fetchall()
+    conn.close()
+
+    return packages
+
+
+def get_canva_branding_package(user_id, package_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, content
+            FROM canva_branding_packages
+            WHERE id = ?
+            AND user_id = ?
+            LIMIT 1
+        """),
+        (package_id, user_id)
+    )
+
+    package = cur.fetchone()
+    conn.close()
+
+    return package
+
+
 def save_build_quote(
     user_id,
     title,
@@ -1420,6 +1500,7 @@ def dashboard():
     latest_payment = get_latest_payment(user_id)
     business_plans = get_business_plans(user_id)
     shopify_plans = get_shopify_plans(user_id)
+    canva_branding_packages = get_canva_branding_packages(user_id)
     build_quotes = get_build_quotes(user_id)
     shopify_connection = get_shopify_connection(user_id)
     shopify_products = get_shopify_products(user_id)
@@ -1439,6 +1520,7 @@ def dashboard():
         latest_payment=latest_payment,
         business_plans=business_plans,
         shopify_plans=shopify_plans,
+        canva_branding_packages=canva_branding_packages,
         build_quotes=build_quotes,
         shopify_connection=shopify_connection_summary,
         shopify_products=shopify_products
@@ -1504,6 +1586,25 @@ def shopify_plan(plan_id):
     return render_template(
         "shopify_plan.html",
         plan=plan
+    )
+
+
+@app.route("/canva_branding/<int:package_id>")
+def canva_branding(package_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    package = get_canva_branding_package(
+        session["user_id"],
+        package_id
+    )
+
+    if not package:
+        return redirect("/dashboard")
+
+    return render_template(
+        "canva_branding.html",
+        package=package
     )
 
 
@@ -2017,6 +2118,80 @@ User workflow answers:
     )
 
     return redirect(f"/shopify_plan/{plan_id}")
+
+
+@app.route("/generate_canva_branding")
+def generate_canva_branding():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    answers = get_all_workflow_answers(user_id)
+
+    if not answers:
+        return redirect("/business_workflow?canva_error=no_answers")
+
+    workflow_text = ""
+
+    for step_number, step_name, answer in answers:
+        workflow_text += f"""
+Step {step_number}: {step_name}
+Answer:
+{answer}
+
+"""
+
+    prompt = f"""
+Create a complete professional Canva-ready branding package using the user's saved workflow answers.
+Provide practical design direction and instructions the user can apply manually inside Canva.
+Do not claim that Canva is connected and do not claim that designs were created automatically.
+
+The Canva-ready branding package must include:
+
+1. Logo Concept
+2. Brand Color Palette
+3. Font Direction
+4. Brand Personality
+5. Instagram Post Template Ideas
+6. Instagram Story Template Ideas
+7. TikTok/Reels Cover Ideas
+8. Business Card Design Idea
+9. Shopify Homepage Banner Concept
+10. Product Mockup Ideas
+11. Canva Search Keywords
+12. Step-by-Step Canva Creation Checklist
+
+User workflow answers:
+{workflow_text}
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+
+    package_content = response.choices[0].message.content
+
+    package_id = save_canva_branding_package(
+        user_id,
+        "Generated Canva Branding Package",
+        package_content
+    )
+
+    return redirect(f"/canva_branding/{package_id}")
 
 
 @app.route("/generate_build_quote")

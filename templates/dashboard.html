@@ -333,6 +333,36 @@
     </div>
 </section>
 
+<section>
+    <h2>Saved Canva Branding Packages</h2>
+    <p>Open a saved Canva-ready package to review your brand direction, asset ideas, and creation checklist.</p>
+
+    <div class="cards">
+
+        {% for package in canva_branding_packages %}
+
+            <div class="card plan-card">
+                <h3>{{ package[1] }}</h3>
+
+                <p>{{ package[2][:250] }}{% if package[2]|length > 250 %}...{% endif %}</p>
+
+                <div class="card-actions">
+                    <a href="/canva_branding/{{ package[0] }}" class="primary-button">View Package</a>
+                </div>
+            </div>
+
+        {% else %}
+
+            <div class="card empty-card">
+                <h3>No saved Canva branding packages yet</h3>
+                <p>Save your workflow answers, then generate a Canva-ready branding package to add it here.</p>
+            </div>
+
+        {% endfor %}
+
+    </div>
+</section>
+
     </main>
 
 </div>
