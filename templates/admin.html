@@ -73,6 +73,41 @@
                 <p>Canva Designs</p>
                 <h3>{{ metrics["canva_designs"] }}</h3>
             </div>
+
+            <div class="quote-summary-card">
+                <p>Total Usage Logs</p>
+                <h3>{{ metrics["total_usage_logs"] }}</h3>
+            </div>
+        </section>
+
+        <section class="admin-panel">
+            <div>
+                <p class="eyebrow">Product Activity</p>
+                <h2>Usage Overview</h2>
+            </div>
+
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Action Type</th>
+                            <th>Usage Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for action in most_used_actions %}
+                            <tr>
+                                <td>{{ action[0]|replace("_", " ")|title }}</td>
+                                <td>{{ action[1] }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="2">No usage has been logged yet.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </section>
 
         <section class="admin-panel">

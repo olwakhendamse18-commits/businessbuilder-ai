@@ -590,6 +590,36 @@ a {
     color: white;
 }
 
+.usage-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-top: 20px;
+}
+
+.usage-stat {
+    display: grid;
+    gap: 7px;
+    padding: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.17);
+    border-radius: 18px;
+    background: rgba(2, 6, 23, 0.3);
+}
+
+.usage-stat span,
+.usage-stat small {
+    color: var(--text-soft);
+}
+
+.usage-stat strong {
+    color: white;
+    font-size: 22px;
+}
+
+.usage-stat small {
+    line-height: 1.45;
+}
+
 .admin-table-wrap {
     overflow-x: auto;
 }

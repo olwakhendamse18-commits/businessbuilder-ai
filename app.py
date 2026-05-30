@@ -174,7 +174,7 @@ def handle_unexpected_error(error):
 # -----------------------------
 
 def using_postgres():
-    return os.getenv("DATABASE_URL") is not None
+    return bool(os.getenv("DATABASE_URL"))
 
 
 def db():
@@ -425,6 +425,20 @@ def init_db():
             status TEXT NOT NULL
         )
     """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS usage_logs (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            action_type TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_usage_logs_user_action_created
+        ON usage_logs (user_id, action_type, created_at)
+    """))
 
     conn.commit()
     conn.close()
@@ -843,6 +857,148 @@ def get_latest_payment(user_id):
     return payment
 
 
+USAGE_LIMITS = {
+    "chat_message": {"limit": 50, "period": "daily"},
+    "business_plan": {"limit": 10, "period": "total"},
+    "shopify_plan": {"limit": 10, "period": "total"},
+    "shopify_product": {"limit": 20, "period": "total"},
+    "canva_branding": {"limit": 10, "period": "total"},
+    "canva_design_brief": {"limit": 10, "period": "total"},
+    "canva_design": {"limit": 20, "period": "total"},
+    "launch_package": {"limit": 10, "period": "total"},
+    "pdf_export": {"limit": 20, "period": "total"}
+}
+
+USAGE_LABELS = {
+    "chat_message": "chat messages",
+    "business_plan": "business plan generation",
+    "shopify_plan": "Shopify setup plan generation",
+    "shopify_product": "Shopify product creation",
+    "canva_branding": "Canva branding package generation",
+    "canva_design_brief": "Canva design brief generation",
+    "canva_design": "Canva design draft creation",
+    "launch_package": "launch package views",
+    "pdf_export": "PDF exports"
+}
+
+
+def log_usage(user_id, action_type):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            INSERT INTO usage_logs (user_id, action_type)
+            VALUES (?, ?)
+        """),
+        (user_id, action_type)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_usage_count(user_id, action_type, period="daily"):
+    conn = db()
+    cur = conn.cursor()
+
+    if period == "daily":
+        cur.execute(
+            sql("""
+                SELECT COUNT(*)
+                FROM usage_logs
+                WHERE user_id = ?
+                AND action_type = ?
+                AND created_at >= CURRENT_DATE
+            """),
+            (user_id, action_type)
+        )
+    elif period == "total":
+        cur.execute(
+            sql("""
+                SELECT COUNT(*)
+                FROM usage_logs
+                WHERE user_id = ?
+                AND action_type = ?
+            """),
+            (user_id, action_type)
+        )
+    else:
+        conn.close()
+        raise ValueError("Usage period must be daily or total.")
+
+    usage_count = cur.fetchone()[0]
+    conn.close()
+
+    return usage_count
+
+
+def usage_limit_reached(user_id, action_type):
+    limit_config = USAGE_LIMITS.get(action_type)
+
+    if not limit_config:
+        return False
+
+    return get_usage_count(
+        user_id,
+        action_type,
+        limit_config["period"]
+    ) >= limit_config["limit"]
+
+
+def usage_limit_redirect(action_type, destination="/dashboard"):
+    return redirect(
+        f"{destination}?usage_limit={urllib.parse.quote(action_type)}"
+    )
+
+
+def get_usage_limit_message(action_type):
+    limit_config = USAGE_LIMITS.get(action_type)
+
+    if not limit_config:
+        return ""
+
+    period_label = " today" if limit_config["period"] == "daily" else ""
+
+    return (
+        f"You have reached the {limit_config['limit']}"
+        f"{period_label} limit for {USAGE_LABELS[action_type]}. "
+        "Your saved work is still available from the dashboard."
+    )
+
+
+def get_usage_summary(user_id):
+    counts = {
+        action_type: get_usage_count(
+            user_id,
+            action_type,
+            limit_config["period"]
+        )
+        for action_type, limit_config in USAGE_LIMITS.items()
+    }
+
+    return {
+        "chat_messages": counts["chat_message"],
+        "business_plans": counts["business_plan"],
+        "shopify_actions": (
+            counts["shopify_plan"]
+            + counts["shopify_product"]
+        ),
+        "shopify_plans": counts["shopify_plan"],
+        "shopify_products": counts["shopify_product"],
+        "canva_actions": (
+            counts["canva_branding"]
+            + counts["canva_design_brief"]
+            + counts["canva_design"]
+        ),
+        "canva_branding": counts["canva_branding"],
+        "canva_design_briefs": counts["canva_design_brief"],
+        "canva_designs": counts["canva_design"],
+        "launch_packages": counts["launch_package"],
+        "pdf_exports": counts["pdf_export"]
+    }
+
+
 def is_admin_user():
     admin_email = os.getenv("ADMIN_EMAIL", "").strip().lower()
     user_id = session.get("user_id")
@@ -893,7 +1049,8 @@ def get_admin_dashboard_data():
         "shopify_connections": count("SELECT COUNT(*) FROM shopify_connections"),
         "canva_connections": count("SELECT COUNT(*) FROM canva_connections"),
         "shopify_products": count("SELECT COUNT(*) FROM shopify_products"),
-        "canva_designs": count("SELECT COUNT(*) FROM canva_designs")
+        "canva_designs": count("SELECT COUNT(*) FROM canva_designs"),
+        "total_usage_logs": count("SELECT COUNT(*) FROM usage_logs")
     }
 
     cur.execute(sql("""
@@ -919,12 +1076,22 @@ def get_admin_dashboard_data():
     """))
     recent_payments = cur.fetchall()
 
+    cur.execute(sql("""
+        SELECT action_type, COUNT(*) AS usage_count
+        FROM usage_logs
+        GROUP BY action_type
+        ORDER BY usage_count DESC, action_type ASC
+        LIMIT 10
+    """))
+    most_used_actions = cur.fetchall()
+
     conn.close()
 
     return {
         "metrics": metrics,
         "recent_users": recent_users,
-        "recent_payments": recent_payments
+        "recent_payments": recent_payments,
+        "most_used_actions": most_used_actions
     }
 
 
@@ -2829,6 +2996,10 @@ def dashboard():
         shopify_products=shopify_products,
         shopify_collections=shopify_collections,
         shopify_pages=shopify_pages,
+        usage_summary=get_usage_summary(user_id),
+        usage_limit_message=get_usage_limit_message(
+            request.args.get("usage_limit")
+        ),
         is_admin=is_admin_user()
     )
 
@@ -3139,12 +3310,19 @@ def launch_package():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
+    if usage_limit_reached(user_id, "launch_package"):
+        return usage_limit_redirect("launch_package")
+
     send_launch_package_email_once(user_id)
 
-    return render_template(
+    response = render_template(
         "launch_package.html",
         **get_launch_package_data(user_id)
     )
+
+    log_usage(user_id, "launch_package")
+
+    return response
 
 
 @app.route("/download_launch_package")
@@ -3157,14 +3335,21 @@ def download_launch_package():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
+    if usage_limit_reached(user_id, "pdf_export"):
+        return usage_limit_redirect("pdf_export")
+
     send_launch_package_email_once(user_id)
 
-    return send_file(
+    response = send_file(
         create_launch_package_pdf(get_launch_package_data(user_id)),
         mimetype="application/pdf",
         as_attachment=True,
         download_name="businessbuilder-ai-launch-package.pdf"
     )
+
+    log_usage(user_id, "pdf_export")
+
+    return response
 
 
 @app.route("/business_plan/<int:plan_id>")
@@ -3199,15 +3384,22 @@ def download_business_plan(plan_id):
     if not plan:
         return redirect("/dashboard")
 
+    if usage_limit_reached(session["user_id"], "pdf_export"):
+        return usage_limit_redirect("pdf_export")
+
     filename = re.sub(r"[_-]+", "-", secure_filename(plan[1])).strip("-")
     filename = filename or "business-plan"
 
-    return send_file(
+    response = send_file(
         create_business_plan_pdf(plan[1], plan[2]),
         mimetype="application/pdf",
         as_attachment=True,
         download_name=f"{filename}.pdf"
     )
+
+    log_usage(session["user_id"], "pdf_export")
+
+    return response
 
 
 @app.route("/shopify_plan/<int:plan_id>")
@@ -4100,6 +4292,9 @@ def generate_business_plan():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
+    if usage_limit_reached(user_id, "business_plan"):
+        return usage_limit_redirect("business_plan", "/business_workflow")
+
     answers = get_nonempty_workflow_answers(user_id)
 
     if not answers:
@@ -4158,6 +4353,8 @@ User workflow answers:
         business_plan
     )
 
+    log_usage(user_id, "business_plan")
+
     email = get_user_email(user_id)
 
     if email:
@@ -4182,6 +4379,9 @@ def generate_shopify_plan():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    if usage_limit_reached(user_id, "shopify_plan"):
+        return usage_limit_redirect("shopify_plan", "/business_workflow")
 
     answers = get_nonempty_workflow_answers(user_id)
 
@@ -4242,6 +4442,8 @@ User workflow answers:
         shopify_plan_content
     )
 
+    log_usage(user_id, "shopify_plan")
+
     return redirect(f"/shopify_plan/{plan_id}")
 
 
@@ -4254,6 +4456,9 @@ def generate_canva_branding():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    if usage_limit_reached(user_id, "canva_branding"):
+        return usage_limit_redirect("canva_branding", "/business_workflow")
 
     answers = get_nonempty_workflow_answers(user_id)
 
@@ -4316,6 +4521,8 @@ User workflow answers:
         package_content
     )
 
+    log_usage(user_id, "canva_branding")
+
     return redirect(f"/canva_branding/{package_id}")
 
 
@@ -4328,6 +4535,9 @@ def generate_canva_design_brief():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    if usage_limit_reached(user_id, "canva_design_brief"):
+        return usage_limit_redirect("canva_design_brief", "/business_workflow")
 
     answers = get_nonempty_workflow_answers(user_id)
 
@@ -4400,6 +4610,8 @@ User workflow answers:
         brief_content
     )
 
+    log_usage(user_id, "canva_design_brief")
+
     return redirect(f"/canva_design_brief/{brief_id}")
 
 
@@ -4412,6 +4624,9 @@ def create_canva_design_from_brief():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    if usage_limit_reached(user_id, "canva_design"):
+        return usage_limit_redirect("canva_design", "/business_workflow")
 
     connection = get_canva_connection(user_id)
 
@@ -4440,6 +4655,7 @@ def create_canva_design_from_brief():
         view_url,
         status
     )
+    log_usage(user_id, "canva_design")
 
     return redirect("/dashboard?canva_design=created")
 
@@ -4453,6 +4669,9 @@ def create_canva_designs_from_brief():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    if usage_limit_reached(user_id, "canva_design"):
+        return usage_limit_redirect("canva_design", "/business_workflow")
 
     connection = get_canva_connection(user_id)
 
@@ -4477,6 +4696,9 @@ def create_canva_designs_from_brief():
     failed_count = 0
 
     for label, width, height in draft_specs:
+        if usage_limit_reached(user_id, "canva_design"):
+            break
+
         title = f"{base_title} - {label}"[:255]
         canva_design_id, edit_url, view_url, status, error = (
             create_canva_design(
@@ -4499,6 +4721,7 @@ def create_canva_designs_from_brief():
             view_url,
             status
         )
+        log_usage(user_id, "canva_design")
         created_count += 1
 
     if not created_count:
@@ -4613,6 +4836,9 @@ def create_shopify_product_from_workflow():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
+    if usage_limit_reached(user_id, "shopify_product"):
+        return usage_limit_redirect("shopify_product", "/business_workflow")
+
     connection = get_shopify_connection(user_id)
 
     if not connection or connection[3] != "connected":
@@ -4690,6 +4916,7 @@ User workflow answers:
         shopify_product_id,
         status
     )
+    log_usage(user_id, "shopify_product")
 
     return redirect("/dashboard?shopify_product=created")
 
@@ -4703,6 +4930,9 @@ def build_shopify_store_draft():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    if usage_limit_reached(user_id, "shopify_product"):
+        return usage_limit_redirect("shopify_product", "/business_workflow")
 
     connection = get_shopify_connection(user_id)
 
@@ -4797,6 +5027,9 @@ User workflow answers:
     failed_count = 0
 
     for product in products:
+        if usage_limit_reached(user_id, "shopify_product"):
+            break
+
         try:
             title = product["title"].strip()
             description = product["description"].strip()
@@ -4834,6 +5067,7 @@ User workflow answers:
             shopify_product_id,
             status
         )
+        log_usage(user_id, "shopify_product")
         created_product_count += 1
 
     for collection in collections:
@@ -4931,6 +5165,9 @@ def create_shopify_products_from_workflow():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
+    if usage_limit_reached(user_id, "shopify_product"):
+        return usage_limit_redirect("shopify_product", "/business_workflow")
+
     connection = get_shopify_connection(user_id)
 
     if not connection or connection[3] != "connected":
@@ -4998,6 +5235,9 @@ User workflow answers:
     failed_count = 0
 
     for product in products:
+        if usage_limit_reached(user_id, "shopify_product"):
+            break
+
         try:
             title = product["title"].strip()
             description = product["description"].strip()
@@ -5035,6 +5275,7 @@ User workflow answers:
             shopify_product_id,
             status
         )
+        log_usage(user_id, "shopify_product")
         created_count += 1
 
     if not created_count:
@@ -5067,6 +5308,11 @@ def chat():
         return jsonify({
             "reply": "Enter a message before sending."
         }), 400
+
+    if usage_limit_reached(user_id, "chat_message"):
+        return jsonify({
+            "reply": get_usage_limit_message("chat_message")
+        }), 429
 
     chat_id = session.get("chat_id")
     new_chat_created = False
@@ -5196,6 +5442,7 @@ def chat():
         "assistant",
         reply
     )
+    log_usage(user_id, "chat_message")
 
     return jsonify({
         "reply": reply

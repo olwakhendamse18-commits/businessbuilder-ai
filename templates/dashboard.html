@@ -43,6 +43,10 @@
             <p>Manage your saved projects, uploaded files, and business progress.</p>
         </div>
 
+        {% if usage_limit_message %}
+            <p class="form-notice">{{ usage_limit_message }}</p>
+        {% endif %}
+
         {% if request.args.get("shopify_product") == "created" %}
             <p class="success-notice">Draft Shopify product created successfully.</p>
         {% endif %}
@@ -362,6 +366,37 @@
 
         {% endfor %}
 
+    </div>
+</section>
+
+<section class="project-form">
+    <p class="eyebrow">Account Usage</p>
+    <h2>Usage Summary</h2>
+    <p>Track your current Starter Package activity and remaining generation capacity.</p>
+
+    <div class="usage-summary-grid">
+        <div class="usage-stat">
+            <span>Chat messages today</span>
+            <strong>{{ usage_summary["chat_messages"] }} / 50</strong>
+        </div>
+        <div class="usage-stat">
+            <span>Business plans</span>
+            <strong>{{ usage_summary["business_plans"] }} / 10</strong>
+        </div>
+        <div class="usage-stat">
+            <span>Shopify actions</span>
+            <strong>{{ usage_summary["shopify_actions"] }}</strong>
+            <small>{{ usage_summary["shopify_plans"] }} plans / 10, {{ usage_summary["shopify_products"] }} products / 20</small>
+        </div>
+        <div class="usage-stat">
+            <span>Canva actions</span>
+            <strong>{{ usage_summary["canva_actions"] }}</strong>
+            <small>{{ usage_summary["canva_branding"] }} branding / 10, {{ usage_summary["canva_design_briefs"] }} briefs / 10, {{ usage_summary["canva_designs"] }} drafts / 20</small>
+        </div>
+        <div class="usage-stat">
+            <span>PDF exports</span>
+            <strong>{{ usage_summary["pdf_exports"] }} / 20</strong>
+        </div>
     </div>
 </section>
 

@@ -35,6 +35,12 @@
             <p>Complete these 9 steps to build a strong business foundation.</p>
         </div>
 
+        {% if request.args.get("usage_limit") %}
+            <p class="form-notice">
+                You have reached the current usage limit for this action. Your saved work is still available from the dashboard.
+            </p>
+        {% endif %}
+
         <section class="project-form">
     <h2>Business Setup Progress</h2>
 
