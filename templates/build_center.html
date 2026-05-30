@@ -48,6 +48,16 @@
             </div>
         </section>
 
+        <section class="next-action-card">
+            <p class="eyebrow">Next Recommended Action</p>
+            <h2>{{ next_recommended_action["title"] }}</h2>
+            <p>{{ next_recommended_action["description"] }}</p>
+
+            <a href="{{ next_recommended_action['url'] }}" class="primary-button">
+                {{ next_recommended_action["action"] }}
+            </a>
+        </section>
+
         <section class="cards build-center-grid">
             {% for item in build_items %}
                 <div class="card build-center-card">
@@ -57,6 +67,10 @@
 
                     <h3>{{ item["title"] }}</h3>
                     <p>{{ item["description"] }}</p>
+
+                    {% if item.get("count") %}
+                        <p class="build-count">{{ item["count"] }}</p>
+                    {% endif %}
 
                     <div class="card-actions">
                         <a

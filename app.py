@@ -2039,8 +2039,9 @@ def build_center():
         return redirect("/login")
 
     user_id = session["user_id"]
+    paid = user_has_paid(user_id)
 
-    if not user_has_paid(user_id):
+    if not paid:
         return redirect("/dashboard")
 
     completed_steps = get_completed_steps(user_id)
@@ -2054,6 +2055,9 @@ def build_center():
     canva_design_briefs = get_canva_design_briefs(user_id)
     canva_designs = get_canva_designs(user_id)
     build_quotes = get_build_quotes(user_id)
+    latest_payment = get_latest_payment(user_id)
+    shopify_connection = get_shopify_connection(user_id)
+    canva_connection = get_canva_connection(user_id)
 
     def status_for(completed, started=False):
         if completed:
@@ -2065,6 +2069,14 @@ def build_center():
         return "Not Started"
 
     workflow_started = bool(completed_steps or workflow_answers)
+    shopify_connected = bool(
+        shopify_connection
+        and shopify_connection[3] == "connected"
+    )
+    canva_connected = bool(
+        canva_connection
+        and canva_connection[2] == "connected"
+    )
     latest_canva_design_url = ""
 
     if canva_designs:
@@ -2072,11 +2084,20 @@ def build_center():
 
     build_items = [
         {
+            "title": "Starter Package Payment",
+            "status": status_for(paid),
+            "description": "Your verified payment unlocks the complete business-building workspace.",
+            "url": "/dashboard",
+            "action": "View Payment Status",
+            "count": "Verified" if latest_payment else "Active"
+        },
+        {
             "title": "Business Workflow",
             "status": status_for(completed_count == total_steps, workflow_started),
             "description": f"{completed_count} of {total_steps} guided setup steps completed.",
             "url": "/business_workflow",
-            "action": "Open Workflow"
+            "action": "Open Workflow",
+            "count": f"{completed_count} / {total_steps} steps"
         },
         {
             "title": "Business Plan",
@@ -2087,7 +2108,8 @@ def build_center():
                 if business_plans
                 else "/generate_business_plan"
             ),
-            "action": "View Plan" if business_plans else "Generate Plan"
+            "action": "View Plan" if business_plans else "Generate Plan",
+            "count": f"{len(business_plans)} saved"
         },
         {
             "title": "Shopify Setup Plan",
@@ -2098,14 +2120,27 @@ def build_center():
                 if shopify_plans
                 else "/generate_shopify_plan"
             ),
-            "action": "View Shopify Plan" if shopify_plans else "Generate Shopify Plan"
+            "action": "View Shopify Plan" if shopify_plans else "Generate Shopify Plan",
+            "count": f"{len(shopify_plans)} saved"
+        },
+        {
+            "title": "Shopify Connection",
+            "status": status_for(shopify_connected),
+            "description": (
+                "Your Shopify Admin API connection is ready for draft product creation."
+                if shopify_connected
+                else "Connect and test Shopify before creating draft store products."
+            ),
+            "url": "/shopify_settings",
+            "action": "Manage Shopify" if shopify_connected else "Connect Shopify"
         },
         {
             "title": "Shopify Products",
             "status": status_for(shopify_products, bool(shopify_plans)),
             "description": f"{len(shopify_products)} draft Shopify products created.",
             "url": "/business_workflow",
-            "action": "Open Product Tools"
+            "action": "Open Product Tools",
+            "count": f"{len(shopify_products)} created"
         },
         {
             "title": "Canva Branding Package",
@@ -2116,7 +2151,8 @@ def build_center():
                 if canva_branding_packages
                 else "/generate_canva_branding"
             ),
-            "action": "View Branding Package" if canva_branding_packages else "Generate Branding Package"
+            "action": "View Branding Package" if canva_branding_packages else "Generate Branding Package",
+            "count": f"{len(canva_branding_packages)} saved"
         },
         {
             "title": "Canva Design Briefs",
@@ -2127,7 +2163,19 @@ def build_center():
                 if canva_design_briefs
                 else "/generate_canva_design_brief"
             ),
-            "action": "View Design Brief" if canva_design_briefs else "Generate Design Brief"
+            "action": "View Design Brief" if canva_design_briefs else "Generate Design Brief",
+            "count": f"{len(canva_design_briefs)} saved"
+        },
+        {
+            "title": "Canva Connection",
+            "status": status_for(canva_connected),
+            "description": (
+                "Your Canva OAuth connection is ready for editable design drafts."
+                if canva_connected
+                else "Connect Canva before creating editable design drafts."
+            ),
+            "url": "/canva_settings",
+            "action": "Manage Canva" if canva_connected else "Connect Canva"
         },
         {
             "title": "Canva Design Drafts",
@@ -2135,7 +2183,8 @@ def build_center():
             "description": f"{len(canva_designs)} editable Canva design drafts created.",
             "url": latest_canva_design_url or "/create_canva_design",
             "action": "Open Latest Canva Draft" if latest_canva_design_url else "Create Canva Draft",
-            "external": bool(latest_canva_design_url)
+            "external": bool(latest_canva_design_url),
+            "count": f"{len(canva_designs)} created"
         },
         {
             "title": "Store + Branding Quote",
@@ -2146,7 +2195,8 @@ def build_center():
                 if build_quotes
                 else "/generate_build_quote"
             ),
-            "action": "View Quote" if build_quotes else "Generate Quote"
+            "action": "View Quote" if build_quotes else "Generate Quote",
+            "count": f"{len(build_quotes)} saved"
         },
         {
             "title": "Launch Checklist",
@@ -2157,11 +2207,26 @@ def build_center():
         }
     ]
 
+    next_recommended_action = next(
+        item
+        for item in build_items
+        if item["status"] != "Completed"
+    ) if any(
+        item["status"] != "Completed"
+        for item in build_items
+    ) else {
+        "title": "Review Your Build Center",
+        "description": "Your core business build is complete. Review your saved outputs and prepare for launch.",
+        "url": "/build_center",
+        "action": "Review Build Center"
+    }
+
     return render_template(
         "build_center.html",
         build_items=build_items,
         completed_count=completed_count,
-        total_steps=total_steps
+        total_steps=total_steps,
+        next_recommended_action=next_recommended_action
     )
 
 

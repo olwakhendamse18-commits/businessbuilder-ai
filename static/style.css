@@ -446,6 +446,42 @@ a {
     padding-top: 18px;
 }
 
+.build-count {
+    display: inline-flex;
+    align-self: flex-start;
+    margin: 4px 0 0 !important;
+    padding: 7px 10px;
+    border-radius: 999px;
+    color: #bfdbfe !important;
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(96, 165, 250, 0.28);
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.next-action-card {
+    padding: 28px;
+    margin-bottom: 28px;
+    border-radius: 26px;
+    background:
+        linear-gradient(135deg, rgba(37, 99, 235, 0.34), rgba(124, 58, 237, 0.28)),
+        rgba(15, 23, 42, 0.84);
+    border: 1px solid rgba(147, 197, 253, 0.42);
+    box-shadow: var(--shadow);
+}
+
+.next-action-card h2 {
+    margin: 0 0 10px;
+    color: white;
+    letter-spacing: -0.03em;
+}
+
+.next-action-card p:not(.eyebrow) {
+    max-width: 760px;
+    color: var(--text-soft);
+    line-height: 1.6;
+}
+
 .generator-actions {
     display: flex;
     flex-wrap: wrap;
