@@ -16,9 +16,12 @@ import requests
 import sqlite3
 import os
 import base64
+import hashlib
+import secrets
 import psycopg2
 import re
 import json
+import urllib.parse
 from io import BytesIO
 from xml.sax.saxutils import escape
 
@@ -42,6 +45,13 @@ Do not pretend real Shopify, Canva, or payment tools are connected yet.
 """
 
 SHOPIFY_ADMIN_API_VERSION = "2026-04"
+CANVA_AUTHORIZATION_URL = "https://www.canva.com/api/oauth/authorize"
+CANVA_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token"
+CANVA_PROFILE_URL = "https://api.canva.com/rest/v1/users/me/profile"
+CANVA_SCOPES = os.getenv(
+    "CANVA_SCOPES",
+    "design:meta:read design:content:write profile:read"
+)
 
 
 # -----------------------------
@@ -215,6 +225,15 @@ def init_db():
             connected_email TEXT,
             access_token TEXT,
             refresh_token TEXT
+        )
+    """)
+
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS canva_oauth_sessions (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            state TEXT NOT NULL,
+            code_verifier TEXT NOT NULL
         )
     """)
 
@@ -1151,7 +1170,13 @@ def get_canva_connection(user_id):
     return connection
 
 
-def save_canva_connection_placeholder(user_id, status):
+def save_canva_connection(
+    user_id,
+    status,
+    connected_email,
+    access_token,
+    refresh_token
+):
     conn = db()
     cur = conn.cursor()
 
@@ -1171,10 +1196,19 @@ def save_canva_connection_placeholder(user_id, status):
         cur.execute(
             sql("""
                 UPDATE canva_connections
-                SET status = ?
+                SET status = ?,
+                    connected_email = ?,
+                    access_token = ?,
+                    refresh_token = ?
                 WHERE user_id = ?
             """),
-            (status, user_id)
+            (
+                status,
+                connected_email,
+                access_token,
+                refresh_token,
+                user_id
+            )
         )
     else:
         cur.execute(
@@ -1188,11 +1222,76 @@ def save_canva_connection_placeholder(user_id, status):
                 )
                 VALUES (?, ?, ?, ?, ?)
             """),
-            (user_id, status, "", "", "")
+            (
+                user_id,
+                status,
+                connected_email,
+                access_token,
+                refresh_token
+            )
         )
 
     conn.commit()
     conn.close()
+
+
+def save_canva_oauth_session(user_id, state, code_verifier):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            DELETE FROM canva_oauth_sessions
+            WHERE user_id = ?
+        """),
+        (user_id,)
+    )
+
+    cur.execute(
+        sql("""
+            INSERT INTO canva_oauth_sessions (
+                user_id,
+                state,
+                code_verifier
+            )
+            VALUES (?, ?, ?)
+        """),
+        (user_id, state, code_verifier)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def pop_canva_oauth_verifier(user_id, state):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT code_verifier
+            FROM canva_oauth_sessions
+            WHERE user_id = ?
+            AND state = ?
+            LIMIT 1
+        """),
+        (user_id, state)
+    )
+
+    row = cur.fetchone()
+
+    cur.execute(
+        sql("""
+            DELETE FROM canva_oauth_sessions
+            WHERE user_id = ?
+        """),
+        (user_id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return row[0] if row else None
 
 
 def normalize_shopify_domain(shop_domain):
@@ -1773,7 +1872,7 @@ def shopify_settings():
     )
 
 
-@app.route("/canva_settings", methods=["GET", "POST"])
+@app.route("/canva_settings")
 def canva_settings():
     if "user_id" not in session:
         return redirect("/login")
@@ -1784,18 +1883,13 @@ def canva_settings():
         return redirect("/dashboard")
 
     connection = get_canva_connection(user_id)
-    message = None
-
-    if request.method == "POST":
-        status = connection[2] if connection else "not_connected"
-
-        save_canva_connection_placeholder(
-            user_id,
-            status
-        )
-
-        connection = get_canva_connection(user_id)
-        message = "Canva connection preparation saved. Full Canva OAuth is coming next."
+    message = {
+        "connected": "Canva connected successfully.",
+        "configuration": "Canva OAuth is not configured yet. Add the required environment variables.",
+        "state": "Canva connection could not be verified. Please start the connection again.",
+        "denied": "Canva authorization was not completed.",
+        "token": "Canva could not complete the token exchange. Please try again."
+    }.get(request.args.get("canva_oauth"))
 
     connection_summary = None
 
@@ -1809,6 +1903,145 @@ def canva_settings():
         connection=connection_summary,
         message=message
     )
+
+
+@app.route("/connect_canva")
+def connect_canva():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    client_id = os.getenv("CANVA_CLIENT_ID")
+    redirect_uri = os.getenv("CANVA_REDIRECT_URI")
+
+    if not client_id or not redirect_uri:
+        return redirect("/canva_settings?canva_oauth=configuration")
+
+    code_verifier = secrets.token_urlsafe(64)
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode("ascii")).digest()
+    ).decode("ascii").rstrip("=")
+    state = secrets.token_urlsafe(32)
+
+    session["canva_oauth_state"] = state
+    save_canva_oauth_session(
+        user_id,
+        state,
+        code_verifier
+    )
+
+    authorization_url = CANVA_AUTHORIZATION_URL + "?" + urllib.parse.urlencode({
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+        "scope": CANVA_SCOPES,
+        "response_type": "code",
+        "client_id": client_id,
+        "state": state,
+        "redirect_uri": redirect_uri
+    })
+
+    return redirect(authorization_url)
+
+
+@app.route("/canva_callback")
+def canva_callback():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    expected_state = session.pop("canva_oauth_state", None)
+    received_state = request.args.get("state", "")
+
+    if (
+        not expected_state
+        or not received_state
+        or not secrets.compare_digest(expected_state, received_state)
+    ):
+        return redirect("/canva_settings?canva_oauth=state")
+
+    code_verifier = pop_canva_oauth_verifier(
+        user_id,
+        received_state
+    )
+
+    if not code_verifier:
+        return redirect("/canva_settings?canva_oauth=state")
+
+    if request.args.get("error"):
+        return redirect("/canva_settings?canva_oauth=denied")
+
+    code = request.args.get("code")
+    client_id = os.getenv("CANVA_CLIENT_ID")
+    client_secret = os.getenv("CANVA_CLIENT_SECRET")
+    redirect_uri = os.getenv("CANVA_REDIRECT_URI")
+
+    if not code or not client_id or not client_secret or not redirect_uri:
+        return redirect("/canva_settings?canva_oauth=configuration")
+
+    try:
+        response = requests.post(
+            CANVA_TOKEN_URL,
+            auth=(client_id, client_secret),
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            data={
+                "grant_type": "authorization_code",
+                "code_verifier": code_verifier,
+                "code": code,
+                "redirect_uri": redirect_uri
+            },
+            timeout=10
+        )
+        token_data = response.json()
+    except requests.RequestException:
+        return redirect("/canva_settings?canva_oauth=token")
+    except ValueError:
+        return redirect("/canva_settings?canva_oauth=token")
+
+    access_token = token_data.get("access_token")
+
+    if response.status_code != 200 or not access_token:
+        return redirect("/canva_settings?canva_oauth=token")
+
+    refresh_token = token_data.get("refresh_token", "")
+    connected_email = "Connected Canva User"
+
+    try:
+        profile_response = requests.get(
+            CANVA_PROFILE_URL,
+            headers={
+                "Authorization": f"Bearer {access_token}"
+            },
+            timeout=10
+        )
+        profile_data = profile_response.json()
+
+        if profile_response.status_code == 200:
+            connected_email = (
+                profile_data.get("profile", {}).get("display_name")
+                or connected_email
+            )
+    except (requests.RequestException, ValueError):
+        pass
+
+    save_canva_connection(
+        user_id,
+        "connected",
+        connected_email,
+        access_token,
+        refresh_token
+    )
+
+    return redirect("/canva_settings?canva_oauth=connected")
 
 
 @app.route("/pricing")

@@ -39,19 +39,21 @@
 
             {% if connection and connection["status"] == "connected" %}
                 <p class="connection-status connected">Canva Connected</p>
+                <p>Your Canva account is connected and ready for future design creation features.</p>
             {% else %}
                 <p class="connection-status not-connected">Canva Not Connected</p>
+                <p>Connect your Canva account securely through Canva OAuth.</p>
             {% endif %}
-
-            <p>Full Canva OAuth is coming next. This page prepares your account for that future connection flow.</p>
 
             {% if message %}
-                <p class="success-notice">{{ message }}</p>
+                <p class="{{ 'success-notice' if connection and connection['status'] == 'connected' else 'form-notice' }}">
+                    {{ message }}
+                </p>
             {% endif %}
 
-            <form method="POST" action="/canva_settings">
-                <button type="submit">Prepare Canva Connection</button>
-            </form>
+            {% if not connection or connection["status"] != "connected" %}
+                <a href="/connect_canva" class="primary-button">Connect Canva</a>
+            {% endif %}
         </section>
 
         <div class="plan-actions">
