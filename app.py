@@ -524,6 +524,9 @@ def image_to_base64(filepath):
 # -----------------------------
 
 def save_payment(user_id, provider, amount, status, reference):
+    if reference and payment_reference_exists(reference):
+        return False
+
     conn = db()
     cur = conn.cursor()
 
@@ -537,6 +540,61 @@ def save_payment(user_id, provider, amount, status, reference):
 
     conn.commit()
     conn.close()
+
+    return True
+
+
+def payment_reference_exists(reference):
+    if not reference:
+        return False
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id
+            FROM payments
+            WHERE reference = ?
+            LIMIT 1
+        """),
+        (reference,)
+    )
+
+    payment = cur.fetchone()
+    conn.close()
+
+    return payment is not None
+
+
+def verify_paystack_transaction(reference):
+    paystack_secret = os.getenv("PAYSTACK_SECRET_KEY")
+
+    if not paystack_secret:
+        return None, "Paystack secret key is missing."
+
+    headers = {
+        "Authorization": f"Bearer {paystack_secret}"
+    }
+
+    try:
+        response = requests.get(
+            "https://api.paystack.co/transaction/verify/"
+            + urllib.parse.quote(reference, safe=""),
+            headers=headers,
+            timeout=20
+        )
+        response.raise_for_status()
+        result = response.json()
+    except (requests.RequestException, ValueError):
+        return None, "Could not verify the Paystack transaction."
+
+    transaction = result.get("data") or {}
+
+    if not result.get("status") or transaction.get("status") != "success":
+        return None, "Paystack could not confirm a successful payment."
+
+    return transaction, None
 
 
 def user_has_paid(user_id):
@@ -2607,12 +2665,23 @@ def payment_success():
     if "user_id" not in session:
         return redirect("/login")
 
-    reference = request.args.get("reference", "manual-success")
+    reference = request.args.get("reference")
+
+    if not reference:
+        return "Missing Paystack payment reference.", 400
+
+    if payment_reference_exists(reference):
+        return redirect("/dashboard")
+
+    transaction, error = verify_paystack_transaction(reference)
+
+    if error:
+        return error, 400
 
     save_payment(
         session["user_id"],
         "paystack",
-        49900,
+        transaction.get("amount", 49900),
         "success",
         reference
     )
