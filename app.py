@@ -694,6 +694,91 @@ def get_latest_payment(user_id):
     return payment
 
 
+def is_admin_user():
+    admin_email = os.getenv("ADMIN_EMAIL", "").strip().lower()
+    user_id = session.get("user_id")
+
+    if not admin_email or not user_id:
+        return False
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT email
+            FROM users
+            WHERE id = ?
+            LIMIT 1
+        """),
+        (user_id,)
+    )
+
+    user = cur.fetchone()
+    conn.close()
+
+    return bool(
+        user
+        and user[0]
+        and user[0].strip().lower() == admin_email
+    )
+
+
+def get_admin_dashboard_data():
+    conn = db()
+    cur = conn.cursor()
+
+    def count(query, params=()):
+        cur.execute(sql(query), params)
+        return cur.fetchone()[0]
+
+    metrics = {
+        "total_users": count("SELECT COUNT(*) FROM users"),
+        "paid_users": count("""
+            SELECT COUNT(DISTINCT user_id)
+            FROM payments
+            WHERE status = ?
+        """, ("success",)),
+        "total_payments": count("SELECT COUNT(*) FROM payments"),
+        "business_plans": count("SELECT COUNT(*) FROM business_plans"),
+        "shopify_connections": count("SELECT COUNT(*) FROM shopify_connections"),
+        "canva_connections": count("SELECT COUNT(*) FROM canva_connections"),
+        "shopify_products": count("SELECT COUNT(*) FROM shopify_products"),
+        "canva_designs": count("SELECT COUNT(*) FROM canva_designs")
+    }
+
+    cur.execute(sql("""
+        SELECT id, email
+        FROM users
+        ORDER BY id DESC
+        LIMIT 10
+    """))
+    recent_users = cur.fetchall()
+
+    cur.execute(sql("""
+        SELECT
+            payments.id,
+            users.email,
+            payments.provider,
+            payments.amount,
+            payments.status,
+            payments.reference
+        FROM payments
+        LEFT JOIN users ON users.id = payments.user_id
+        ORDER BY payments.id DESC
+        LIMIT 10
+    """))
+    recent_payments = cur.fetchall()
+
+    conn.close()
+
+    return {
+        "metrics": metrics,
+        "recent_users": recent_users,
+        "recent_payments": recent_payments
+    }
+
+
 # -----------------------------
 # WORKFLOW HELPERS
 # -----------------------------
@@ -2498,7 +2583,22 @@ def dashboard():
         canva_connection=canva_connection_summary,
         shopify_products=shopify_products,
         shopify_collections=shopify_collections,
-        shopify_pages=shopify_pages
+        shopify_pages=shopify_pages,
+        is_admin=is_admin_user()
+    )
+
+
+@app.route("/admin")
+def admin():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    if not is_admin_user():
+        return redirect("/dashboard")
+
+    return render_template(
+        "admin.html",
+        **get_admin_dashboard_data()
     )
 
 

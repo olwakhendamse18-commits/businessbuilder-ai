@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-logo">B</div>
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Platform administration</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/admin">Admin</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <p class="eyebrow">Platform Owner</p>
+            <h1>Admin Dashboard</h1>
+            <p>Review platform activity, payments, and generated business assets.</p>
+        </div>
+
+        <section class="admin-metrics">
+            <div class="quote-summary-card">
+                <p>Total Users</p>
+                <h3>{{ metrics["total_users"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Paid Users</p>
+                <h3>{{ metrics["paid_users"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Total Payments</p>
+                <h3>{{ metrics["total_payments"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Business Plans</p>
+                <h3>{{ metrics["business_plans"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Shopify Connections</p>
+                <h3>{{ metrics["shopify_connections"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Canva Connections</p>
+                <h3>{{ metrics["canva_connections"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Shopify Products</p>
+                <h3>{{ metrics["shopify_products"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Canva Designs</p>
+                <h3>{{ metrics["canva_designs"] }}</h3>
+            </div>
+        </section>
+
+        <section class="admin-panel">
+            <div>
+                <p class="eyebrow">Accounts</p>
+                <h2>Recent Users</h2>
+            </div>
+
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>User ID</th>
+                            <th>Email</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in recent_users %}
+                            <tr>
+                                <td>{{ user[0] }}</td>
+                                <td>{{ user[1] }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="2">No users registered yet.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="admin-panel">
+            <div>
+                <p class="eyebrow">Revenue Activity</p>
+                <h2>Recent Payments</h2>
+            </div>
+
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Payment ID</th>
+                            <th>User</th>
+                            <th>Provider</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Reference</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in recent_payments %}
+                            <tr>
+                                <td>{{ payment[0] }}</td>
+                                <td>{{ payment[1] or "Unknown user" }}</td>
+                                <td>{{ payment[2] }}</td>
+                                <td>R{{ payment[3] / 100 }}</td>
+                                <td>
+                                    <span class="admin-payment-status {{ payment[4]|lower }}">
+                                        {{ payment[4] }}
+                                    </span>
+                                </td>
+                                <td>{{ payment[5] or "No reference" }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="6">No payments recorded yet.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>
