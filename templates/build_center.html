@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Build Center - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div class="brand-logo">B</div>
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Build center</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/business_workflow">Business Workflow</a>
+        <a href="/logout">Logout</a>
+
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <p class="eyebrow">Business Progress</p>
+            <h1>Build Center</h1>
+            <p>Track your complete business creation journey and open the next tool you need.</p>
+        </div>
+
+        <section class="project-form">
+            <h2>Guided Workflow Progress</h2>
+            <p>{{ completed_count }} / {{ total_steps }} workflow steps completed</p>
+
+            <div class="progress-track">
+                <div
+                    class="progress-fill"
+                    style="width: {{ ((completed_count / total_steps) * 100)|int }}%;"
+                ></div>
+            </div>
+        </section>
+
+        <section class="cards build-center-grid">
+            {% for item in build_items %}
+                <div class="card build-center-card">
+                    <p class="build-status {{ item['status']|lower|replace(' ', '-') }}">
+                        {{ item["status"] }}
+                    </p>
+
+                    <h3>{{ item["title"] }}</h3>
+                    <p>{{ item["description"] }}</p>
+
+                    <div class="card-actions">
+                        <a
+                            href="{{ item['url'] }}"
+                            class="primary-button"
+                            {% if item.get("external") %}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                            {% endif %}
+                        >{{ item["action"] }}</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>

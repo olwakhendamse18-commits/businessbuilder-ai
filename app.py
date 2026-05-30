@@ -1943,6 +1943,138 @@ def dashboard():
     )
 
 
+@app.route("/build_center")
+def build_center():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    completed_steps = get_completed_steps(user_id)
+    completed_count = len(completed_steps)
+    total_steps = len(WORKFLOW_STEPS)
+    workflow_answers = get_all_workflow_answers(user_id)
+    business_plans = get_business_plans(user_id)
+    shopify_plans = get_shopify_plans(user_id)
+    shopify_products = get_shopify_products(user_id)
+    canva_branding_packages = get_canva_branding_packages(user_id)
+    canva_design_briefs = get_canva_design_briefs(user_id)
+    canva_designs = get_canva_designs(user_id)
+    build_quotes = get_build_quotes(user_id)
+
+    def status_for(completed, started=False):
+        if completed:
+            return "Completed"
+
+        if started:
+            return "In Progress"
+
+        return "Not Started"
+
+    workflow_started = bool(completed_steps or workflow_answers)
+    latest_canva_design_url = ""
+
+    if canva_designs:
+        latest_canva_design_url = canva_designs[0][2] or canva_designs[0][3]
+
+    build_items = [
+        {
+            "title": "Business Workflow",
+            "status": status_for(completed_count == total_steps, workflow_started),
+            "description": f"{completed_count} of {total_steps} guided setup steps completed.",
+            "url": "/business_workflow",
+            "action": "Open Workflow"
+        },
+        {
+            "title": "Business Plan",
+            "status": status_for(business_plans, workflow_started),
+            "description": "Generate and review your complete saved business strategy.",
+            "url": (
+                f"/business_plan/{business_plans[0][0]}"
+                if business_plans
+                else "/generate_business_plan"
+            ),
+            "action": "View Plan" if business_plans else "Generate Plan"
+        },
+        {
+            "title": "Shopify Setup Plan",
+            "status": status_for(shopify_plans, 7 in completed_steps),
+            "description": "Plan your store pages, products, collections, policies, and launch.",
+            "url": (
+                f"/shopify_plan/{shopify_plans[0][0]}"
+                if shopify_plans
+                else "/generate_shopify_plan"
+            ),
+            "action": "View Shopify Plan" if shopify_plans else "Generate Shopify Plan"
+        },
+        {
+            "title": "Shopify Products",
+            "status": status_for(shopify_products, bool(shopify_plans)),
+            "description": f"{len(shopify_products)} draft Shopify products created.",
+            "url": "/business_workflow",
+            "action": "Open Product Tools"
+        },
+        {
+            "title": "Canva Branding Package",
+            "status": status_for(canva_branding_packages, 8 in completed_steps),
+            "description": "Create your logo, color, typography, and visual asset direction.",
+            "url": (
+                f"/canva_branding/{canva_branding_packages[0][0]}"
+                if canva_branding_packages
+                else "/generate_canva_branding"
+            ),
+            "action": "View Branding Package" if canva_branding_packages else "Generate Branding Package"
+        },
+        {
+            "title": "Canva Design Briefs",
+            "status": status_for(canva_design_briefs, bool(canva_branding_packages)),
+            "description": "Turn your brand direction into practical Canva creation instructions.",
+            "url": (
+                f"/canva_design_brief/{canva_design_briefs[0][0]}"
+                if canva_design_briefs
+                else "/generate_canva_design_brief"
+            ),
+            "action": "View Design Brief" if canva_design_briefs else "Generate Design Brief"
+        },
+        {
+            "title": "Canva Design Drafts",
+            "status": status_for(canva_designs, bool(canva_design_briefs)),
+            "description": f"{len(canva_designs)} editable Canva design drafts created.",
+            "url": latest_canva_design_url or "/create_canva_design",
+            "action": "Open Latest Canva Draft" if latest_canva_design_url else "Create Canva Draft",
+            "external": bool(latest_canva_design_url)
+        },
+        {
+            "title": "Store + Branding Quote",
+            "status": status_for(build_quotes, workflow_started),
+            "description": "Review your saved informational store and branding estimate.",
+            "url": (
+                f"/build_quote/{build_quotes[0][0]}"
+                if build_quotes
+                else "/generate_build_quote"
+            ),
+            "action": "View Quote" if build_quotes else "Generate Quote"
+        },
+        {
+            "title": "Launch Checklist",
+            "status": status_for(9 in completed_steps, workflow_started),
+            "description": "Complete your final pre-launch checks for branding, store, marketing, and support.",
+            "url": "/workflow_step/9",
+            "action": "Open Launch Checklist"
+        }
+    ]
+
+    return render_template(
+        "build_center.html",
+        build_items=build_items,
+        completed_count=completed_count,
+        total_steps=total_steps
+    )
+
+
 @app.route("/business_plan/<int:plan_id>")
 def business_plan(plan_id):
     if "user_id" not in session:

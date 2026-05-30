@@ -23,6 +23,7 @@
 <a href="/dashboard">Dashboard</a>
 
 {% if paid %}
+    <a href="/build_center">Build Center</a>
     <a href="/business_workflow">Business Workflow</a>
 {% endif %}
 
@@ -112,6 +113,19 @@
 {% endif %}
 
 </section>
+
+{% if paid %}
+
+<section class="project-form">
+    <h2>Build Center</h2>
+    <p>Track your full business creation progress and open the next tool you need.</p>
+
+    <a href="/build_center">
+        <button type="button">Open Build Center</button>
+    </a>
+</section>
+
+{% endif %}
 
 {% if paid %}
 

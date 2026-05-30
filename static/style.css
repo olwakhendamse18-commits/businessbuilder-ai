@@ -403,6 +403,49 @@ a {
     border: 1px solid rgba(245, 158, 11, 0.35);
 }
 
+.build-status {
+    display: inline-flex;
+    margin: 0 0 16px !important;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.build-status.completed {
+    color: #bbf7d0 !important;
+    background: rgba(34, 197, 94, 0.14);
+    border: 1px solid rgba(34, 197, 94, 0.38);
+}
+
+.build-status.in-progress {
+    color: #bfdbfe !important;
+    background: rgba(59, 130, 246, 0.14);
+    border: 1px solid rgba(59, 130, 246, 0.38);
+}
+
+.build-status.not-started {
+    color: #fde68a !important;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.build-center-grid {
+    margin-top: 0;
+}
+
+.build-center-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.build-center-card .card-actions {
+    margin-top: auto;
+    padding-top: 18px;
+}
+
 .generator-actions {
     display: flex;
     flex-wrap: wrap;
