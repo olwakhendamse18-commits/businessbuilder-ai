@@ -967,6 +967,37 @@ a {
     margin-top: 5px;
 }
 
+.readiness-grid {
+    margin-bottom: 28px;
+}
+
+.readiness-card .connection-status {
+    margin-top: 0;
+}
+
+.readiness-reminders {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+}
+
+.readiness-reminders > div {
+    padding: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 18px;
+    background: rgba(2, 6, 23, 0.28);
+}
+
+.readiness-reminders h3 {
+    margin-top: 0;
+    color: white;
+}
+
+.readiness-reminders a {
+    color: #93c5fd;
+    font-weight: 800;
+}
+
 /* Auth Pages */
 
 .auth-body {

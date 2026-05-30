@@ -18,6 +18,7 @@ import sqlite3
 import os
 import base64
 import hashlib
+import logging
 import secrets
 import psycopg2
 import re
@@ -30,6 +31,7 @@ from xml.sax.saxutils import escape
 load_dotenv()
 
 app = Flask(__name__)
+logger = logging.getLogger(__name__)
 secret_key = os.getenv("SECRET_KEY")
 
 if not secret_key:
@@ -104,6 +106,42 @@ def safe_openai_chat_completion(**kwargs):
         raise ExternalServiceError(
             "AI generation is temporarily unavailable. Please try again later."
         )
+
+
+def send_email(to, subject, body):
+    provider = os.getenv("EMAIL_PROVIDER", "").strip().lower()
+    api_key = os.getenv("EMAIL_API_KEY", "").strip()
+    from_email = os.getenv("FROM_EMAIL", "").strip()
+
+    if not provider or not api_key or not from_email:
+        logger.info("Email notification skipped because email is not configured.")
+        return False
+
+    if provider != "resend":
+        logger.warning("Email notification skipped because the provider is unsupported.")
+        return False
+
+    try:
+        response = requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "from": from_email,
+                "to": [to],
+                "subject": subject,
+                "text": body
+            },
+            timeout=10
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        logger.warning("Email notification could not be delivered.")
+        return False
+
+    return True
 
 
 @app.errorhandler(ExternalServiceError)
@@ -738,6 +776,26 @@ def user_has_paid(user_id):
     conn.close()
 
     return payment is not None
+
+
+def get_user_email(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT email
+            FROM users
+            WHERE id = ?
+            LIMIT 1
+        """),
+        (user_id,)
+    )
+
+    user = cur.fetchone()
+    conn.close()
+
+    return user[0] if user else None
 
 
 def get_latest_payment(user_id):
@@ -2621,6 +2679,16 @@ def signup():
 
         session["user_id"] = user[0]
 
+        send_email(
+            email,
+            "Welcome to BusinessBuilder AI",
+            (
+                "Your BusinessBuilder AI workspace is ready. "
+                "Start by activating your Starter Package, then complete the "
+                "guided workflow to build your plans, store drafts, and brand assets."
+            )
+        )
+
         return redirect("/dashboard")
 
     except (sqlite3.IntegrityError, psycopg2.IntegrityError):
@@ -3017,6 +3085,26 @@ def get_launch_package_data(user_id):
     }
 
 
+def send_launch_package_email_once(user_id):
+    if session.get("launch_package_email_sent"):
+        return
+
+    email = get_user_email(user_id)
+
+    if email:
+        send_email(
+            email,
+            "Your BusinessBuilder AI launch package is ready",
+            (
+                "Your final launch package is ready to review. "
+                "Open BusinessBuilder AI to check your strategy, draft assets, "
+                "launch checklist, and PDF export."
+            )
+        )
+
+    session["launch_package_email_sent"] = True
+
+
 @app.route("/launch_package")
 def launch_package():
     if "user_id" not in session:
@@ -3026,6 +3114,8 @@ def launch_package():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    send_launch_package_email_once(user_id)
 
     return render_template(
         "launch_package.html",
@@ -3042,6 +3132,8 @@ def download_launch_package():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    send_launch_package_email_once(user_id)
 
     return send_file(
         create_launch_package_pdf(get_launch_package_data(user_id)),
@@ -3443,6 +3535,112 @@ def health_check():
     })
 
 
+@app.route("/launch_readiness")
+def launch_readiness():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    database_connected = False
+    conn = None
+
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(sql("SELECT 1"))
+        database_connected = cur.fetchone() is not None
+    except (sqlite3.Error, psycopg2.Error):
+        database_connected = False
+    finally:
+        if conn:
+            conn.close()
+
+    shopify_connection = get_shopify_connection(user_id)
+    canva_connection = get_canva_connection(user_id)
+    shopify_connected = bool(
+        shopify_connection
+        and shopify_connection[3] == "connected"
+    )
+    canva_connected = bool(
+        canva_connection
+        and canva_connection[2] == "connected"
+    )
+    paystack_configured = bool(os.getenv("PAYSTACK_SECRET_KEY"))
+    openai_configured = bool(os.getenv("OPENAI_API_KEY"))
+    email_configured = bool(
+        os.getenv("EMAIL_PROVIDER", "").strip().lower() == "resend"
+        and os.getenv("EMAIL_API_KEY")
+        and os.getenv("FROM_EMAIL")
+    )
+    checks = [
+        {
+            "title": "Database",
+            "ready": database_connected,
+            "description": (
+                "Database connection is available."
+                if database_connected
+                else "Database connection needs attention."
+            )
+        },
+        {
+            "title": "Paystack",
+            "ready": paystack_configured,
+            "description": (
+                "Payment verification environment variable is configured."
+                if paystack_configured
+                else "Configure Paystack before accepting live payments."
+            )
+        },
+        {
+            "title": "OpenAI",
+            "ready": openai_configured,
+            "description": (
+                "AI generation environment variable is configured."
+                if openai_configured
+                else "Configure OpenAI before using AI generation tools."
+            )
+        },
+        {
+            "title": "Shopify Store",
+            "ready": shopify_connected,
+            "description": (
+                "Your Shopify store connection is ready."
+                if shopify_connected
+                else "Connect and test Shopify before building store drafts."
+            )
+        },
+        {
+            "title": "Canva Account",
+            "ready": canva_connected,
+            "description": (
+                "Your Canva connection is ready."
+                if canva_connected
+                else "Connect Canva before creating editable design drafts."
+            )
+        },
+        {
+            "title": "Policy Pages",
+            "ready": True,
+            "description": "Terms, Privacy, and Refund Policy pages are available."
+        },
+        {
+            "title": "Email Notifications",
+            "ready": email_configured,
+            "description": (
+                "Optional email notifications are configured."
+                if email_configured
+                else "Optional email notifications are not configured yet."
+            )
+        }
+    ]
+
+    return render_template(
+        "launch_readiness.html",
+        checks=checks,
+        database_type="postgres" if using_postgres() else "sqlite"
+    )
+
+
 @app.route("/pricing")
 def pricing():
     return render_template("pricing.html")
@@ -3670,6 +3868,18 @@ def payment_success():
         reference
     )
 
+    email = get_user_email(session["user_id"])
+
+    if email:
+        send_email(
+            email,
+            "Your BusinessBuilder AI payment is confirmed",
+            (
+                "Your Paystack payment has been verified and your BusinessBuilder AI "
+                "Starter Package is active. Open your dashboard to complete the guided workflow."
+            )
+        )
+
     return redirect("/dashboard")
 
 
@@ -3846,6 +4056,18 @@ User workflow answers:
         "Generated Business Plan",
         business_plan
     )
+
+    email = get_user_email(user_id)
+
+    if email:
+        send_email(
+            email,
+            "Your BusinessBuilder AI business plan is ready",
+            (
+                "Your generated business plan has been saved. "
+                "Open your BusinessBuilder AI dashboard to review it or download the PDF."
+            )
+        )
 
     return redirect(f"/business_plan/{plan_id}")
 

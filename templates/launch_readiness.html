@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Launch Readiness - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-logo">B</div>
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Launch readiness</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/launch_package">Launch Package</a>
+        <a href="/launch_readiness">Launch Readiness</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main">
+        <div class="dashboard-header">
+            <p class="eyebrow">Final Platform Checks</p>
+            <h1>Launch Readiness</h1>
+            <p>Review your platform configuration and connected business tools before going live.</p>
+        </div>
+
+        <section class="cards readiness-grid">
+            {% for check in checks %}
+                <article class="card readiness-card">
+                    <p class="connection-status {{ 'connected' if check['ready'] else 'not-connected' }}">
+                        {{ 'Ready' if check['ready'] else 'Needs Attention' }}
+                    </p>
+                    <h3>{{ check["title"] }}</h3>
+                    <p>{{ check["description"] }}</p>
+                </article>
+            {% endfor %}
+        </section>
+
+        <section class="launch-package-section">
+            <p class="eyebrow">Deployment Notes</p>
+            <h2>Before You Go Live</h2>
+
+            <div class="readiness-reminders">
+                <div>
+                    <h3>Database</h3>
+                    <p>Current database type: <strong>{{ database_type }}</strong>. Confirm your Render production service uses PostgreSQL.</p>
+                </div>
+                <div>
+                    <h3>Custom Domain</h3>
+                    <p>Connect your production domain in Render, confirm HTTPS is active, and update external callback URLs where required.</p>
+                </div>
+                <div>
+                    <h3>Live Paystack</h3>
+                    <p>Before accepting real payments, confirm Render uses your live Paystack secret key and run one live checkout test.</p>
+                </div>
+                <div>
+                    <h3>Policy Pages</h3>
+                    <p>Review your <a href="/terms">Terms</a>, <a href="/privacy">Privacy Policy</a>, and <a href="/refund">Refund Policy</a> before launch.</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="plan-actions">
+            <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
+            <a href="/launch_package" class="primary-button">Open Launch Package</a>
+        </div>
+    </main>
+
+</div>
+
+</body>
+</html>
