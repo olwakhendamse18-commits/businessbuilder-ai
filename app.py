@@ -40,6 +40,8 @@ Ask useful questions and give step-by-step help.
 Do not pretend real Shopify, Canva, or payment tools are connected yet.
 """
 
+SHOPIFY_ADMIN_API_VERSION = "2026-04"
+
 
 # -----------------------------
 # DATABASE HELPERS
@@ -182,6 +184,16 @@ def init_db():
             service_fee TEXT NOT NULL,
             total_estimate TEXT NOT NULL,
             content TEXT NOT NULL
+        )
+    """)
+
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS shopify_connections (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            shop_domain TEXT NOT NULL,
+            access_token TEXT NOT NULL,
+            status TEXT NOT NULL
         )
     """)
 
@@ -945,6 +957,123 @@ def get_build_quote(user_id, quote_id):
     return quote
 
 
+def save_shopify_connection(user_id, shop_domain, access_token, status):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id
+            FROM shopify_connections
+            WHERE user_id = ?
+            LIMIT 1
+        """),
+        (user_id,)
+    )
+
+    connection = cur.fetchone()
+
+    if connection:
+        cur.execute(
+            sql("""
+                UPDATE shopify_connections
+                SET shop_domain = ?,
+                    access_token = ?,
+                    status = ?
+                WHERE user_id = ?
+            """),
+            (shop_domain, access_token, status, user_id)
+        )
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO shopify_connections (
+                    user_id,
+                    shop_domain,
+                    access_token,
+                    status
+                )
+                VALUES (?, ?, ?, ?)
+            """),
+            (user_id, shop_domain, access_token, status)
+        )
+
+    conn.commit()
+    conn.close()
+
+
+def get_shopify_connection(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, shop_domain, access_token, status
+            FROM shopify_connections
+            WHERE user_id = ?
+            LIMIT 1
+        """),
+        (user_id,)
+    )
+
+    connection = cur.fetchone()
+    conn.close()
+
+    return connection
+
+
+def normalize_shopify_domain(shop_domain):
+    domain = shop_domain.strip().lower()
+    domain = re.sub(r"^https?://", "", domain)
+    domain = domain.split("/", 1)[0]
+
+    if re.fullmatch(r"[a-z0-9][a-z0-9-]*\.myshopify\.com", domain):
+        return domain
+
+    return None
+
+
+def test_shopify_connection(shop_domain, access_token):
+    endpoint = (
+        f"https://{shop_domain}/admin/api/"
+        f"{SHOPIFY_ADMIN_API_VERSION}/graphql.json"
+    )
+    query = """
+    {
+        shop {
+            name
+            myshopifyDomain
+        }
+    }
+    """
+
+    try:
+        response = requests.post(
+            endpoint,
+            headers={
+                "Content-Type": "application/json",
+                "X-Shopify-Access-Token": access_token
+            },
+            json={"query": query},
+            timeout=10
+        )
+        result = response.json()
+    except requests.RequestException:
+        return False, "Could not reach Shopify. Check the store domain and try again."
+    except ValueError:
+        return False, "Shopify returned an unexpected response. Check your connection details."
+
+    if response.status_code != 200 or result.get("errors"):
+        return False, "Shopify connection failed. Check the store domain and Admin API access token."
+
+    shop = result.get("data", {}).get("shop")
+
+    if not shop:
+        return False, "Shopify connection failed. The shop details could not be retrieved."
+
+    return True, f"Connected to {shop['name']} ({shop['myshopifyDomain']})."
+
+
 def create_business_plan_pdf(title, content):
     pdf_buffer = BytesIO()
     document = SimpleDocTemplate(
@@ -1129,6 +1258,15 @@ def dashboard():
     business_plans = get_business_plans(user_id)
     shopify_plans = get_shopify_plans(user_id)
     build_quotes = get_build_quotes(user_id)
+    shopify_connection = get_shopify_connection(user_id)
+
+    shopify_connection_summary = None
+
+    if shopify_connection:
+        shopify_connection_summary = {
+            "shop_domain": shopify_connection[1],
+            "status": shopify_connection[3]
+        }
 
     return render_template(
         "dashboard.html",
@@ -1137,7 +1275,8 @@ def dashboard():
         latest_payment=latest_payment,
         business_plans=business_plans,
         shopify_plans=shopify_plans,
-        build_quotes=build_quotes
+        build_quotes=build_quotes,
+        shopify_connection=shopify_connection_summary
     )
 
 
@@ -1219,6 +1358,62 @@ def build_quote(quote_id):
     return render_template(
         "build_quote.html",
         quote=quote
+    )
+
+
+@app.route("/shopify_settings", methods=["GET", "POST"])
+def shopify_settings():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    connection = get_shopify_connection(user_id)
+    connection_summary = None
+    message = None
+
+    if connection:
+        connection_summary = {
+            "shop_domain": connection[1],
+            "status": connection[3]
+        }
+
+    if request.method == "POST":
+        shop_domain = normalize_shopify_domain(
+            request.form.get("shop_domain", "")
+        )
+        access_token = request.form.get("access_token", "").strip()
+
+        if not shop_domain:
+            message = "Enter a valid Shopify domain such as your-store.myshopify.com."
+        elif not access_token:
+            message = "Enter an Admin API access token to save and test the connection."
+        else:
+            connected, message = test_shopify_connection(
+                shop_domain,
+                access_token
+            )
+            status = "connected" if connected else "not_connected"
+
+            save_shopify_connection(
+                user_id,
+                shop_domain,
+                access_token,
+                status
+            )
+
+            connection_summary = {
+                "shop_domain": shop_domain,
+                "status": status
+            }
+
+    return render_template(
+        "shopify_settings.html",
+        connection=connection_summary,
+        message=message
     )
 
 

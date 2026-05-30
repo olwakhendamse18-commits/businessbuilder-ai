@@ -96,7 +96,7 @@
 
 </section>
 
-        {% if paid %}
+{% if paid %}
 
 <section class="project-form">
     <h2>Upload Business File</h2>
@@ -113,6 +113,30 @@
 <section class="project-form">
     <h2>File Analysis Locked</h2>
     <p>Upgrade to the Starter Package to upload files and get AI document/image analysis.</p>
+</section>
+
+{% endif %}
+
+{% if paid %}
+
+<section class="project-form">
+    <h2>Shopify Connection</h2>
+
+    {% if shopify_connection and shopify_connection["status"] == "connected" %}
+        <p class="connection-status connected">Shopify Connected</p>
+        <p><strong>Store:</strong> {{ shopify_connection["shop_domain"] }}</p>
+
+        <a href="/shopify_settings">
+            <button type="button">Manage Shopify Connection</button>
+        </a>
+    {% else %}
+        <p class="connection-status not-connected">Connect Shopify Store</p>
+        <p>Connect your Shopify store to test your Admin API access.</p>
+
+        <a href="/shopify_settings">
+            <button type="button">Connect Shopify</button>
+        </a>
+    {% endif %}
 </section>
 
 {% endif %}

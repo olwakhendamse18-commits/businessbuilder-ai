@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopify Connection - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+
+        <div class="brand">
+            <div class="brand-logo">B</div>
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Shopify connection</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/business_workflow">Business Workflow</a>
+        <a href="/logout">Logout</a>
+
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <h1>Shopify Connection</h1>
+            <p>Enter your Shopify store domain and Admin API access token to test the GraphQL Admin API connection.</p>
+        </div>
+
+        <section class="project-form settings-panel">
+            {% if connection and connection["status"] == "connected" %}
+                <p class="connection-status connected">Shopify Connected</p>
+                <p><strong>Connected store:</strong> {{ connection["shop_domain"] }}</p>
+            {% elif connection %}
+                <p class="connection-status not-connected">Shopify Not Connected</p>
+                <p><strong>Last tested store:</strong> {{ connection["shop_domain"] }}</p>
+            {% endif %}
+
+            {% if message %}
+                <p class="form-notice">{{ message }}</p>
+            {% endif %}
+
+            <form method="POST" action="/shopify_settings">
+                <label for="shop_domain">Shopify Store Domain</label>
+                <input
+                    id="shop_domain"
+                    type="text"
+                    name="shop_domain"
+                    placeholder="your-store.myshopify.com"
+                    value="{{ connection['shop_domain'] if connection else '' }}"
+                    required
+                >
+
+                <label for="access_token">Admin API Access Token</label>
+                <input
+                    id="access_token"
+                    type="password"
+                    name="access_token"
+                    placeholder="Enter a new Admin API access token"
+                    autocomplete="new-password"
+                    value=""
+                    required
+                >
+
+                <p class="form-help">
+                    Your token is stored server-side and is never shown again after submission.
+                </p>
+
+                <button type="submit">Save and Test Connection</button>
+            </form>
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>
