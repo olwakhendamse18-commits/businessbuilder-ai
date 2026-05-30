@@ -2143,6 +2143,227 @@ def create_business_plan_pdf(title, content):
     return pdf_buffer
 
 
+def create_launch_package_pdf(launch_data):
+    pdf_buffer = BytesIO()
+    document = SimpleDocTemplate(
+        pdf_buffer,
+        pagesize=A4,
+        rightMargin=20 * mm,
+        leftMargin=20 * mm,
+        topMargin=18 * mm,
+        bottomMargin=18 * mm
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "LaunchPackageTitle",
+        parent=styles["Title"],
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#172554"),
+        fontSize=22,
+        leading=28,
+        spaceAfter=8
+    )
+    brand_style = ParagraphStyle(
+        "LaunchPackageBrand",
+        parent=styles["Normal"],
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#2563eb"),
+        fontSize=10,
+        leading=14,
+        spaceAfter=6
+    )
+    subtitle_style = ParagraphStyle(
+        "LaunchPackageSubtitle",
+        parent=styles["BodyText"],
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#64748b"),
+        fontSize=10,
+        leading=14,
+        spaceAfter=12
+    )
+    heading_style = ParagraphStyle(
+        "LaunchPackageHeading",
+        parent=styles["Heading2"],
+        textColor=colors.HexColor("#1e3a8a"),
+        fontSize=14,
+        leading=18,
+        spaceBefore=12,
+        spaceAfter=5
+    )
+    subheading_style = ParagraphStyle(
+        "LaunchPackageSubheading",
+        parent=styles["Heading3"],
+        textColor=colors.HexColor("#334155"),
+        fontSize=11.5,
+        leading=15,
+        spaceBefore=7,
+        spaceAfter=4
+    )
+    body_style = ParagraphStyle(
+        "LaunchPackageBody",
+        parent=styles["BodyText"],
+        textColor=colors.HexColor("#334155"),
+        fontSize=10,
+        leading=14,
+        spaceAfter=5
+    )
+    bullet_style = ParagraphStyle(
+        "LaunchPackageBullet",
+        parent=body_style,
+        leftIndent=10,
+        firstLineIndent=-8
+    )
+
+    story = [
+        Paragraph("BusinessBuilder AI", brand_style),
+        Paragraph("Final Launch Package", title_style),
+        Paragraph(
+            "Your business strategy, draft store assets, branding outputs, and launch priorities.",
+            subtitle_style
+        ),
+        Spacer(1, 3 * mm),
+        Paragraph(
+            (
+                f"Shopify products: {len(launch_data['shopify_products'])} &nbsp; | &nbsp; "
+                f"Shopify collections: {len(launch_data['shopify_collections'])} &nbsp; | &nbsp; "
+                f"Shopify pages: {len(launch_data['shopify_pages'])} &nbsp; | &nbsp; "
+                f"Canva drafts: {len(launch_data['canva_designs'])}"
+            ),
+            subtitle_style
+        )
+    ]
+
+    def add_heading(title, style=heading_style):
+        story.append(Paragraph(escape(title), style))
+
+    def add_text(content):
+        for line in str(content or "").splitlines():
+            text = line.strip()
+
+            if not text:
+                story.append(Spacer(1, 2 * mm))
+                continue
+
+            clean_text = escape(text)
+            is_heading = (
+                text.startswith("#")
+                or (
+                    len(text) <= 90
+                    and (
+                        text.endswith(":")
+                        or text[0].isdigit() and "." in text[:4]
+                    )
+                )
+            )
+
+            if text.startswith("#"):
+                clean_text = escape(text.lstrip("#").strip())
+
+            story.append(
+                Paragraph(
+                    clean_text,
+                    subheading_style if is_heading else body_style
+                )
+            )
+
+    def add_bullet(text):
+        story.append(Paragraph(f"&bull; {escape(str(text))}", bullet_style))
+
+    def workflow_answer(step_number, fallback):
+        return launch_data["answers_by_step"].get(step_number, {}).get(
+            "answer",
+            fallback
+        )
+
+    add_heading("Business Summary")
+    add_text(workflow_answer(1, "Complete workflow step 1 to add your business summary."))
+
+    add_heading("Brand Summary")
+    add_text(workflow_answer(2, "Complete workflow step 2 to add your brand summary."))
+
+    add_heading("Target Market")
+    add_text(workflow_answer(3, "Complete workflow step 3 to define your target market."))
+
+    add_heading("Products / Services")
+    add_text(workflow_answer(4, "Complete workflow step 4 to define your products or services."))
+
+    add_heading("Pricing")
+    add_text(workflow_answer(5, "Complete workflow step 5 to add your pricing strategy."))
+
+    add_heading("Marketing Plan")
+    add_text(workflow_answer(6, "Complete workflow step 6 to add your marketing plan."))
+
+    add_heading("Shopify Assets Created")
+    add_text("Review and publish these draft or unpublished Shopify assets manually.")
+
+    add_heading("Products", subheading_style)
+    if launch_data["shopify_products"]:
+        for product in launch_data["shopify_products"]:
+            add_bullet(f"{product[0]} - {product[3]}")
+    else:
+        add_text("No draft Shopify products created yet.")
+
+    add_heading("Collections", subheading_style)
+    if launch_data["shopify_collections"]:
+        for collection in launch_data["shopify_collections"]:
+            add_bullet(f"{collection[0]} - {collection[3]}")
+    else:
+        add_text("No unpublished Shopify collections created yet.")
+
+    add_heading("Pages", subheading_style)
+    if launch_data["shopify_pages"]:
+        for page in launch_data["shopify_pages"]:
+            add_bullet(f"{page[0]} - {page[4]}")
+    else:
+        add_text("No unpublished Shopify pages created yet.")
+
+    if launch_data["latest_shopify_plan"]:
+        add_heading("Latest Shopify Setup Plan", subheading_style)
+        add_text(launch_data["latest_shopify_plan"][2])
+
+    add_heading("Canva Assets Created")
+    if launch_data["canva_designs"]:
+        for design in launch_data["canva_designs"]:
+            add_bullet(f"{design[0]} - {design[4]}")
+    else:
+        add_text("No Canva design drafts created yet.")
+
+    if launch_data["latest_canva_branding_package"]:
+        add_heading("Latest Canva Branding Package", subheading_style)
+        add_text(launch_data["latest_canva_branding_package"][2])
+
+    if launch_data["latest_canva_design_brief"]:
+        add_heading("Latest Canva Design Brief", subheading_style)
+        add_text(launch_data["latest_canva_design_brief"][2])
+
+    if launch_data["latest_business_plan"]:
+        add_heading("Latest Generated Business Plan")
+        add_text(launch_data["latest_business_plan"][2])
+
+    if launch_data["latest_build_quote"]:
+        add_heading("Latest Store + Branding Quote")
+        add_text(launch_data["latest_build_quote"][2])
+
+    add_heading("Launch Checklist")
+    add_text(workflow_answer(9, "Complete workflow step 9 to add your launch checklist."))
+
+    add_heading("Next 30-Day Action Plan")
+    add_heading("Days 1-7", subheading_style)
+    add_text("Review your business plan, validate pricing, and refine your product or service offer.")
+    add_heading("Days 8-14", subheading_style)
+    add_text("Review Shopify draft products, collections, and pages. Add final images and publish only approved assets.")
+    add_heading("Days 15-21", subheading_style)
+    add_text("Edit your Canva drafts, prepare social content, and schedule your launch marketing.")
+    add_heading("Days 22-30", subheading_style)
+    add_text("Run checkout tests, complete the launch checklist, publish approved assets, and monitor your first customer feedback.")
+
+    document.build(story)
+    pdf_buffer.seek(0)
+
+    return pdf_buffer
+
+
 # -----------------------------
 # PAGE ROUTES
 # -----------------------------
@@ -2502,16 +2723,7 @@ def build_center():
     )
 
 
-@app.route("/launch_package")
-def launch_package():
-    if "user_id" not in session:
-        return redirect("/login")
-
-    user_id = session["user_id"]
-
-    if not user_has_paid(user_id):
-        return redirect("/dashboard")
-
+def get_launch_package_data(user_id):
     workflow_answers = get_all_workflow_answers(user_id)
     answers_by_step = {
         step_number: {
@@ -2530,26 +2742,59 @@ def launch_package():
     canva_designs = get_canva_designs(user_id)
     build_quotes = get_build_quotes(user_id)
 
-    return render_template(
-        "launch_package.html",
-        answers_by_step=answers_by_step,
-        latest_business_plan=business_plans[0] if business_plans else None,
-        latest_shopify_plan=shopify_plans[0] if shopify_plans else None,
-        shopify_products=shopify_products,
-        shopify_collections=shopify_collections,
-        shopify_pages=shopify_pages,
-        latest_canva_branding_package=(
+    return {
+        "answers_by_step": answers_by_step,
+        "latest_business_plan": business_plans[0] if business_plans else None,
+        "latest_shopify_plan": shopify_plans[0] if shopify_plans else None,
+        "shopify_products": shopify_products,
+        "shopify_collections": shopify_collections,
+        "shopify_pages": shopify_pages,
+        "latest_canva_branding_package": (
             canva_branding_packages[0]
             if canva_branding_packages
             else None
         ),
-        latest_canva_design_brief=(
+        "latest_canva_design_brief": (
             canva_design_briefs[0]
             if canva_design_briefs
             else None
         ),
-        canva_designs=canva_designs,
-        latest_build_quote=build_quotes[0] if build_quotes else None
+        "canva_designs": canva_designs,
+        "latest_build_quote": build_quotes[0] if build_quotes else None
+    }
+
+
+@app.route("/launch_package")
+def launch_package():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    return render_template(
+        "launch_package.html",
+        **get_launch_package_data(user_id)
+    )
+
+
+@app.route("/download_launch_package")
+def download_launch_package():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    return send_file(
+        create_launch_package_pdf(get_launch_package_data(user_id)),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name="businessbuilder-ai-launch-package.pdf"
     )
 
 
