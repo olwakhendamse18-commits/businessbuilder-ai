@@ -1151,6 +1151,30 @@ a {
     margin-top: 0;
 }
 
+.readiness-mode-card {
+    padding: 24px;
+    margin: 24px 0;
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    border-radius: 22px;
+    background: rgba(120, 53, 15, 0.22);
+    box-shadow: var(--shadow);
+}
+
+.readiness-mode-card.live {
+    border-color: rgba(34, 197, 94, 0.4);
+    background: rgba(20, 83, 45, 0.24);
+}
+
+.readiness-mode-card h2 {
+    margin: 0;
+    color: white;
+}
+
+.readiness-mode-card p:last-child {
+    margin-bottom: 0;
+    color: var(--text-soft);
+}
+
 .readiness-reminders {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -1172,6 +1196,33 @@ a {
 .readiness-reminders a {
     color: #93c5fd;
     font-weight: 800;
+}
+
+.production-checklist {
+    display: grid;
+    gap: 12px;
+    padding-left: 24px;
+    color: var(--text-soft);
+    line-height: 1.55;
+}
+
+.production-checklist li {
+    padding: 12px 14px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 14px;
+    background: rgba(2, 6, 23, 0.28);
+}
+
+.admin-readiness-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 22px;
+}
+
+.admin-readiness-card p:not(.eyebrow) {
+    margin-bottom: 0;
+    color: var(--text-soft);
 }
 
 /* Auth Pages */
@@ -1382,6 +1433,15 @@ a {
 
     .landing-footer div {
         margin-top: 12px;
+    }
+
+    .admin-readiness-card {
+        display: block;
+    }
+
+    .admin-readiness-card .primary-button {
+        width: 100%;
+        margin-top: 16px;
     }
 
     .pricing-main {

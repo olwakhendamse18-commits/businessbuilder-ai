@@ -4283,17 +4283,57 @@ def launch_readiness():
         canva_connection
         and canva_connection[2] == "connected"
     )
-    paystack_configured = bool(os.getenv("PAYSTACK_SECRET_KEY"))
+    database_url_configured = bool(os.getenv("DATABASE_URL"))
     openai_configured = bool(os.getenv("OPENAI_API_KEY"))
+    paystack_secret = os.getenv("PAYSTACK_SECRET_KEY", "").strip()
+    paystack_configured = bool(paystack_secret)
     secret_key_configured = bool(os.getenv("SECRET_KEY"))
+    encryption_key_configured = bool(os.getenv("ENCRYPTION_KEY"))
+    admin_email_configured = bool(os.getenv("ADMIN_EMAIL"))
+    canva_client_id_configured = bool(os.getenv("CANVA_CLIENT_ID"))
     email_configured = bool(
         os.getenv("EMAIL_PROVIDER", "").strip().lower() == "resend"
         and os.getenv("EMAIL_API_KEY")
         and os.getenv("FROM_EMAIL")
     )
+
+    if paystack_secret.startswith("sk_live"):
+        payment_mode = "live"
+        payment_mode_ready = True
+        payment_mode_message = "Live mode ready. Paystack appears to use a live secret key."
+    elif paystack_secret.startswith("sk_test"):
+        payment_mode = "test"
+        payment_mode_ready = False
+        payment_mode_message = "Test mode detected. Switch to a live Paystack secret key before launch."
+    elif paystack_secret:
+        payment_mode = "unknown"
+        payment_mode_ready = False
+        payment_mode_message = "Paystack is configured, but the key mode could not be identified."
+    else:
+        payment_mode = "not configured"
+        payment_mode_ready = False
+        payment_mode_message = "Paystack is not configured yet."
+
+    registered_routes = {
+        rule.rule
+        for rule in app.url_map.iter_rules()
+    }
+
+    def route_exists(route):
+        return route in registered_routes
+
     checks = [
         {
-            "title": "Database",
+            "title": "DATABASE_URL",
+            "ready": database_url_configured,
+            "description": (
+                "Production database environment variable is configured."
+                if database_url_configured
+                else "Configure DATABASE_URL with your Render PostgreSQL connection string."
+            )
+        },
+        {
+            "title": "Database Connection",
             "ready": database_connected,
             "description": (
                 "Database connection is available."
@@ -4302,25 +4342,25 @@ def launch_readiness():
             )
         },
         {
-            "title": "Paystack",
-            "ready": paystack_configured,
-            "description": (
-                "Payment verification environment variable is configured."
-                if paystack_configured
-                else "Configure Paystack before accepting live payments."
-            )
-        },
-        {
-            "title": "OpenAI",
+            "title": "OPENAI_API_KEY",
             "ready": openai_configured,
             "description": (
                 "AI generation environment variable is configured."
                 if openai_configured
-                else "Configure OpenAI before using AI generation tools."
+                else "Configure OPENAI_API_KEY before using AI generation tools."
             )
         },
         {
-            "title": "Secret Key",
+            "title": "PAYSTACK_SECRET_KEY",
+            "ready": paystack_configured,
+            "description": (
+                "Payment verification environment variable is configured."
+                if paystack_configured
+                else "Configure PAYSTACK_SECRET_KEY before accepting payments."
+            )
+        },
+        {
+            "title": "SECRET_KEY",
             "ready": secret_key_configured,
             "description": (
                 "Flask session signing is configured for production."
@@ -4329,7 +4369,89 @@ def launch_readiness():
             )
         },
         {
-            "title": "Shopify Store",
+            "title": "ENCRYPTION_KEY",
+            "ready": encryption_key_configured,
+            "description": (
+                "Integration token encryption is configured for production."
+                if encryption_key_configured
+                else "Configure ENCRYPTION_KEY before connecting production integrations."
+            )
+        },
+        {
+            "title": "ADMIN_EMAIL",
+            "ready": admin_email_configured,
+            "description": (
+                "Platform owner access is configured."
+                if admin_email_configured
+                else "Configure ADMIN_EMAIL to enable protected platform administration."
+            )
+        },
+        {
+            "title": "CANVA_CLIENT_ID",
+            "ready": canva_client_id_configured,
+            "description": (
+                "Canva OAuth client configuration is available."
+                if canva_client_id_configured
+                else "Configure CANVA_CLIENT_ID before testing Canva OAuth."
+            )
+        },
+        {
+            "title": "Email Settings",
+            "ready": email_configured,
+            "optional": True,
+            "description": (
+                "Optional email notifications are configured."
+                if email_configured
+                else "Optional email notifications are not configured. The app can still launch."
+            )
+        },
+        {
+            "title": "Paystack Mode",
+            "ready": payment_mode_ready,
+            "description": payment_mode_message
+        },
+        {
+            "title": "Pricing Page",
+            "ready": route_exists("/pricing"),
+            "description": "Package pricing and Paystack checkout options are available."
+        },
+        {
+            "title": "Terms Page",
+            "ready": route_exists("/terms"),
+            "description": "Terms page is available for review before launch."
+        },
+        {
+            "title": "Privacy Page",
+            "ready": route_exists("/privacy"),
+            "description": "Privacy Policy page is available for review before launch."
+        },
+        {
+            "title": "Refund Page",
+            "ready": route_exists("/refund"),
+            "description": "Refund Policy page is available for review before launch."
+        },
+        {
+            "title": "Shopify Connection Feature",
+            "ready": route_exists("/shopify_settings"),
+            "description": "Shopify connection settings route is available."
+        },
+        {
+            "title": "Canva Connection Feature",
+            "ready": route_exists("/canva_settings"),
+            "description": "Canva OAuth settings route is available."
+        },
+        {
+            "title": "Paystack Webhook",
+            "ready": route_exists("/paystack_webhook"),
+            "description": "Paystack webhook route is available for persistent payment updates."
+        },
+        {
+            "title": "Admin Dashboard",
+            "ready": route_exists("/admin"),
+            "description": "Protected platform administration route is available."
+        },
+        {
+            "title": "Shopify Store Connection",
             "ready": shopify_connected,
             "description": (
                 "Your Shopify store connection is ready."
@@ -4338,49 +4460,36 @@ def launch_readiness():
             )
         },
         {
-            "title": "Canva Account",
+            "title": "Canva Account Connection",
             "ready": canva_connected,
             "description": (
                 "Your Canva connection is ready."
                 if canva_connected
                 else "Connect Canva before creating editable design drafts."
             )
-        },
-        {
-            "title": "Pricing Page",
-            "ready": True,
-            "description": "Package pricing and Paystack checkout options are available."
-        },
-        {
-            "title": "Terms Page",
-            "ready": True,
-            "description": "Terms page is available for review before launch."
-        },
-        {
-            "title": "Privacy Page",
-            "ready": True,
-            "description": "Privacy Policy page is available for review before launch."
-        },
-        {
-            "title": "Refund Page",
-            "ready": True,
-            "description": "Refund Policy page is available for review before launch."
-        },
-        {
-            "title": "Email Notifications",
-            "ready": email_configured,
-            "description": (
-                "Optional email notifications are configured."
-                if email_configured
-                else "Optional email notifications are not configured yet."
-            )
         }
+    ]
+    production_checklist = [
+        "Connect your custom domain and confirm HTTPS is active.",
+        "Update the Paystack webhook URL to use your production domain.",
+        "Switch the Paystack test key to a live key before accepting payments.",
+        "Make one real test payment through the production checkout.",
+        "Verify the payment appears in the admin dashboard.",
+        "Redeploy the app and confirm the paid user package remains active.",
+        "Test signup, login, and logout from a clean browser session.",
+        "Complete the business workflow and generate a saved business plan.",
+        "Test the Shopify connection with the production store.",
+        "Test the Canva OAuth connection with the production callback URL.",
+        "Download a business plan PDF and a launch package PDF."
     ]
 
     return render_template(
         "launch_readiness.html",
         checks=checks,
-        database_type="postgres" if using_postgres() else "sqlite"
+        database_type="postgres" if using_postgres() else "sqlite",
+        payment_mode=payment_mode,
+        payment_mode_message=payment_mode_message,
+        production_checklist=production_checklist
     )
 
 

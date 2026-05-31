@@ -34,11 +34,21 @@
             <p>Review your platform configuration and connected business tools before going live.</p>
         </div>
 
+        <section class="readiness-mode-card {{ 'live' if payment_mode == 'live' else 'warning' }}">
+            <p class="eyebrow">Payment Environment</p>
+            <h2>{{ "Live mode ready" if payment_mode == "live" else "Production payment action required" }}</h2>
+            <p>{{ payment_mode_message }}</p>
+        </section>
+
         <section class="cards readiness-grid">
             {% for check in checks %}
                 <article class="card readiness-card">
                     <p class="connection-status {{ 'connected' if check['ready'] else 'not-connected' }}">
-                        {{ 'Ready' if check['ready'] else 'Needs Attention' }}
+                        {% if check.get("optional") and not check["ready"] %}
+                            Optional
+                        {% else %}
+                            {{ 'Ready' if check['ready'] else 'Needs Attention' }}
+                        {% endif %}
                     </p>
                     <h3>{{ check["title"] }}</h3>
                     <p>{{ check["description"] }}</p>
@@ -72,6 +82,18 @@
                     <p>Review your <a href="/terms">Terms</a>, <a href="/privacy">Privacy Policy</a>, and <a href="/refund">Refund Policy</a> before launch.</p>
                 </div>
             </div>
+        </section>
+
+        <section class="launch-package-section">
+            <p class="eyebrow">Production Checklist</p>
+            <h2>Complete These Checks Before Launch</h2>
+            <p>Work through each item on your production deployment before inviting real users.</p>
+
+            <ol class="production-checklist">
+                {% for item in production_checklist %}
+                    <li>{{ item }}</li>
+                {% endfor %}
+            </ol>
         </section>
 
         <div class="plan-actions">
