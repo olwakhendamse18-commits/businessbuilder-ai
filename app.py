@@ -880,6 +880,74 @@ PACKAGE_LEVELS = {
     "Premium Build": 3
 }
 
+PAYSTACK_PLANS = {
+    "starter": {
+        "package_name": "Starter",
+        "amount": 49900
+    },
+    "pro": {
+        "package_name": "Pro",
+        "amount": 99900
+    },
+    "premium": {
+        "package_name": "Premium Build",
+        "amount": 199900
+    }
+}
+
+
+def get_paystack_plan(plan_name, default=None):
+    if not isinstance(plan_name, str):
+        return PAYSTACK_PLANS.get(default)
+
+    return PAYSTACK_PLANS.get(plan_name.strip().lower())
+
+
+def get_paystack_metadata_plan(transaction):
+    metadata = transaction.get("metadata")
+
+    if not isinstance(metadata, dict):
+        return None
+
+    plan_name = metadata.get("plan")
+
+    if isinstance(plan_name, str):
+        return plan_name
+
+    custom_fields = metadata.get("custom_fields")
+
+    if not isinstance(custom_fields, list):
+        return None
+
+    for field in custom_fields:
+        if (
+            isinstance(field, dict)
+            and field.get("variable_name") == "plan"
+        ):
+            return field.get("value")
+
+    return None
+
+
+def resolve_paystack_plan(transaction, fallback_plan=None):
+    metadata_plan = get_paystack_metadata_plan(transaction)
+    requested_plan = metadata_plan or fallback_plan or "starter"
+    plan = get_paystack_plan(requested_plan)
+
+    if not plan:
+        return None
+
+    amount = transaction.get("amount")
+
+    if (
+        not isinstance(amount, (int, float))
+        or isinstance(amount, bool)
+        or amount != plan["amount"]
+    ):
+        return None
+
+    return plan
+
 PACKAGE_USAGE_LIMITS = {
     "Starter": {
         "chat_message": {"limit": 50, "period": "daily"},
@@ -4419,6 +4487,17 @@ def paystack_checkout():
     if "user_id" not in session:
         return redirect("/login")
 
+    plan_name = request.args.get("plan", "starter")
+    plan = get_paystack_plan(plan_name)
+
+    if not plan:
+        return render_error(
+            "Choose a valid BusinessBuilder AI package before starting checkout.",
+            400,
+            "/pricing"
+        )
+
+    plan_slug = plan_name.strip().lower()
     paystack_secret = os.getenv("PAYSTACK_SECRET_KEY")
 
     if not paystack_secret:
@@ -4446,7 +4525,7 @@ def paystack_checkout():
         return redirect("/login")
 
     email = user[0]
-    amount = 49900
+    amount = plan["amount"]
 
     headers = {
         "Authorization": f"Bearer {paystack_secret}",
@@ -4457,7 +4536,15 @@ def paystack_checkout():
         "email": email,
         "amount": amount,
         "currency": "ZAR",
-        "callback_url": request.host_url + "payment_success"
+        "callback_url": (
+            request.host_url
+            + "payment_success?"
+            + urllib.parse.urlencode({"plan": plan_slug})
+        ),
+        "metadata": {
+            "plan": plan_slug,
+            "package_name": plan["package_name"]
+        }
     }
 
     try:
@@ -4513,14 +4600,28 @@ def payment_success():
             400
         )
 
+    plan = resolve_paystack_plan(
+        transaction,
+        request.args.get("plan")
+    )
+
+    if not plan:
+        return render_error(
+            "Payment verification returned an invalid package or amount. Please contact support.",
+            400
+        )
+
     save_payment(
         session["user_id"],
         "paystack",
-        transaction.get("amount", 49900),
+        transaction["amount"],
         "success",
         reference
     )
-    ensure_starter_package(session["user_id"])
+    set_user_package(
+        session["user_id"],
+        plan["package_name"]
+    )
 
     email = get_user_email(session["user_id"])
 
@@ -4530,7 +4631,8 @@ def payment_success():
             "Your BusinessBuilder AI payment is confirmed",
             (
                 "Your Paystack payment has been verified and your BusinessBuilder AI "
-                "Starter Package is active. Open your dashboard to complete the guided workflow."
+                f"{plan['package_name']} package is active. Open your dashboard to complete "
+                "the guided workflow."
             )
         )
 
@@ -4603,20 +4705,27 @@ def paystack_webhook():
     if not user_id:
         return "", 200
 
+    plan = resolve_paystack_plan(transaction)
+
+    if not plan:
+        return "", 200
+
     payment_user_id = get_payment_user_id_by_reference(reference)
 
     if not payment_user_id:
-        save_payment(
+        saved = save_payment(
             user_id,
             "paystack",
             amount,
             "success",
             reference
         )
-        payment_user_id = user_id
 
-    if payment_user_id == user_id:
-        ensure_starter_package(user_id)
+        if saved:
+            set_user_package(
+                user_id,
+                plan["package_name"]
+            )
 
     return "", 200
 

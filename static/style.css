@@ -992,6 +992,11 @@ a {
     max-width: none;
 }
 
+.pricing-grid .pricing-button {
+    width: 100%;
+    margin-top: 18px;
+}
+
 .featured-package,
 .package-status-card {
     border-color: rgba(96, 165, 250, 0.52);

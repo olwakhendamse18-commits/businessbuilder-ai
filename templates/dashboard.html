@@ -89,7 +89,16 @@
         <p>Your package controls which business tools and usage limits are available.</p>
 
         {% if current_package == "Starter" %}
-            <a href="/pricing" class="secondary-button">Compare Pro Features</a>
+            <div class="generator-actions">
+                <a href="/paystack_checkout?plan=pro" class="primary-button">Upgrade to Pro - R999</a>
+                <a href="/paystack_checkout?plan=premium" class="secondary-button">Upgrade to Premium Build - R1999</a>
+                <a href="/pricing" class="secondary-button">Compare Packages</a>
+            </div>
+        {% elif current_package == "Pro" %}
+            <div class="generator-actions">
+                <a href="/paystack_checkout?plan=premium" class="primary-button">Upgrade to Premium Build - R1999</a>
+                <a href="/pricing" class="secondary-button">Compare Packages</a>
+            </div>
         {% endif %}
     </div>
 
@@ -148,7 +157,7 @@
         </div>
 
         <div class="generator-actions">
-            <a href="/paystack_checkout">
+            <a href="/paystack_checkout?plan=starter">
                 <button type="button">Pay R499 Securely</button>
             </a>
             <a href="/pricing" class="secondary-button">Review Package Details</a>
