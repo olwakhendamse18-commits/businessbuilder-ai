@@ -3329,7 +3329,7 @@ def signup():
             "Welcome to BusinessBuilder AI",
             (
                 "Your BusinessBuilder AI workspace is ready. "
-                "Start by activating your Starter Package, then complete the "
+                "Start by choosing your package, then complete the "
                 "guided workflow to build your plans, store drafts, and brand assets."
             )
         )
@@ -4285,6 +4285,7 @@ def launch_readiness():
     )
     paystack_configured = bool(os.getenv("PAYSTACK_SECRET_KEY"))
     openai_configured = bool(os.getenv("OPENAI_API_KEY"))
+    secret_key_configured = bool(os.getenv("SECRET_KEY"))
     email_configured = bool(
         os.getenv("EMAIL_PROVIDER", "").strip().lower() == "resend"
         and os.getenv("EMAIL_API_KEY")
@@ -4319,6 +4320,15 @@ def launch_readiness():
             )
         },
         {
+            "title": "Secret Key",
+            "ready": secret_key_configured,
+            "description": (
+                "Flask session signing is configured for production."
+                if secret_key_configured
+                else "Configure SECRET_KEY before deploying to production."
+            )
+        },
+        {
             "title": "Shopify Store",
             "ready": shopify_connected,
             "description": (
@@ -4337,9 +4347,24 @@ def launch_readiness():
             )
         },
         {
-            "title": "Policy Pages",
+            "title": "Pricing Page",
             "ready": True,
-            "description": "Terms, Privacy, and Refund Policy pages are available."
+            "description": "Package pricing and Paystack checkout options are available."
+        },
+        {
+            "title": "Terms Page",
+            "ready": True,
+            "description": "Terms page is available for review before launch."
+        },
+        {
+            "title": "Privacy Page",
+            "ready": True,
+            "description": "Privacy Policy page is available for review before launch."
+        },
+        {
+            "title": "Refund Page",
+            "ready": True,
+            "description": "Refund Policy page is available for review before launch."
         },
         {
             "title": "Email Notifications",
@@ -4725,6 +4750,15 @@ def paystack_webhook():
             set_user_package(
                 user_id,
                 plan["package_name"]
+            )
+            send_email(
+                customer_email.strip().lower(),
+                "Your BusinessBuilder AI payment is confirmed",
+                (
+                    "Your Paystack payment has been verified and your BusinessBuilder AI "
+                    f"{plan['package_name']} package is active. Open your dashboard to complete "
+                    "the guided workflow."
+                )
             )
 
     return "", 200
