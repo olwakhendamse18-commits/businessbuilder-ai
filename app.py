@@ -12,6 +12,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from cryptography.fernet import Fernet, InvalidToken
 
 import requests
 import sqlite3
@@ -74,6 +75,69 @@ CANVA_SCOPES = os.getenv(
 
 class ExternalServiceError(Exception):
     pass
+
+
+def get_encryption_key():
+    encryption_key = os.getenv("ENCRYPTION_KEY", "").strip()
+
+    if encryption_key:
+        try:
+            Fernet(encryption_key.encode("utf-8"))
+        except (TypeError, ValueError):
+            raise ExternalServiceError(
+                "Token encryption is misconfigured. Please contact support."
+            )
+
+        return encryption_key.encode("utf-8")
+
+    if os.getenv("DATABASE_URL"):
+        return None
+
+    # Local development still encrypts tokens at rest without requiring .env
+    # changes. Production must use a dedicated ENCRYPTION_KEY environment value.
+    local_digest = hashlib.sha256(
+        f"local-token-encryption:{app.secret_key}".encode("utf-8")
+    ).digest()
+
+    return base64.urlsafe_b64encode(local_digest)
+
+
+def encrypt_token(value):
+    if not value:
+        return value
+
+    encryption_key = get_encryption_key()
+
+    if not encryption_key:
+        raise ExternalServiceError(
+            "Token encryption is not configured. Add ENCRYPTION_KEY before connecting an account."
+        )
+
+    # Tokens are encrypted before they leave application memory for storage.
+    return Fernet(encryption_key).encrypt(
+        value.encode("utf-8")
+    ).decode("utf-8")
+
+
+def decrypt_token(value):
+    if not value:
+        return value
+
+    encryption_key = get_encryption_key()
+
+    if not encryption_key:
+        # Legacy production rows may still contain plaintext until users
+        # reconnect. New production writes are blocked by encrypt_token().
+        return value
+
+    try:
+        return Fernet(encryption_key).decrypt(
+            value.encode("utf-8")
+        ).decode("utf-8")
+    except (InvalidToken, ValueError):
+        # Backwards compatibility for connected users whose tokens predate
+        # encryption. Reconnecting stores an encrypted replacement.
+        return value
 
 
 def render_error(message, status_code=500, back_url="/dashboard"):
@@ -2039,6 +2103,7 @@ def get_build_quote(user_id, quote_id):
 
 
 def save_shopify_connection(user_id, shop_domain, access_token, status):
+    encrypted_access_token = encrypt_token(access_token)
     conn = db()
     cur = conn.cursor()
 
@@ -2063,7 +2128,7 @@ def save_shopify_connection(user_id, shop_domain, access_token, status):
                     status = ?
                 WHERE user_id = ?
             """),
-            (shop_domain, access_token, status, user_id)
+            (shop_domain, encrypted_access_token, status, user_id)
         )
     else:
         cur.execute(
@@ -2076,7 +2141,7 @@ def save_shopify_connection(user_id, shop_domain, access_token, status):
                 )
                 VALUES (?, ?, ?, ?)
             """),
-            (user_id, shop_domain, access_token, status)
+            (user_id, shop_domain, encrypted_access_token, status)
         )
 
     conn.commit()
@@ -2136,6 +2201,8 @@ def save_canva_connection(
     access_token,
     refresh_token
 ):
+    encrypted_access_token = encrypt_token(access_token)
+    encrypted_refresh_token = encrypt_token(refresh_token)
     conn = db()
     cur = conn.cursor()
 
@@ -2164,8 +2231,8 @@ def save_canva_connection(
             (
                 status,
                 connected_email,
-                access_token,
-                refresh_token,
+                encrypted_access_token,
+                encrypted_refresh_token,
                 user_id
             )
         )
@@ -2185,8 +2252,8 @@ def save_canva_connection(
                 user_id,
                 status,
                 connected_email,
-                access_token,
-                refresh_token
+                encrypted_access_token,
+                encrypted_refresh_token
             )
         )
 
@@ -2200,7 +2267,7 @@ def create_canva_design(user_id, title, width=1080, height=1080):
     if not connection or connection[2] != "connected":
         return None, None, None, None, "Connect Canva before creating a design draft."
 
-    access_token = connection[4]
+    access_token = decrypt_token(connection[4])
 
     if not access_token:
         return None, None, None, None, "Your Canva connection is missing an access token. Reconnect Canva and try again."
@@ -2510,7 +2577,8 @@ def send_shopify_graphql(user_id, query, variables):
         return None, "Connect and test your Shopify store before building store drafts."
 
     shop_domain = connection[1]
-    access_token = connection[2]
+    # Decrypt only at the API boundary; database rows remain encrypted.
+    access_token = decrypt_token(connection[2])
     endpoint = (
         f"https://{shop_domain}/admin/api/"
         f"{SHOPIFY_ADMIN_API_VERSION}/graphql.json"
@@ -2639,7 +2707,8 @@ def create_shopify_product(
         return None, None, "Connect and test your Shopify store before creating products."
 
     shop_domain = connection[1]
-    access_token = connection[2]
+    # Decrypt only at the API boundary; database rows remain encrypted.
+    access_token = decrypt_token(connection[2])
     endpoint = (
         f"https://{shop_domain}/admin/api/"
         f"{SHOPIFY_ADMIN_API_VERSION}/graphql.json"
