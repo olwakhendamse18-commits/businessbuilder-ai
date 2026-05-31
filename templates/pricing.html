@@ -28,13 +28,21 @@
         <p>Start with the essentials, then upgrade when you are ready for deeper store and branding automation.</p>
     </section>
 
+    {% if request.args.get("onboarding") == "choose_plan" %}
+        <section class="pricing-onboarding-notice">
+            <p class="eyebrow">Workspace Created</p>
+            <h2>Choose a plan to unlock BusinessBuilder AI</h2>
+            <p>Your account is ready. Select the package that matches how far you want to take your business build.</p>
+        </section>
+    {% endif %}
+
     <section class="pricing-grid">
         <article class="pricing-card">
             <p class="eyebrow">Starter</p>
             <h2>BusinessBuilder AI Starter</h2>
             <div class="pricing-amount">
                 <strong>R499</strong>
-                <span>starting package</span>
+                <span>once-off payment</span>
             </div>
             <ul class="pricing-list">
                 <li>Guided AI business workflow</li>
@@ -47,11 +55,12 @@
         </article>
 
         <article class="pricing-card featured-package">
+            <p class="pricing-badge">Most Popular</p>
             <p class="eyebrow">Pro</p>
             <h2>BusinessBuilder AI Pro</h2>
             <div class="pricing-amount">
                 <strong>R999</strong>
-                <span>automation package</span>
+                <span>once-off payment</span>
             </div>
             <ul class="pricing-list">
                 <li>Everything in Starter</li>
@@ -69,7 +78,7 @@
             <h2>Premium Build Package</h2>
             <div class="pricing-amount">
                 <strong>R1999</strong>
-                <span>priority build package</span>
+                <span>once-off payment</span>
             </div>
             <ul class="pricing-list">
                 <li>Everything in Pro</li>

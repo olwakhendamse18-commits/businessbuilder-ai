@@ -132,35 +132,46 @@
 
         <h2>Package Active</h2>
         <p>Your BusinessBuilder AI {{ current_package }} package is active.</p>
+        <div class="generator-actions">
+            <a href="/build_center">
+                <button type="button">Continue Building Your Business</button>
+            </a>
+        </div>
 
     {% else %}
 
         <p class="eyebrow">Getting Started</p>
-        <h2>Activate your Starter Package</h2>
-        <p>Start with payment, then complete your guided business workflow to unlock your saved plans, store drafts, and branding tools.</p>
+        <h2>Choose a plan to unlock BusinessBuilder AI</h2>
+        <p>Select Starter, Pro, or Premium Build, then complete payment securely through Paystack.</p>
 
         <div class="onboarding-steps">
             <div class="onboarding-step active">
                 <strong>1</strong>
                 <div>
-                    <h3>Complete your R499 payment</h3>
-                    <p>Pay securely through Paystack to activate your account.</p>
+                    <h3>Choose your package</h3>
+                    <p>Compare the available plans and select the right level for your build.</p>
                 </div>
             </div>
             <div class="onboarding-step">
                 <strong>2</strong>
                 <div>
-                    <h3>Complete the business workflow</h3>
-                    <p>Answer the guided questions, then generate your business assets.</p>
+                    <h3>Complete secure payment</h3>
+                    <p>Pay through Paystack to unlock your selected package.</p>
+                </div>
+            </div>
+            <div class="onboarding-step">
+                <strong>3</strong>
+                <div>
+                    <h3>Start your guided workflow</h3>
+                    <p>Answer the setup questions, then generate your business assets.</p>
                 </div>
             </div>
         </div>
 
         <div class="generator-actions">
-            <a href="/paystack_checkout?plan=starter">
-                <button type="button">Pay R499 Securely</button>
+            <a href="/pricing">
+                <button type="button">Choose Your Plan</button>
             </a>
-            <a href="/pricing" class="secondary-button">Review Package Details</a>
         </div>
 
     {% endif %}
@@ -486,6 +497,25 @@
 </section>
 
 {% endif %}
+
+<section>
+    <h2>Launch Package</h2>
+    <p>Bring your strategy, Shopify drafts, Canva assets, checklist, and next 30-day plan together.</p>
+
+    <div class="cards">
+        <div class="card empty-card">
+            {% if premium_build %}
+                <h3>Your final launch package is ready to generate</h3>
+                <p>Open your launch package whenever you want the latest combined summary of your saved work.</p>
+                <a href="/launch_package" class="primary-button">View Launch Package</a>
+            {% else %}
+                <h3>No launch package available yet</h3>
+                <p>The complete launch package unlocks with Premium Build.</p>
+                <a href="/pricing" class="primary-button">View Premium Build</a>
+            {% endif %}
+        </div>
+    </div>
+</section>
 
 <section>
     <h2>Saved Shopify Setup Plans</h2>

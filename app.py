@@ -3334,7 +3334,7 @@ def signup():
             )
         )
 
-        return redirect("/dashboard")
+        return redirect("/pricing?onboarding=choose_plan")
 
     except (sqlite3.IntegrityError, psycopg2.IntegrityError):
         if conn:
