@@ -47,6 +47,13 @@
             <p class="form-notice">{{ usage_limit_message }}</p>
         {% endif %}
 
+        {% if package_required_message %}
+            <p class="form-notice">
+                {{ package_required_message }}
+                <a href="/pricing">View package options</a>
+            </p>
+        {% endif %}
+
         {% if request.args.get("shopify_product") == "created" %}
             <p class="success-notice">Draft Shopify product created successfully.</p>
         {% endif %}
@@ -75,6 +82,16 @@
 
        <section class="project-form">
     {% if paid %}
+
+    <div class="package-status-card">
+        <p class="eyebrow">Current Package</p>
+        <h2>{{ current_package }}</h2>
+        <p>Your package controls which business tools and usage limits are available.</p>
+
+        {% if current_package == "Starter" %}
+            <a href="/pricing" class="secondary-button">Compare Pro Features</a>
+        {% endif %}
+    </div>
 
     {% if latest_payment %}
 
@@ -105,7 +122,7 @@
 {% endif %}
 
         <h2>Package Active</h2>
-        <p>Your BusinessBuilder AI Starter Package is active.</p>
+        <p>Your BusinessBuilder AI {{ current_package }} package is active.</p>
 
     {% else %}
 
@@ -164,9 +181,13 @@
         <a href="/build_center">
             <button type="button">Open Build Center</button>
         </a>
-        <a href="/launch_package">
-            <button type="button">View Launch Package</button>
-        </a>
+        {% if premium_build %}
+            <a href="/launch_package">
+                <button type="button">View Launch Package</button>
+            </a>
+        {% else %}
+            <a href="/pricing" class="secondary-button">Unlock Premium Launch Package</a>
+        {% endif %}
     </div>
 </section>
 
@@ -198,7 +219,14 @@
 <section class="project-form">
     <h2>Shopify Connection</h2>
 
-    {% if shopify_connection and shopify_connection["status"] == "connected" %}
+    {% if not pro_package %}
+        <p class="connection-status not-connected">Available with Pro</p>
+        <p>Upgrade to Pro to connect Shopify and create draft store assets.</p>
+
+        <a href="/pricing">
+            <button type="button">Compare Packages</button>
+        </a>
+    {% elif shopify_connection and shopify_connection["status"] == "connected" %}
         <p class="connection-status connected">Shopify Connected</p>
         <p><strong>Store:</strong> {{ shopify_connection["shop_domain"] }}</p>
 
@@ -222,7 +250,10 @@
 <section class="project-form">
     <h2>Canva Connection</h2>
 
-    {% if canva_connection and canva_connection["status"] == "connected" %}
+    {% if not pro_package %}
+        <p class="connection-status not-connected">Available with Pro</p>
+        <p>Upgrade to Pro to connect Canva and create editable design drafts.</p>
+    {% elif canva_connection and canva_connection["status"] == "connected" %}
         <p class="connection-status connected">Canva Connected</p>
         <p>Your Canva OAuth connection is ready to create editable design drafts.</p>
     {% else %}
@@ -230,9 +261,15 @@
         <p>Connect your Canva account securely through Canva OAuth.</p>
     {% endif %}
 
-    <a href="/canva_settings">
-        <button type="button">Open Canva Settings</button>
-    </a>
+    {% if pro_package %}
+        <a href="/canva_settings">
+            <button type="button">Open Canva Settings</button>
+        </a>
+    {% else %}
+        <a href="/pricing">
+            <button type="button">Compare Packages</button>
+        </a>
+    {% endif %}
 </section>
 
 {% endif %}
@@ -372,30 +409,45 @@
 <section class="project-form">
     <p class="eyebrow">Account Usage</p>
     <h2>Usage Summary</h2>
-    <p>Track your current Starter Package activity and remaining generation capacity.</p>
+    <p>Track your current {{ usage_summary["package_name"] }} package activity and remaining generation capacity.</p>
 
     <div class="usage-summary-grid">
         <div class="usage-stat">
             <span>Chat messages today</span>
-            <strong>{{ usage_summary["chat_messages"] }} / 50</strong>
+            <strong>{{ usage_summary["chat_messages"] }} / {{ usage_summary["chat_message_limit"] }}</strong>
         </div>
         <div class="usage-stat">
             <span>Business plans</span>
-            <strong>{{ usage_summary["business_plans"] }} / 10</strong>
+            <strong>{{ usage_summary["business_plans"] }} / {{ usage_summary["business_plan_limit"] }}</strong>
         </div>
         <div class="usage-stat">
             <span>Shopify actions</span>
             <strong>{{ usage_summary["shopify_actions"] }}</strong>
-            <small>{{ usage_summary["shopify_plans"] }} plans / 10, {{ usage_summary["shopify_products"] }} products / 20</small>
+            <small>
+                {{ usage_summary["shopify_plans"] }} plans / {{ usage_summary["shopify_plan_limit"] }},
+                {% if usage_summary["shopify_product_limit"] %}
+                    {{ usage_summary["shopify_products"] }} products / {{ usage_summary["shopify_product_limit"] }}
+                {% else %}
+                    product automation unlocks with Pro
+                {% endif %}
+            </small>
         </div>
         <div class="usage-stat">
             <span>Canva actions</span>
             <strong>{{ usage_summary["canva_actions"] }}</strong>
-            <small>{{ usage_summary["canva_branding"] }} branding / 10, {{ usage_summary["canva_design_briefs"] }} briefs / 10, {{ usage_summary["canva_designs"] }} drafts / 20</small>
+            <small>
+                {{ usage_summary["canva_branding"] }} branding / {{ usage_summary["canva_branding_limit"] }},
+                {% if usage_summary["canva_design_brief_limit"] %}
+                    {{ usage_summary["canva_design_briefs"] }} briefs / {{ usage_summary["canva_design_brief_limit"] }},
+                    {{ usage_summary["canva_designs"] }} drafts / {{ usage_summary["canva_design_limit"] }}
+                {% else %}
+                    design automation unlocks with Pro
+                {% endif %}
+            </small>
         </div>
         <div class="usage-stat">
             <span>PDF exports</span>
-            <strong>{{ usage_summary["pdf_exports"] }} / 20</strong>
+            <strong>{{ usage_summary["pdf_exports"] }} / {{ usage_summary["pdf_export_limit"] }}</strong>
         </div>
     </div>
 </section>
@@ -414,7 +466,11 @@
 
             <div class="card-actions">
                 <a href="/shopify_build_summary" class="primary-button">View Shopify Build Summary</a>
-                <a href="/build_shopify_store_draft" class="secondary-button">Build Shopify Store Draft</a>
+                {% if pro_package %}
+                    <a href="/build_shopify_store_draft" class="secondary-button">Build Shopify Store Draft</a>
+                {% else %}
+                    <a href="/pricing" class="secondary-button">Upgrade to Pro</a>
+                {% endif %}
             </div>
         </div>
     </div>

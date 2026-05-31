@@ -41,6 +41,13 @@
             </p>
         {% endif %}
 
+        {% if request.args.get("package_required") %}
+            <p class="form-notice">
+                This feature requires the {{ request.args.get("package_required") }} package.
+                <a href="/pricing">Compare package options</a>.
+            </p>
+        {% endif %}
+
         <section class="project-form">
     <h2>Business Setup Progress</h2>
 
@@ -167,24 +174,30 @@
             <a href="/generate_canva_branding">
                 <button type="button">Generate Canva Branding Package</button>
             </a>
-            <a href="/generate_canva_design_brief">
-                <button type="button">Generate Canva Design Brief</button>
-            </a>
-            <a href="/create_canva_design">
-                <button type="button">Create Canva Design Draft</button>
-            </a>
-            <a href="/create_canva_designs">
-                <button type="button">Create Canva Design Drafts</button>
-            </a>
-            <a href="/create_shopify_product">
-                <button type="button">Create Shopify Product</button>
-            </a>
-            <a href="/create_shopify_products">
-                <button type="button">Create Multiple Shopify Products</button>
-            </a>
-            <a href="/build_shopify_store_draft">
-                <button type="button">Build Shopify Store Draft</button>
-            </a>
+            {% if pro_package %}
+                <a href="/generate_canva_design_brief">
+                    <button type="button">Generate Canva Design Brief</button>
+                </a>
+                <a href="/create_canva_design">
+                    <button type="button">Create Canva Design Draft</button>
+                </a>
+                <a href="/create_canva_designs">
+                    <button type="button">Create Canva Design Drafts</button>
+                </a>
+                <a href="/create_shopify_product">
+                    <button type="button">Create Shopify Product</button>
+                </a>
+                <a href="/create_shopify_products">
+                    <button type="button">Create Multiple Shopify Products</button>
+                </a>
+                <a href="/build_shopify_store_draft">
+                    <button type="button">Build Shopify Store Draft</button>
+                </a>
+            {% else %}
+                <a href="/pricing">
+                    <button type="button">Upgrade to Pro for Store and Design Automation</button>
+                </a>
+            {% endif %}
             <a href="/generate_build_quote">
                 <button type="button">Generate Store + Branding Quote</button>
             </a>

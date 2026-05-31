@@ -292,6 +292,21 @@ def init_db():
         )
     """)
 
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS user_packages (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            package_name TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_user_packages_user_status
+        ON user_packages (user_id, status)
+    """))
+
     cur.execute(sql("""
         DELETE FROM payments
         WHERE reference IS NOT NULL
@@ -742,6 +757,29 @@ def payment_reference_exists(reference):
     return payment is not None
 
 
+def get_payment_user_id_by_reference(reference):
+    if not reference:
+        return None
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT user_id
+            FROM payments
+            WHERE reference = ?
+            LIMIT 1
+        """),
+        (reference,)
+    )
+
+    payment = cur.fetchone()
+    conn.close()
+
+    return payment[0] if payment else None
+
+
 def verify_paystack_transaction(reference):
     paystack_secret = os.getenv("PAYSTACK_SECRET_KEY")
 
@@ -772,7 +810,174 @@ def verify_paystack_transaction(reference):
     return transaction, None
 
 
+PACKAGE_LEVELS = {
+    "Starter": 1,
+    "Pro": 2,
+    "Premium Build": 3
+}
+
+PACKAGE_USAGE_LIMITS = {
+    "Starter": {
+        "chat_message": {"limit": 50, "period": "daily"},
+        "business_plan": {"limit": 10, "period": "total"},
+        "shopify_plan": {"limit": 10, "period": "total"},
+        "canva_branding": {"limit": 10, "period": "total"},
+        "pdf_export": {"limit": 20, "period": "total"}
+    },
+    "Pro": {
+        "chat_message": {"limit": 150, "period": "daily"},
+        "business_plan": {"limit": 30, "period": "total"},
+        "shopify_plan": {"limit": 30, "period": "total"},
+        "shopify_product": {"limit": 50, "period": "total"},
+        "canva_branding": {"limit": 30, "period": "total"},
+        "canva_design_brief": {"limit": 30, "period": "total"},
+        "canva_design": {"limit": 50, "period": "total"},
+        "pdf_export": {"limit": 50, "period": "total"}
+    },
+    "Premium Build": {
+        "chat_message": {"limit": 300, "period": "daily"},
+        "business_plan": {"limit": 100, "period": "total"},
+        "shopify_plan": {"limit": 100, "period": "total"},
+        "shopify_product": {"limit": 200, "period": "total"},
+        "canva_branding": {"limit": 100, "period": "total"},
+        "canva_design_brief": {"limit": 100, "period": "total"},
+        "canva_design": {"limit": 200, "period": "total"},
+        "launch_package": {"limit": 50, "period": "total"},
+        "pdf_export": {"limit": 100, "period": "total"}
+    }
+}
+
+
+def set_user_package(user_id, package_name):
+    if package_name not in PACKAGE_LEVELS:
+        raise ValueError("Unknown package tier.")
+
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            UPDATE user_packages
+            SET status = ?
+            WHERE user_id = ?
+            AND status = ?
+        """),
+        ("inactive", user_id, "active")
+    )
+
+    cur.execute(
+        sql("""
+            INSERT INTO user_packages (user_id, package_name, status)
+            VALUES (?, ?, ?)
+        """),
+        (user_id, package_name, "active")
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_user_package(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT package_name
+            FROM user_packages
+            WHERE user_id = ?
+            AND status = ?
+            ORDER BY id DESC
+            LIMIT 1
+        """),
+        (user_id, "active")
+    )
+
+    package = cur.fetchone()
+
+    if not package:
+        cur.execute(
+            sql("""
+                SELECT id
+                FROM payments
+                WHERE user_id = ?
+                AND status = ?
+                LIMIT 1
+            """),
+            (user_id, "success")
+        )
+        package = ("Starter",) if cur.fetchone() else None
+
+    conn.close()
+
+    return package[0] if package else None
+
+
+def user_has_package(user_id, package_name):
+    return get_user_package(user_id) == package_name
+
+
+def user_package_at_least(user_id, package_name):
+    current_package = get_user_package(user_id)
+
+    return (
+        current_package in PACKAGE_LEVELS
+        and PACKAGE_LEVELS[current_package] >= PACKAGE_LEVELS[package_name]
+    )
+
+
+def user_is_paid(user_id):
+    return get_user_package(user_id) is not None
+
+
 def user_has_paid(user_id):
+    """Compatibility alias for existing paid-user checks."""
+    return user_is_paid(user_id)
+
+
+def has_active_user_package(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id
+            FROM user_packages
+            WHERE user_id = ?
+            AND status = ?
+            LIMIT 1
+        """),
+        (user_id, "active")
+    )
+
+    package = cur.fetchone()
+    conn.close()
+
+    return package is not None
+
+
+def ensure_starter_package(user_id):
+    if not has_active_user_package(user_id):
+        set_user_package(user_id, "Starter")
+
+
+def package_access_redirect(package_name, destination="/dashboard"):
+    return redirect(
+        f"{destination}?package_required={urllib.parse.quote(package_name)}"
+    )
+
+
+def get_package_required_message(package_name):
+    if package_name not in PACKAGE_LEVELS:
+        return ""
+
+    return (
+        f"This feature requires the {package_name} package. "
+        "Review the available packages to upgrade your account."
+    )
+
+
+def payment_record_exists_for_user(user_id):
     conn = db()
     cur = conn.cursor()
 
@@ -857,18 +1062,6 @@ def get_latest_payment(user_id):
     return payment
 
 
-USAGE_LIMITS = {
-    "chat_message": {"limit": 50, "period": "daily"},
-    "business_plan": {"limit": 10, "period": "total"},
-    "shopify_plan": {"limit": 10, "period": "total"},
-    "shopify_product": {"limit": 20, "period": "total"},
-    "canva_branding": {"limit": 10, "period": "total"},
-    "canva_design_brief": {"limit": 10, "period": "total"},
-    "canva_design": {"limit": 20, "period": "total"},
-    "launch_package": {"limit": 10, "period": "total"},
-    "pdf_export": {"limit": 20, "period": "total"}
-}
-
 USAGE_LABELS = {
     "chat_message": "chat messages",
     "business_plan": "business plan generation",
@@ -934,10 +1127,15 @@ def get_usage_count(user_id, action_type, period="daily"):
 
 
 def usage_limit_reached(user_id, action_type):
-    limit_config = USAGE_LIMITS.get(action_type)
+    package_name = get_user_package(user_id) or "Starter"
+    package_limits = PACKAGE_USAGE_LIMITS.get(
+        package_name,
+        PACKAGE_USAGE_LIMITS["Starter"]
+    )
+    limit_config = package_limits.get(action_type)
 
     if not limit_config:
-        return False
+        return True
 
     return get_usage_count(
         user_id,
@@ -952,11 +1150,23 @@ def usage_limit_redirect(action_type, destination="/dashboard"):
     )
 
 
-def get_usage_limit_message(action_type):
-    limit_config = USAGE_LIMITS.get(action_type)
+def get_usage_limit_message(action_type, user_id=None):
+    if not action_type:
+        return ""
+
+    package_name = get_user_package(user_id) if user_id else "Starter"
+    package_name = package_name or "Starter"
+    package_limits = PACKAGE_USAGE_LIMITS.get(
+        package_name,
+        PACKAGE_USAGE_LIMITS["Starter"]
+    )
+    limit_config = package_limits.get(action_type)
 
     if not limit_config:
-        return ""
+        return (
+            f"{USAGE_LABELS.get(action_type, 'This action')} is not included "
+            f"in the {package_name} package. Review the available packages to upgrade."
+        )
 
     period_label = " today" if limit_config["period"] == "daily" else ""
 
@@ -968,34 +1178,55 @@ def get_usage_limit_message(action_type):
 
 
 def get_usage_summary(user_id):
+    package_name = get_user_package(user_id) or "Starter"
+    package_limits = PACKAGE_USAGE_LIMITS.get(
+        package_name,
+        PACKAGE_USAGE_LIMITS["Starter"]
+    )
     counts = {
         action_type: get_usage_count(
             user_id,
             action_type,
-            limit_config["period"]
+            package_limits.get(action_type, {"period": "total"})["period"]
         )
-        for action_type, limit_config in USAGE_LIMITS.items()
+        for action_type in USAGE_LABELS
     }
 
     return {
+        "package_name": package_name,
         "chat_messages": counts["chat_message"],
+        "chat_message_limit": package_limits["chat_message"]["limit"],
         "business_plans": counts["business_plan"],
+        "business_plan_limit": package_limits["business_plan"]["limit"],
         "shopify_actions": (
             counts["shopify_plan"]
             + counts["shopify_product"]
         ),
         "shopify_plans": counts["shopify_plan"],
+        "shopify_plan_limit": package_limits["shopify_plan"]["limit"],
         "shopify_products": counts["shopify_product"],
+        "shopify_product_limit": (
+            package_limits.get("shopify_product", {}).get("limit")
+        ),
         "canva_actions": (
             counts["canva_branding"]
             + counts["canva_design_brief"]
             + counts["canva_design"]
         ),
         "canva_branding": counts["canva_branding"],
+        "canva_branding_limit": package_limits["canva_branding"]["limit"],
         "canva_design_briefs": counts["canva_design_brief"],
+        "canva_design_brief_limit": (
+            package_limits.get("canva_design_brief", {}).get("limit")
+        ),
         "canva_designs": counts["canva_design"],
+        "canva_design_limit": package_limits.get("canva_design", {}).get("limit"),
         "launch_packages": counts["launch_package"],
-        "pdf_exports": counts["pdf_export"]
+        "launch_package_limit": (
+            package_limits.get("launch_package", {}).get("limit")
+        ),
+        "pdf_exports": counts["pdf_export"],
+        "pdf_export_limit": package_limits["pdf_export"]["limit"]
     }
 
 
@@ -1040,10 +1271,17 @@ def get_admin_dashboard_data():
     metrics = {
         "total_users": count("SELECT COUNT(*) FROM users"),
         "paid_users": count("""
-            SELECT COUNT(DISTINCT user_id)
-            FROM payments
-            WHERE status = ?
-        """, ("success",)),
+            SELECT COUNT(*)
+            FROM (
+                SELECT user_id
+                FROM payments
+                WHERE status = ?
+                UNION
+                SELECT user_id
+                FROM user_packages
+                WHERE status = ?
+            ) AS paid_accounts
+        """, ("success", "active")),
         "total_payments": count("SELECT COUNT(*) FROM payments"),
         "business_plans": count("SELECT COUNT(*) FROM business_plans"),
         "shopify_connections": count("SELECT COUNT(*) FROM shopify_connections"),
@@ -1052,6 +1290,33 @@ def get_admin_dashboard_data():
         "canva_designs": count("SELECT COUNT(*) FROM canva_designs"),
         "total_usage_logs": count("SELECT COUNT(*) FROM usage_logs")
     }
+
+    cur.execute(sql("""
+        SELECT package_name, COUNT(DISTINCT user_id)
+        FROM user_packages
+        WHERE status = ?
+        GROUP BY package_name
+    """), ("active",))
+    package_counts = {
+        package_name: package_count
+        for package_name, package_count in cur.fetchall()
+    }
+
+    legacy_starter_users = count("""
+        SELECT COUNT(DISTINCT payments.user_id)
+        FROM payments
+        WHERE payments.status = ?
+        AND NOT EXISTS (
+            SELECT 1
+            FROM user_packages
+            WHERE user_packages.user_id = payments.user_id
+            AND user_packages.status = ?
+        )
+    """, ("success", "active"))
+
+    metrics["starter_users"] = package_counts.get("Starter", 0) + legacy_starter_users
+    metrics["pro_users"] = package_counts.get("Pro", 0)
+    metrics["premium_build_users"] = package_counts.get("Premium Build", 0)
 
     cur.execute(sql("""
         SELECT id, email
@@ -2951,7 +3216,8 @@ def dashboard():
     user_id = session["user_id"]
 
     projects = get_projects(user_id)
-    paid = user_has_paid(user_id)
+    current_package = get_user_package(user_id)
+    paid = user_is_paid(user_id)
     latest_payment = get_latest_payment(user_id)
     business_plans = get_business_plans(user_id)
     shopify_plans = get_shopify_plans(user_id)
@@ -2998,8 +3264,15 @@ def dashboard():
         shopify_pages=shopify_pages,
         usage_summary=get_usage_summary(user_id),
         usage_limit_message=get_usage_limit_message(
-            request.args.get("usage_limit")
+            request.args.get("usage_limit"),
+            user_id
         ),
+        package_required_message=get_package_required_message(
+            request.args.get("package_required")
+        ),
+        current_package=current_package,
+        pro_package=user_package_at_least(user_id, "Pro"),
+        premium_build=user_package_at_least(user_id, "Premium Build"),
         is_admin=is_admin_user()
     )
 
@@ -3024,7 +3297,8 @@ def build_center():
         return redirect("/login")
 
     user_id = session["user_id"]
-    paid = user_has_paid(user_id)
+    current_package = get_user_package(user_id)
+    paid = user_is_paid(user_id)
 
     if not paid:
         return redirect("/dashboard")
@@ -3071,9 +3345,9 @@ def build_center():
 
     build_items = [
         {
-            "title": "Starter Package Payment",
+            "title": f"{current_package} Package",
             "status": status_for(paid),
-            "description": "Your verified payment unlocks the complete business-building workspace.",
+            "description": "Your verified package controls your available tools and usage limits.",
             "url": "/dashboard",
             "action": "View Payment Status",
             "count": "Verified" if latest_payment else "Active"
@@ -3216,6 +3490,25 @@ def build_center():
         }
     ]
 
+    pro_features = {
+        "Shopify Connection",
+        "Shopify Products",
+        "Shopify Store Draft",
+        "Canva Design Briefs",
+        "Canva Connection",
+        "Canva Design Drafts"
+    }
+
+    for item in build_items:
+        if (
+            item["title"] in pro_features
+            and not user_package_at_least(user_id, "Pro")
+        ):
+            item["status"] = "Not Started"
+            item["url"] = "/pricing"
+            item["action"] = "Upgrade to Pro"
+            item["secondary_url"] = ""
+
     next_recommended_action = next(
         item
         for item in build_items
@@ -3235,7 +3528,9 @@ def build_center():
         build_items=build_items,
         completed_count=completed_count,
         total_steps=total_steps,
-        next_recommended_action=next_recommended_action
+        next_recommended_action=next_recommended_action,
+        current_package=current_package,
+        premium_build=user_package_at_least(user_id, "Premium Build")
     )
 
 
@@ -3307,8 +3602,8 @@ def launch_package():
 
     user_id = session["user_id"]
 
-    if not user_has_paid(user_id):
-        return redirect("/dashboard")
+    if not user_package_at_least(user_id, "Premium Build"):
+        return package_access_redirect("Premium Build")
 
     if usage_limit_reached(user_id, "launch_package"):
         return usage_limit_redirect("launch_package")
@@ -3332,8 +3627,8 @@ def download_launch_package():
 
     user_id = session["user_id"]
 
-    if not user_has_paid(user_id):
-        return redirect("/dashboard")
+    if not user_package_at_least(user_id, "Premium Build"):
+        return package_access_redirect("Premium Build")
 
     if usage_limit_reached(user_id, "pdf_export"):
         return usage_limit_redirect("pdf_export")
@@ -3383,6 +3678,9 @@ def download_business_plan(plan_id):
 
     if not plan:
         return redirect("/dashboard")
+
+    if not user_is_paid(session["user_id"]):
+        return package_access_redirect("Starter")
 
     if usage_limit_reached(session["user_id"], "pdf_export"):
         return usage_limit_redirect("pdf_export")
@@ -3488,6 +3786,9 @@ def shopify_settings():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro")
+
     connection = get_shopify_connection(user_id)
     connection_summary = None
     message = None
@@ -3544,6 +3845,9 @@ def shopify_build_summary():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro")
+
     return render_template(
         "shopify_build_summary.html",
         shopify_products=get_shopify_products(user_id),
@@ -3561,6 +3865,9 @@ def canva_settings():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro")
 
     connection = get_canva_connection(user_id)
     message = {
@@ -3594,6 +3901,9 @@ def connect_canva():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro")
 
     client_id = os.getenv("CANVA_CLIENT_ID")
     redirect_uri = os.getenv("CANVA_REDIRECT_URI")
@@ -3636,6 +3946,9 @@ def canva_callback():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro")
 
     expected_state = session.pop("canva_oauth_state", None)
     received_state = request.args.get("state", "")
@@ -4066,6 +4379,9 @@ def payment_success():
         )
 
     if payment_reference_exists(reference):
+        if get_payment_user_id_by_reference(reference) == session["user_id"]:
+            ensure_starter_package(session["user_id"])
+
         return redirect("/dashboard")
 
     transaction, error = verify_paystack_transaction(reference)
@@ -4083,6 +4399,7 @@ def payment_success():
         "success",
         reference
     )
+    ensure_starter_package(session["user_id"])
 
     email = get_user_email(session["user_id"])
 
@@ -4162,16 +4479,23 @@ def paystack_webhook():
     reference = reference.strip()
     user_id = get_user_id_by_email(customer_email)
 
-    if not user_id or payment_reference_exists(reference):
+    if not user_id:
         return "", 200
 
-    save_payment(
-        user_id,
-        "paystack",
-        amount,
-        "success",
-        reference
-    )
+    payment_user_id = get_payment_user_id_by_reference(reference)
+
+    if not payment_user_id:
+        save_payment(
+            user_id,
+            "paystack",
+            amount,
+            "success",
+            reference
+        )
+        payment_user_id = user_id
+
+    if payment_user_id == user_id:
+        ensure_starter_package(user_id)
 
     return "", 200
 
@@ -4202,7 +4526,9 @@ def business_workflow():
         completed_count=completed_count,
         answer_count=answer_count,
         total_steps=total_steps,
-        progress_percent=progress_percent
+        progress_percent=progress_percent,
+        current_package=get_user_package(user_id),
+        pro_package=user_package_at_least(user_id, "Pro")
     )
 
 
@@ -4536,6 +4862,9 @@ def generate_canva_design_brief():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro", "/business_workflow")
+
     if usage_limit_reached(user_id, "canva_design_brief"):
         return usage_limit_redirect("canva_design_brief", "/business_workflow")
 
@@ -4625,6 +4954,9 @@ def create_canva_design_from_brief():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro", "/business_workflow")
+
     if usage_limit_reached(user_id, "canva_design"):
         return usage_limit_redirect("canva_design", "/business_workflow")
 
@@ -4669,6 +5001,9 @@ def create_canva_designs_from_brief():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro", "/business_workflow")
 
     if usage_limit_reached(user_id, "canva_design"):
         return usage_limit_redirect("canva_design", "/business_workflow")
@@ -4836,6 +5171,9 @@ def create_shopify_product_from_workflow():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro", "/business_workflow")
+
     if usage_limit_reached(user_id, "shopify_product"):
         return usage_limit_redirect("shopify_product", "/business_workflow")
 
@@ -4930,6 +5268,9 @@ def build_shopify_store_draft():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro", "/business_workflow")
 
     if usage_limit_reached(user_id, "shopify_product"):
         return usage_limit_redirect("shopify_product", "/business_workflow")
@@ -5165,6 +5506,9 @@ def create_shopify_products_from_workflow():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro", "/business_workflow")
+
     if usage_limit_reached(user_id, "shopify_product"):
         return usage_limit_redirect("shopify_product", "/business_workflow")
 
@@ -5311,7 +5655,7 @@ def chat():
 
     if usage_limit_reached(user_id, "chat_message"):
         return jsonify({
-            "reply": get_usage_limit_message("chat_message")
+            "reply": get_usage_limit_message("chat_message", user_id)
         }), 429
 
     chat_id = session.get("chat_id")

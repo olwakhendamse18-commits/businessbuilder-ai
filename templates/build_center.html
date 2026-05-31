@@ -33,7 +33,7 @@
         <div class="dashboard-header">
             <p class="eyebrow">Business Progress</p>
             <h1>Build Center</h1>
-            <p>Track your complete business creation journey and open the next tool you need.</p>
+            <p>Track your complete business creation journey with your {{ current_package }} package.</p>
         </div>
 
         <section class="project-form">
@@ -66,8 +66,12 @@
             </div>
 
             <div class="card-actions">
-                <a href="/launch_package" class="primary-button">View Launch Package</a>
-                <a href="/download_launch_package" class="secondary-button">Download Launch Package PDF</a>
+                {% if premium_build %}
+                    <a href="/launch_package" class="primary-button">View Launch Package</a>
+                    <a href="/download_launch_package" class="secondary-button">Download Launch Package PDF</a>
+                {% else %}
+                    <a href="/pricing" class="primary-button">Unlock with Premium Build</a>
+                {% endif %}
             </div>
         </section>
 
