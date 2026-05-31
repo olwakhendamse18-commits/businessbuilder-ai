@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Build Approval - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-logo">B</div>
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Build approval</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/business_workflow">Business Workflow</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <p class="eyebrow">Confirmation Required</p>
+            <h1>Review Your Draft Build</h1>
+            <p>Approve only the assets you want BusinessBuilder AI to create in your connected accounts.</p>
+        </div>
+
+        <section class="approval-warning">
+            <h2>Review Before You Continue</h2>
+            <p>
+                Approved actions may create draft assets in your connected Shopify or Canva accounts.
+                Nothing will be published automatically and no external charges will happen automatically.
+            </p>
+        </section>
+
+        <section class="approval-grid">
+            <article class="approval-card">
+                <p class="eyebrow">Shopify Products</p>
+                <h2>Draft Products</h2>
+                <ul>
+                    {% for item in shopify_product_preview %}
+                        <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </article>
+
+            <article class="approval-card">
+                <p class="eyebrow">Shopify Store</p>
+                <h2>Draft Store Assets</h2>
+                <ul>
+                    {% for item in shopify_store_preview %}
+                        <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </article>
+
+            <article class="approval-card">
+                <p class="eyebrow">Canva</p>
+                <h2>Editable Design Drafts</h2>
+                <ul>
+                    {% for item in canva_design_preview %}
+                        <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </article>
+        </section>
+
+        <section class="approval-context">
+            <div>
+                <p class="eyebrow">Saved Context</p>
+                <h2>Workflow Answers</h2>
+
+                {% for step_number, step_name, answer in workflow_answers %}
+                    <div class="approval-context-item">
+                        <h3>{{ step_number }}. {{ step_name }}</h3>
+                        <p>{{ answer }}</p>
+                    </div>
+                {% else %}
+                    <p>No saved workflow answers are available yet.</p>
+                {% endfor %}
+            </div>
+
+            <div>
+                <p class="eyebrow">Latest Plans</p>
+                <h2>Supporting Build Notes</h2>
+
+                <div class="approval-context-item">
+                    <h3>Shopify Setup Plan</h3>
+                    <p>
+                        {% if latest_shopify_plan %}
+                            {{ latest_shopify_plan[2][:900] }}{% if latest_shopify_plan[2]|length > 900 %}...{% endif %}
+                        {% else %}
+                            No saved Shopify setup plan is available. Workflow answers will be used.
+                        {% endif %}
+                    </p>
+                </div>
+
+                <div class="approval-context-item">
+                    <h3>Canva Design Brief</h3>
+                    <p>
+                        {% if latest_canva_design_brief %}
+                            {{ latest_canva_design_brief[2][:900] }}{% if latest_canva_design_brief[2]|length > 900 %}...{% endif %}
+                        {% else %}
+                            No saved Canva design brief is available yet. Generate one before approving Canva drafts.
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <section class="approval-actions">
+            <div>
+                <p class="eyebrow">Choose An Action</p>
+                <h2>Approve Draft Creation</h2>
+                <p>Each approval is used once. You will return here before starting another external build.</p>
+            </div>
+
+            <div class="generator-actions">
+                <form method="POST" action="/build_approval">
+                    <input type="hidden" name="action" value="shopify_products">
+                    <button type="submit">Approve Shopify Products</button>
+                </form>
+
+                <form method="POST" action="/build_approval">
+                    <input type="hidden" name="action" value="shopify_store">
+                    <button type="submit">Approve Shopify Build</button>
+                </form>
+
+                <form method="POST" action="/build_approval">
+                    <input type="hidden" name="action" value="canva_designs">
+                    <button type="submit">Approve Canva Build</button>
+                </form>
+
+                <form method="POST" action="/build_approval">
+                    <input type="hidden" name="action" value="full_build">
+                    <button type="submit">Approve Full Build</button>
+                </form>
+
+                <a href="/dashboard" class="secondary-button">Cancel</a>
+            </div>
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>

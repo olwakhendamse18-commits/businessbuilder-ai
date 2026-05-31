@@ -559,6 +559,76 @@ a {
     gap: 12px;
 }
 
+.approval-warning,
+.approval-actions,
+.approval-context {
+    padding: 24px;
+    margin-top: 24px;
+    border-radius: 22px;
+    background: rgba(15, 23, 42, 0.76);
+    border: 1px solid rgba(148, 163, 184, 0.17);
+    box-shadow: var(--shadow);
+}
+
+.approval-warning {
+    border-color: rgba(245, 158, 11, 0.5);
+    background: rgba(120, 53, 15, 0.22);
+}
+
+.approval-warning h2,
+.approval-actions h2,
+.approval-context h2,
+.approval-card h2,
+.approval-context-item h3 {
+    margin-top: 0;
+    color: white;
+}
+
+.approval-warning p,
+.approval-actions p,
+.approval-context p,
+.approval-card li {
+    color: var(--text-soft);
+    line-height: 1.65;
+}
+
+.approval-grid,
+.approval-context {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 24px;
+}
+
+.approval-context {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.approval-card,
+.approval-context-item {
+    padding: 20px;
+    border-radius: 18px;
+    background: rgba(2, 6, 23, 0.34);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.approval-card ul {
+    padding-left: 20px;
+}
+
+.approval-context-item {
+    margin-top: 14px;
+}
+
+.approval-context-item p {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.approval-actions form {
+    display: inline-flex;
+}
+
 .summary-actions {
     margin-bottom: 30px;
 }
@@ -1639,6 +1709,16 @@ a {
 
     .generator-actions {
         display: grid;
+    }
+
+    .approval-grid,
+    .approval-context {
+        grid-template-columns: 1fr;
+    }
+
+    .approval-actions form,
+    .approval-actions button {
+        width: 100%;
     }
 
     .launch-package-cta {

@@ -1610,6 +1610,58 @@ def get_nonempty_workflow_answers(user_id):
     ]
 
 
+BUILD_APPROVAL_ACTIONS = {
+    "shopify_products": "/create_shopify_products",
+    "shopify_store": "/build_shopify_store_draft",
+    "canva_designs": "/create_canva_designs",
+    "full_build": "/build_shopify_store_draft"
+}
+
+
+def grant_build_approval(action_type):
+    if action_type == "full_build":
+        approved_actions = ["shopify_store", "canva_designs"]
+        session["continue_full_build"] = True
+    else:
+        approved_actions = [action_type]
+
+    session["build_approvals"] = approved_actions
+
+
+def consume_build_approval(action_type):
+    approved_actions = session.get("build_approvals", [])
+
+    if action_type not in approved_actions:
+        return False
+
+    approved_actions.remove(action_type)
+
+    if approved_actions:
+        session["build_approvals"] = approved_actions
+    else:
+        session.pop("build_approvals", None)
+
+    return True
+
+
+def revoke_build_approval(action_type):
+    approved_actions = session.get("build_approvals", [])
+
+    if action_type in approved_actions:
+        approved_actions.remove(action_type)
+
+    if approved_actions:
+        session["build_approvals"] = approved_actions
+    else:
+        session.pop("build_approvals", None)
+
+
+def build_approval_redirect(action_type):
+    return redirect(
+        f"/build_approval?action={urllib.parse.quote(action_type)}"
+    )
+
+
 def save_business_plan(user_id, title, content):
     conn = db()
     cur = conn.cursor()
@@ -3479,7 +3531,7 @@ def build_center():
                 bool(shopify_products or shopify_collections or shopify_pages)
             ),
             "description": "Create draft products, unpublished collections, and unpublished store pages in one guided build.",
-            "url": "/build_shopify_store_draft",
+            "url": "/build_approval?action=shopify_store",
             "action": "Build Shopify Store Draft",
             "secondary_url": (
                 "/shopify_build_summary"
@@ -3531,7 +3583,7 @@ def build_center():
             "title": "Canva Design Drafts",
             "status": status_for(canva_designs, bool(canva_design_briefs)),
             "description": f"{len(canva_designs)} editable Canva design drafts created.",
-            "url": "/create_canva_designs",
+            "url": "/build_approval?action=canva_designs",
             "action": "Create Canva Design Drafts",
             "secondary_url": latest_canva_design_url,
             "secondary_action": "Open Latest Canva Draft",
@@ -4601,6 +4653,61 @@ def business_workflow():
     )
 
 
+@app.route("/build_approval", methods=["GET", "POST"])
+def build_approval():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_is_paid(user_id):
+        return redirect("/dashboard")
+
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro")
+
+    requested_action = request.values.get("action", "full_build")
+
+    if requested_action not in BUILD_APPROVAL_ACTIONS:
+        requested_action = "full_build"
+
+    if request.method == "POST":
+        grant_build_approval(requested_action)
+
+        return redirect(BUILD_APPROVAL_ACTIONS[requested_action])
+
+    workflow_answers = get_nonempty_workflow_answers(user_id)
+    shopify_plans = get_shopify_plans(user_id)
+    latest_canva_design_brief = get_latest_canva_design_brief(user_id)
+
+    return render_template(
+        "build_approval.html",
+        requested_action=requested_action,
+        workflow_answers=workflow_answers,
+        latest_shopify_plan=shopify_plans[0] if shopify_plans else None,
+        latest_canva_design_brief=latest_canva_design_brief,
+        shopify_product_preview=[
+            "3 to 5 draft Shopify products with titles, descriptions, suggested prices, and categories"
+        ],
+        shopify_store_preview=[
+            "3 to 5 draft Shopify products",
+            "2 to 4 unpublished Shopify collections",
+            "About Us page draft",
+            "Contact Us page draft",
+            "Shipping Policy page draft",
+            "Refund Policy page draft"
+        ],
+        canva_design_preview=[
+            "Logo concept draft",
+            "Shopify homepage banner draft",
+            "Instagram post template draft",
+            "Instagram story template draft",
+            "TikTok/Reels cover draft",
+            "Business card draft"
+        ]
+    )
+
+
 @app.route("/complete_step/<int:step_number>/<step_name>")
 def complete_step(step_number, step_name):
     if "user_id" not in session:
@@ -5026,6 +5133,9 @@ def create_canva_design_from_brief():
     if not user_package_at_least(user_id, "Pro"):
         return package_access_redirect("Pro", "/business_workflow")
 
+    if not consume_build_approval("canva_designs"):
+        return build_approval_redirect("canva_designs")
+
     if usage_limit_reached(user_id, "canva_design"):
         return usage_limit_redirect("canva_design", "/business_workflow")
 
@@ -5073,6 +5183,9 @@ def create_canva_designs_from_brief():
 
     if not user_package_at_least(user_id, "Pro"):
         return package_access_redirect("Pro", "/business_workflow")
+
+    if not consume_build_approval("canva_designs"):
+        return build_approval_redirect("canva_designs")
 
     if usage_limit_reached(user_id, "canva_design"):
         return usage_limit_redirect("canva_design", "/business_workflow")
@@ -5243,6 +5356,9 @@ def create_shopify_product_from_workflow():
     if not user_package_at_least(user_id, "Pro"):
         return package_access_redirect("Pro", "/business_workflow")
 
+    if not consume_build_approval("shopify_products"):
+        return build_approval_redirect("shopify_products")
+
     if usage_limit_reached(user_id, "shopify_product"):
         return usage_limit_redirect("shopify_product", "/business_workflow")
 
@@ -5340,6 +5456,11 @@ def build_shopify_store_draft():
 
     if not user_package_at_least(user_id, "Pro"):
         return package_access_redirect("Pro", "/business_workflow")
+
+    if not consume_build_approval("shopify_store"):
+        return build_approval_redirect("shopify_store")
+
+    continue_full_build = session.pop("continue_full_build", False)
 
     if usage_limit_reached(user_id, "shopify_product"):
         return usage_limit_redirect("shopify_product", "/business_workflow")
@@ -5556,6 +5677,9 @@ User workflow answers:
     ):
         return redirect("/business_workflow?store_draft_error=create_failed")
 
+    if continue_full_build:
+        return redirect("/create_canva_designs")
+
     return redirect(
         f"/shopify_build_summary?draft_store=created"
         f"&product_count={created_product_count}"
@@ -5577,6 +5701,9 @@ def create_shopify_products_from_workflow():
 
     if not user_package_at_least(user_id, "Pro"):
         return package_access_redirect("Pro", "/business_workflow")
+
+    if not consume_build_approval("shopify_products"):
+        return build_approval_redirect("shopify_products")
 
     if usage_limit_reached(user_id, "shopify_product"):
         return usage_limit_redirect("shopify_product", "/business_workflow")
