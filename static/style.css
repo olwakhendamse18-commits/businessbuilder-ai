@@ -15,6 +15,7 @@
     --purple: #8b5cf6;
     --cyan: #06b6d4;
     --green: #22c55e;
+    --gold: #f59e0b;
     --dark-card: rgba(15, 23, 42, 0.72);
     --shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
 }
@@ -885,6 +886,45 @@ a {
     border-radius: 28px;
 }
 
+.landing-preview-image {
+    display: block;
+    width: 100%;
+    margin-bottom: 24px;
+    border-radius: 18px;
+    border: 1px solid rgba(96, 165, 250, 0.3);
+}
+
+.landing-confidence {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    width: min(1180px, calc(100% - 48px));
+    margin: 0 auto;
+}
+
+.landing-confidence > div {
+    padding: 20px;
+    border: 1px solid rgba(148, 163, 184, 0.17);
+    border-radius: 20px;
+    background: rgba(15, 23, 42, 0.76);
+    box-shadow: var(--shadow);
+}
+
+.landing-confidence strong,
+.landing-confidence span {
+    display: block;
+}
+
+.landing-confidence strong {
+    margin-bottom: 8px;
+    color: #fde68a;
+}
+
+.landing-confidence span {
+    color: var(--text-soft);
+    line-height: 1.55;
+}
+
 .landing-preview h2,
 .landing-section h2,
 .landing-pricing-cta h2,
@@ -1155,6 +1195,84 @@ a {
     margin-top: 5px;
 }
 
+.workflow-tool-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.workflow-tool-group {
+    padding: 20px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 20px;
+    background: rgba(2, 6, 23, 0.3);
+}
+
+.workflow-tool-group h3 {
+    margin: 0;
+    color: white;
+}
+
+.workflow-tool-group p:not(.eyebrow) {
+    color: var(--text-soft);
+    line-height: 1.55;
+}
+
+.workflow-step-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.workflow-step-card .card-actions {
+    margin-top: auto;
+    padding-top: 10px;
+}
+
+.workflow-step-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+.workflow-step-heading h3 {
+    margin-bottom: 8px;
+}
+
+.workflow-step-number {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    place-items: center;
+    border-radius: 14px;
+    color: white;
+    background: linear-gradient(135deg, #2563eb, #0f766e);
+    font-weight: 900;
+}
+
+.workflow-step-status {
+    display: inline-flex;
+    padding: 5px 9px;
+    margin: 0 !important;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.workflow-step-status.completed {
+    color: #bbf7d0 !important;
+    background: rgba(34, 197, 94, 0.14);
+    border: 1px solid rgba(34, 197, 94, 0.38);
+}
+
+.workflow-step-status.not-started {
+    color: #fde68a !important;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
 .readiness-grid {
     margin-bottom: 28px;
 }
@@ -1319,6 +1437,12 @@ a {
     font-size: 20px;
 }
 
+.auth-brand .brand-image {
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
+}
+
 .error-body {
     display: grid;
     min-height: 100vh;
@@ -1385,6 +1509,7 @@ a {
     .landing-footer,
     .landing-hero,
     .landing-section,
+    .landing-confidence,
     .landing-pricing-cta,
     .pricing-main {
         width: min(100% - 32px, 680px);
@@ -1435,7 +1560,9 @@ a {
     }
 
     .landing-feature-grid,
-    .landing-step-grid {
+    .landing-step-grid,
+    .landing-confidence,
+    .workflow-tool-grid {
         grid-template-columns: 1fr;
     }
 
@@ -1483,6 +1610,13 @@ a {
         padding: 18px;
         border-right: none;
         border-bottom: 1px solid var(--border-soft);
+    }
+
+    .sidebar > a {
+        display: inline-flex;
+        margin: 4px 4px 4px 0;
+        padding: 11px 13px;
+        font-size: 14px;
     }
 
     .brand {
@@ -1555,14 +1689,17 @@ a {
     .input-area {
         padding: 16px;
         gap: 10px;
+        flex-wrap: wrap;
     }
 
     .input-area input {
+        min-width: 100%;
         font-size: 16px;
         padding: 16px;
     }
 
     .input-area button {
+        width: 100%;
         margin-left: 0;
         padding: 16px 18px;
         font-size: 16px;

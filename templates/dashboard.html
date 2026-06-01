@@ -13,7 +13,7 @@
 
     <aside class="sidebar">
         <div class="brand">
-    <div class="brand-logo">B</div>
+    <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
     <div>
         <h2>BusinessBuilder AI</h2>
         <p>Business workspace</p>
@@ -22,12 +22,11 @@
 
         <a href="/">Chat</a>
 <a href="/dashboard">Dashboard</a>
-
-{% if paid %}
-    <a href="/build_center">Build Center</a>
-    <a href="/business_workflow">Business Workflow</a>
-{% endif %}
-
+<a href="/build_center">Build Center</a>
+<a href="/business_workflow">Workflow</a>
+<a href="/shopify_settings">Shopify</a>
+<a href="/canva_settings">Canva</a>
+<a href="/pricing">Pricing</a>
 <a href="/launch_readiness">Launch Readiness</a>
 
 {% if is_admin %}
@@ -40,8 +39,9 @@
     <main class="dashboard-main">
 
         <div class="dashboard-header">
+            <p class="eyebrow">Your Business Workspace</p>
             <h1>Your Business Dashboard</h1>
-            <p>Manage your saved projects, uploaded files, and business progress.</p>
+            <p>Review your package, saved plans, draft store assets, branding outputs, and the next step in your business build.</p>
         </div>
 
         {% if usage_limit_message %}

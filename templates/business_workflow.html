@@ -14,7 +14,7 @@
     <aside class="sidebar">
 
         <div class="brand">
-            <div class="brand-logo">B</div>
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
             <div>
                 <h2>BusinessBuilder AI</h2>
                 <p>Business setup workflow</p>
@@ -24,7 +24,10 @@
         <a href="/">Chat</a>
         <a href="/dashboard">Dashboard</a>
         <a href="/build_center">Build Center</a>
-        <a href="/business_workflow">Business Workflow</a>
+        <a href="/business_workflow">Workflow</a>
+        <a href="/shopify_settings">Shopify</a>
+        <a href="/canva_settings">Canva</a>
+        <a href="/pricing">Pricing</a>
         <a href="/logout">Logout</a>
 
     </aside>
@@ -32,8 +35,9 @@
     <main class="dashboard-main">
 
         <div class="dashboard-header">
+            <p class="eyebrow">Your Business Foundation</p>
             <h1>Business Setup Workflow</h1>
-            <p>Complete these 9 steps to build a strong business foundation.</p>
+            <p>Complete these 9 beginner-friendly steps once, then reuse your answers to generate plans, store drafts, branding, and your launch package.</p>
         </div>
 
         {% if request.args.get("usage_limit") %}
@@ -69,8 +73,9 @@
 </section>
 
 <section class="project-form">
-    <h2>Generate Complete Business Plan</h2>
-    <p>Create a full business plan using your saved answers from the workflow.</p>
+    <p class="eyebrow">Use Your Saved Answers</p>
+    <h2>Generate Plans and Draft Assets</h2>
+    <p>Create strategy documents first, then move into connected Shopify and Canva build tools when you are ready.</p>
 
     {% if request.args.get("plan_error") == "no_answers" %}
         <p class="form-notice">
@@ -165,40 +170,35 @@
     {% endif %}
 
     {% if answer_count > 0 %}
-        <div class="generator-actions">
-            <a href="/generate_business_plan">
-                <button type="button">Generate Business Plan</button>
-            </a>
-            <a href="/generate_shopify_plan">
-                <button type="button">Generate Shopify Setup Plan</button>
-            </a>
-            <a href="/generate_canva_branding">
-                <button type="button">Generate Canva Branding Package</button>
-            </a>
-            {% if pro_package %}
-                <a href="/generate_canva_design_brief">
-                    <button type="button">Generate Canva Design Brief</button>
-                </a>
-                <a href="/build_approval?action=canva_designs">
-                    <button type="button">Create Canva Design Drafts</button>
-                </a>
-                <a href="/build_approval?action=shopify_products">
-                    <button type="button">Create Multiple Shopify Products</button>
-                </a>
-                <a href="/build_approval?action=shopify_store">
-                    <button type="button">Build Shopify Store Draft</button>
-                </a>
-                <a href="/build_approval?action=full_build">
-                    <button type="button">Review Full Build</button>
-                </a>
-            {% else %}
-                <a href="/pricing">
-                    <button type="button">Upgrade to Pro for Store and Design Automation</button>
-                </a>
-            {% endif %}
-            <a href="/generate_build_quote">
-                <button type="button">Generate Store + Branding Quote</button>
-            </a>
+        <div class="workflow-tool-grid">
+            <div class="workflow-tool-group">
+                <p class="eyebrow">Planning Tools</p>
+                <h3>Generate your business foundation</h3>
+                <p>Turn your saved answers into clear strategy documents you can review and reuse.</p>
+                <div class="generator-actions">
+                    <a href="/generate_business_plan" class="primary-button">Generate Business Plan</a>
+                    <a href="/generate_shopify_plan" class="secondary-button">Generate Shopify Setup Plan</a>
+                    <a href="/generate_canva_branding" class="secondary-button">Generate Canva Branding Package</a>
+                    <a href="/generate_build_quote" class="secondary-button">Generate Store + Branding Quote</a>
+                </div>
+            </div>
+
+            <div class="workflow-tool-group">
+                <p class="eyebrow">Build Tools</p>
+                <h3>Create draft store and design assets</h3>
+                <p>Review the approval screen before the app creates draft assets in connected services.</p>
+                {% if pro_package %}
+                    <div class="generator-actions">
+                        <a href="/generate_canva_design_brief" class="primary-button">Generate Canva Design Brief</a>
+                        <a href="/build_approval?action=shopify_products" class="secondary-button">Create Shopify Products</a>
+                        <a href="/build_approval?action=shopify_store" class="secondary-button">Build Shopify Store Draft</a>
+                        <a href="/build_approval?action=canva_designs" class="secondary-button">Create Canva Design Drafts</a>
+                        <a href="/build_approval?action=full_build" class="secondary-button">Review Full Build</a>
+                    </div>
+                {% else %}
+                    <a href="/pricing" class="primary-button">Upgrade to Pro for Build Tools</a>
+                {% endif %}
+            </div>
         </div>
     {% else %}
         <div class="generator-actions">
@@ -217,153 +217,48 @@
     {% endif %}
 </section>
 
-        <div class="cards">
+        <section>
+            <p class="eyebrow">Guided Setup</p>
+            <h2>Your 9-Step Business Workflow</h2>
+            <p>Open each step, save your answer, and mark it complete when you are ready to continue.</p>
 
-            <div class="card">
-                <h3>1. Business Idea</h3>
-                <p>Define your business concept, problem, solution, and value proposition.</p>
+            <div class="cards workflow-step-grid">
+                {% set workflow_cards = [
+                    (1, "Business Idea", "Define your business concept, problem, solution, and value proposition.", "Business-Idea"),
+                    (2, "Brand Name", "Create a memorable brand name, slogan, tone, and identity direction.", "Brand-Name"),
+                    (3, "Target Market", "Identify your ideal customers, their needs, pain points, and buying behavior.", "Target-Market"),
+                    (4, "Products / Services", "Build your offer, product list, service packages, and descriptions.", "Products-Services"),
+                    (5, "Pricing", "Set smart prices, packages, margins, and introductory offers.", "Pricing"),
+                    (6, "Marketing Plan", "Create your launch strategy, content plan, social media plan, and sales funnel.", "Marketing-Plan"),
+                    (7, "Shopify Setup Plan", "Plan your Shopify store pages, products, collections, and checkout structure.", "Shopify-Setup-Plan"),
+                    (8, "Canva Branding Plan", "Plan your logo, colors, typography, social posts, and visual brand assets.", "Canva-Branding-Plan"),
+                    (9, "Launch Checklist", "Prepare the final checklist before launching your business publicly.", "Launch-Checklist")
+                ] %}
 
-                <a href="/workflow_step/1">
-                    <button>Open Step 1</button>
-                    {% if 1 in completed_steps %}
-    <p><strong>Status:</strong> Completed</p>
-{% else %}
-    <a href="/complete_step/1/Business-Idea">
-        <button type="button">Mark Complete</button>
-    </a>
-{% endif %}
-                </a>
+                {% for step_number, step_title, step_description, step_slug in workflow_cards %}
+                    <article class="card workflow-step-card">
+                        <div class="workflow-step-heading">
+                            <span class="workflow-step-number">{{ step_number }}</span>
+                            <div>
+                                <h3>{{ step_title }}</h3>
+                                <p class="workflow-step-status {{ 'completed' if step_number in completed_steps else 'not-started' }}">
+                                    {{ "Completed" if step_number in completed_steps else "Not Started" }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <p>{{ step_description }}</p>
+
+                        <div class="card-actions">
+                            <a href="/workflow_step/{{ step_number }}" class="primary-button">Open Step</a>
+                            {% if step_number not in completed_steps %}
+                                <a href="/complete_step/{{ step_number }}/{{ step_slug }}" class="secondary-button">Mark Complete</a>
+                            {% endif %}
+                        </div>
+                    </article>
+                {% endfor %}
             </div>
-
-            <div class="card">
-                <h3>2. Brand Name</h3>
-                <p>Create a memorable brand name, slogan, tone, and identity direction.</p>
-
-                <a href="/workflow_step/2">
-                    <button>Open Step 2</button>
-                    {% if 2 in completed_steps %}
-    <p><strong>Status:</strong> Completed</p>
-{% else %}
-    <a href="/complete_step/2/Brand-Name">
-        <button type="button">Mark Complete</button>
-    </a>
-{% endif %}
-                </a>
-            </div>
-
-            <div class="card">
-                <h3>3. Target Market</h3>
-                <p>Identify your ideal customers, their needs, pain points, and buying behavior.</p>
-
-                <a href="/workflow_step/3">
-                    <button>Open Step 3</button>
-                    {% if 3 in completed_steps %}
-    <p><strong>Status:</strong> Completed</p>
-{% else %}
-    <a href="/complete_step/3/Target-Market">
-        <button type="button">Mark Complete</button>
-    </a>
-{% endif %}
-                </a>
-            </div>
-
-            <div class="card">
-                <h3>4. Products / Services</h3>
-                <p>Build your offer, product list, service packages, and descriptions.</p>
-
-                <a href="/workflow_step/4">
-                    <button>Open Step 4</button>
-                    {% if 4 in completed_steps %}
-    <p><strong>Status:</strong> Completed</p>
-{% else %}
-    <a href="/complete_step/4/Products-Services">
-        <button type="button">Mark Complete</button>
-    </a>
-{% endif %}
-                </a>
-            </div>
-
-            <div class="card">
-                <h3>5. Pricing</h3>
-                <p>Set smart prices, packages, margins, and introductory offers.</p>
-
-                <a href="/workflow_step/5">
-                    <button>Open Step 5</button>
-                    {% if 5 in completed_steps %}
-    <p><strong>Status:</strong> Completed</p>
-{% else %}
-    <a href="/complete_step/5/Pricing">
-        <button type="button">Mark Complete</button>
-    </a>
-{% endif %}
-                </a>
-            </div>
-
-            <div class="card">
-                <h3>6. Marketing Plan</h3>
-                <p>Create your launch strategy, content plan, social media plan, and sales funnel.</p>
-
-                <a href="/workflow_step/6">
-                    <button>Open Step 6</button>
-                    {% if 6 in completed_steps %}
-    <p><strong>Status:</strong> Completed</p>
-{% else %}
-    <a href="/complete_step/6/Marketing-Plan">
-        <button type="button">Mark Complete</button>
-    </a>
-{% endif %}
-                </a>
-            </div>
-
-            <div class="card">
-                <h3>7. Shopify Setup Plan</h3>
-                <p>Plan your Shopify store pages, products, collections, and checkout structure.</p>
-
-                <a href="/workflow_step/7">
-                    <button>Open Step 7</button>
-                    {% if 7 in completed_steps %}
-    <p><strong>Status:</strong> Completed</p>
-{% else %}
-    <a href="/complete_step/7/Shopify-Setup-Plan">
-        <button type="button">Mark Complete</button>
-    </a>
-{% endif %}
-                </a>
-            </div>
-
-            <div class="card">
-                <h3>8. Canva Branding Plan</h3>
-                <p>Plan your logo, colors, typography, social posts, and visual brand assets.</p>
-
-                <a href="/workflow_step/8">
-                    <button>Open Step 8</button>
-                    {% if 8 in completed_steps %}
-    <p><strong>Status:</strong> Completed</p>
-{% else %}
-    <a href="/complete_step/8/Canva-Branding-Plan">
-        <button type="button">Mark Complete</button>
-    </a>
-{% endif %}
-                </a>
-            </div>
-
-            <div class="card">
-                <h3>9. Launch Checklist</h3>
-                <p>Prepare the final checklist before launching your business publicly.</p>
-
-                <a href="/workflow_step/9">
-                    <button>Open Step 9</button>
-                    {% if 9 in completed_steps %}
-    <p><strong>Status:</strong> Completed</p>
-{% else %}
-    <a href="/complete_step/9/Launch-Checklist">
-        <button type="button">Mark Complete</button>
-    </a>
-{% endif %}
-                </a>
-            </div>
-
-        </div>
+        </section>
 
     </main>
 
