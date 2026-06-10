@@ -58,13 +58,23 @@
 
         <section class="next-action-card">
             <p class="eyebrow">Main Recommended Action</p>
-            <h2>AI Store Agent</h2>
-            <p>Generate store drafts, review them, approve them, then apply supported safe Shopify and Canva changes.</p>
+            <h2>{{ "Generate My Store" if pro_package else "Build Your Launch Foundation" }}</h2>
+            <p>
+                {% if pro_package %}
+                    Use AI Store Builder and AI Store Agent to generate, review, approve, and apply supported safe Shopify and Canva store assets.
+                {% else %}
+                    Starter includes business plans, basic product research, and limited AI Store Agent drafts. Upgrade to Pro when you are ready to create Shopify draft assets.
+                {% endif %}
+            </p>
 
             <div class="generator-actions">
                 <a href="/ai_store_agent" class="primary-button">Open AI Store Agent</a>
                 <a href="/product_finder" class="secondary-button">Find Products</a>
-                <a href="/store_builder" class="secondary-button">Generate My Store</a>
+                {% if pro_package %}
+                    <a href="/store_builder" class="secondary-button">Generate My Store</a>
+                {% else %}
+                    <a href="/pricing" class="secondary-button">Upgrade to Pro for Store Builder</a>
+                {% endif %}
                 <a href="{{ next_recommended_action['url'] }}" class="secondary-button">
                     {{ next_recommended_action["action"] }}
                 </a>

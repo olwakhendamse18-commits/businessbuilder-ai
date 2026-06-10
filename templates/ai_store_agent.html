@@ -48,6 +48,13 @@
             <p class="form-notice">The AI draft could not be generated. Please try again.</p>
         {% endif %}
 
+        {% if request.args.get("usage_limit") == "store_agent_task" %}
+            <p class="form-notice">
+                You have reached your AI Store Agent task limit for this package. Starter includes 3 tasks, Pro includes 20 tasks, and Premium Build includes fair-use task generation.
+                <a href="/pricing">Compare packages</a>.
+            </p>
+        {% endif %}
+
         {% if request.args.get("agent_notice") == "deleted" %}
             <p class="success-notice">Draft deleted.</p>
         {% endif %}

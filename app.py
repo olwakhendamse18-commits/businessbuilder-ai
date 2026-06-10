@@ -993,29 +993,34 @@ def resolve_paystack_plan(transaction, fallback_plan=None):
 PACKAGE_USAGE_LIMITS = {
     "Starter": {
         "chat_message": {"limit": 50, "period": "daily"},
-        "business_plan": {"limit": 10, "period": "total"},
-        "shopify_plan": {"limit": 10, "period": "total"},
-        "canva_branding": {"limit": 10, "period": "total"},
+        "business_plan": {"limit": 3, "period": "total"},
+        "shopify_plan": {"limit": 3, "period": "total"},
+        "product_research": {"limit": 3, "period": "total"},
+        "store_agent_task": {"limit": 3, "period": "total"},
         "pdf_export": {"limit": 20, "period": "total"}
     },
     "Pro": {
         "chat_message": {"limit": 150, "period": "daily"},
-        "business_plan": {"limit": 30, "period": "total"},
-        "shopify_plan": {"limit": 30, "period": "total"},
-        "shopify_product": {"limit": 50, "period": "total"},
-        "canva_branding": {"limit": 30, "period": "total"},
-        "canva_design_brief": {"limit": 30, "period": "total"},
-        "canva_design": {"limit": 50, "period": "total"},
+        "business_plan": {"limit": 10, "period": "total"},
+        "shopify_plan": {"limit": 10, "period": "total"},
+        "product_research": {"limit": 10, "period": "total"},
+        "store_agent_task": {"limit": 20, "period": "total"},
+        "shopify_product": {"limit": 10, "period": "total"},
+        "canva_branding": {"limit": 20, "period": "total"},
+        "canva_design_brief": {"limit": 20, "period": "total"},
+        "canva_design": {"limit": 10, "period": "total"},
         "pdf_export": {"limit": 50, "period": "total"}
     },
     "Premium Build": {
         "chat_message": {"limit": 300, "period": "daily"},
-        "business_plan": {"limit": 100, "period": "total"},
-        "shopify_plan": {"limit": 100, "period": "total"},
-        "shopify_product": {"limit": 200, "period": "total"},
-        "canva_branding": {"limit": 100, "period": "total"},
-        "canva_design_brief": {"limit": 100, "period": "total"},
-        "canva_design": {"limit": 200, "period": "total"},
+        "business_plan": {"limit": None, "period": "total"},
+        "shopify_plan": {"limit": None, "period": "total"},
+        "product_research": {"limit": None, "period": "total"},
+        "store_agent_task": {"limit": None, "period": "total"},
+        "shopify_product": {"limit": 30, "period": "total"},
+        "canva_branding": {"limit": None, "period": "total"},
+        "canva_design_brief": {"limit": None, "period": "total"},
+        "canva_design": {"limit": 30, "period": "total"},
         "launch_package": {"limit": 50, "period": "total"},
         "pdf_export": {"limit": 100, "period": "total"}
     }
@@ -1145,8 +1150,26 @@ def get_package_required_message(package_name):
     if package_name not in PACKAGE_LEVELS:
         return ""
 
+    package_messages = {
+        "Starter": (
+            "Starter users can generate business plans, basic product research, "
+            "limited AI Store Agent drafts, and PDF downloads."
+        ),
+        "Pro": (
+            "Pro unlocks AI Store Builder, Shopify draft product creation, "
+            "Canva briefs and drafts where supported, shipping/payment/domain "
+            "guidance, and launch package tools."
+        ),
+        "Premium Build": (
+            "Premium Build unlocks the full AI Store Agent workflow, advanced "
+            "product sourcing, higher Shopify draft-product limits, and the "
+            "advanced launch package."
+        )
+    }
+
     return (
         f"This feature requires the {package_name} package. "
+        f"{package_messages.get(package_name, '')} "
         "Review the available packages to upgrade your account."
     )
 
@@ -1240,6 +1263,8 @@ USAGE_LABELS = {
     "chat_message": "chat messages",
     "business_plan": "business plan generation",
     "shopify_plan": "Shopify setup plan generation",
+    "product_research": "AI Product Finder research reports",
+    "store_agent_task": "AI Store Agent task drafts",
     "shopify_product": "Shopify product creation",
     "canva_branding": "Canva branding package generation",
     "canva_design_brief": "Canva design brief generation",
@@ -1311,6 +1336,9 @@ def usage_limit_reached(user_id, action_type):
     if not limit_config:
         return True
 
+    if limit_config["limit"] is None:
+        return False
+
     return get_usage_count(
         user_id,
         action_type,
@@ -1342,6 +1370,9 @@ def get_usage_limit_message(action_type, user_id=None):
             f"in the {package_name} package. Review the available packages to upgrade."
         )
 
+    if limit_config["limit"] is None:
+        return ""
+
     period_label = " today" if limit_config["period"] == "daily" else ""
 
     return (
@@ -1372,6 +1403,14 @@ def get_usage_summary(user_id):
         "chat_message_limit": package_limits["chat_message"]["limit"],
         "business_plans": counts["business_plan"],
         "business_plan_limit": package_limits["business_plan"]["limit"],
+        "product_research_reports": counts["product_research"],
+        "product_research_limit": (
+            package_limits.get("product_research", {}).get("limit")
+        ),
+        "store_agent_tasks": counts["store_agent_task"],
+        "store_agent_task_limit": (
+            package_limits.get("store_agent_task", {}).get("limit")
+        ),
         "shopify_actions": (
             counts["shopify_plan"]
             + counts["shopify_product"]
@@ -1388,7 +1427,9 @@ def get_usage_summary(user_id):
             + counts["canva_design"]
         ),
         "canva_branding": counts["canva_branding"],
-        "canva_branding_limit": package_limits["canva_branding"]["limit"],
+        "canva_branding_limit": (
+            package_limits.get("canva_branding", {}).get("limit")
+        ),
         "canva_design_briefs": counts["canva_design_brief"],
         "canva_design_brief_limit": (
             package_limits.get("canva_design_brief", {}).get("limit")
@@ -4245,6 +4286,7 @@ def build_center():
     ]
 
     pro_features = {
+        "AI Store Builder",
         "Shopify Connection",
         "Shopify Products",
         "Shopify Store Draft",
@@ -4284,6 +4326,7 @@ def build_center():
         total_steps=total_steps,
         next_recommended_action=next_recommended_action,
         current_package=current_package,
+        pro_package=user_package_at_least(user_id, "Pro"),
         premium_build=user_package_at_least(user_id, "Premium Build")
     )
 
@@ -4311,11 +4354,15 @@ def store_builder():
         canva_connection
         and canva_connection[2] == "connected"
     )
-    generate_url = (
-        "/build_approval?action=ai_store"
-        if shopify_connected
-        else "/generate_full_store"
-    )
+    pro_package = user_package_at_least(user_id, "Pro")
+    generate_url = ""
+
+    if pro_package:
+        generate_url = (
+            "/build_approval?action=ai_store"
+            if shopify_connected
+            else "/generate_full_store"
+        )
 
     return render_template(
         "store_builder.html",
@@ -4325,6 +4372,7 @@ def store_builder():
         shopify_connected=shopify_connected,
         canva_connected=canva_connected,
         paid_plan_active=True,
+        pro_package=pro_package,
         store_builds=get_ai_store_builds(user_id),
         generate_url=generate_url
     )
@@ -4521,6 +4569,9 @@ def generate_store_agent_task(task_type):
     if task_type not in STORE_AGENT_TASK_DEFINITIONS:
         return redirect("/ai_store_agent")
 
+    if usage_limit_reached(user_id, "store_agent_task"):
+        return usage_limit_redirect("store_agent_task", "/ai_store_agent")
+
     answers = get_nonempty_workflow_answers(user_id)
 
     if not answers:
@@ -4573,6 +4624,7 @@ def generate_store_agent_task(task_type):
         draft_content,
         "Needs Approval"
     )
+    log_usage(user_id, "store_agent_task")
 
     return redirect(f"/review_store_agent_task/{task_id}")
 
@@ -4596,6 +4648,7 @@ def review_store_agent_task(task_id):
         "review_store_agent_task.html",
         task=task,
         definition=STORE_AGENT_TASK_DEFINITIONS.get(task[2], {}),
+        pro_package=user_package_at_least(user_id, "Pro"),
         ai_edit_mode=request.args.get("edit") == "ai",
         manual_edit_mode=request.args.get("edit") == "manual"
     )
@@ -4895,6 +4948,9 @@ def apply_store_agent_task(task_id):
     if not task:
         return redirect("/ai_store_agent")
 
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro", f"/review_store_agent_task/{task_id}")
+
     if not task[6]:
         return redirect(f"/review_store_agent_task/{task_id}?agent_error=not_approved")
 
@@ -5008,6 +5064,9 @@ def generate_product_research():
     if request.method == "GET":
         return redirect("/product_finder")
 
+    if usage_limit_reached(user_id, "product_research"):
+        return usage_limit_redirect("product_research", "/product_finder")
+
     business_type = request.form.get("business_type", "").strip()
     target_market = request.form.get("target_market", "").strip()
     country = request.form.get("country", "").strip()
@@ -5096,6 +5155,7 @@ Risk level: {risk_level}
         country,
         json.dumps(research_data, indent=2)
     )
+    log_usage(user_id, "product_research")
 
     return redirect(f"/product_research/{research_id}")
 
@@ -6419,7 +6479,7 @@ def build_approval():
     if requested_action == "product_research_products" and request.values.get("research_id"):
         session["product_research_id"] = request.values.get("research_id")
 
-    if requested_action != "ai_store" and not user_package_at_least(user_id, "Pro"):
+    if not user_package_at_least(user_id, "Pro"):
         return package_access_redirect("Pro")
 
     if request.method == "POST":
@@ -7343,6 +7403,9 @@ def generate_full_store():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
+
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro", "/store_builder")
 
     answers = get_nonempty_workflow_answers(user_id)
 

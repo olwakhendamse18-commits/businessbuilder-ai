@@ -48,6 +48,13 @@
             <p class="success-notice">{{ request.args.get("apply_message", "Approved changes applied safely.") }}</p>
         {% endif %}
 
+        {% if request.args.get("package_required") or not pro_package %}
+            <p class="form-notice">
+                Starter users can review, edit, approve, and delete limited drafts. Applying approved Shopify or Canva changes requires Pro or Premium Build.
+                <a href="/pricing">Compare packages</a>.
+            </p>
+        {% endif %}
+
         {% if request.args.get("agent_error") == "not_approved" %}
             <p class="form-notice">Approve this draft before applying changes.</p>
         {% elif request.args.get("agent_error") == "apply_failed" %}
@@ -117,10 +124,12 @@
                 <a href="/review_store_agent_task/{{ task[0] }}?edit=ai" class="secondary-button">Edit With AI</a>
                 <a href="/review_store_agent_task/{{ task[0] }}?edit=manual" class="secondary-button">Edit Manually</a>
 
-                {% if task[6] %}
+                {% if task[6] and pro_package %}
                     <form method="POST" action="/apply_store_agent_task/{{ task[0] }}">
                         <button type="submit">Apply Approved Changes</button>
                     </form>
+                {% elif task[6] %}
+                    <a href="/pricing" class="secondary-button">Upgrade to Pro to Apply</a>
                 {% else %}
                     <button type="button" disabled>Apply Approved Changes</button>
                 {% endif %}

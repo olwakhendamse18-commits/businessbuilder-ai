@@ -36,8 +36,8 @@
 <main class="pricing-main">
     <section class="pricing-intro">
         <p class="eyebrow">Package Options</p>
-        <h1>Choose the right package for your business build.</h1>
-        <p>Start with the essentials, then upgrade when you are ready for deeper store and branding automation.</p>
+        <h1>Choose your AI Business + Store Launch package.</h1>
+        <p>BusinessBuilder AI helps you generate, review, approve, and apply safe store assets. It does not publish your live store, buy domains, charge external services, or handle banking details for you.</p>
     </section>
 
     {% if request.args.get("onboarding") == "choose_plan" %}
@@ -51,17 +51,32 @@
     <section class="pricing-grid">
         <article class="pricing-card">
             <p class="eyebrow">Starter</p>
-            <h2>BusinessBuilder AI Starter</h2>
+            <h2>Starter</h2>
             <div class="pricing-amount">
                 <strong>R499</strong>
                 <span>once-off payment</span>
             </div>
+            <p class="pricing-copy">For beginners who want a business plan and launch direction.</p>
+
+            <h3>Includes</h3>
             <ul class="pricing-list">
-                <li>Guided AI business workflow</li>
-                <li>Business plan generation</li>
-                <li>Shopify setup plan</li>
-                <li>Canva branding package</li>
-                <li>PDF export</li>
+                <li>AI business advice</li>
+                <li>Business workflow</li>
+                <li>Business plan generator</li>
+                <li>Basic launch checklist</li>
+                <li>Basic product research</li>
+                <li>Limited AI Store Agent drafts</li>
+                <li>PDF downloads</li>
+            </ul>
+
+            <h3>Limits</h3>
+            <ul class="pricing-list pricing-limits">
+                <li>3 business plans</li>
+                <li>3 product research reports</li>
+                <li>3 AI Store Agent tasks</li>
+                <li>No automatic Shopify asset creation</li>
+                <li>No Canva draft creation</li>
+                <li>Basic support</li>
             </ul>
             <a href="/paystack_checkout?plan=starter" class="primary-button pricing-button">Choose Starter</a>
         </article>
@@ -69,18 +84,37 @@
         <article class="pricing-card featured-package">
             <p class="pricing-badge">Most Popular</p>
             <p class="eyebrow">Pro</p>
-            <h2>BusinessBuilder AI Pro</h2>
+            <h2>Pro</h2>
             <div class="pricing-amount">
                 <strong>R999</strong>
                 <span>once-off payment</span>
             </div>
+            <p class="pricing-copy">For entrepreneurs who want AI-generated Shopify and Canva store assets.</p>
+
+            <h3>Includes</h3>
             <ul class="pricing-list">
                 <li>Everything in Starter</li>
-                <li>Shopify product creation</li>
-                <li>Shopify store draft builder</li>
-                <li>Canva design briefs</li>
-                <li>Canva editable design drafts</li>
-                <li>Higher usage limits</li>
+                <li>AI Store Builder</li>
+                <li>AI Product Finder</li>
+                <li>Shopify draft product creation</li>
+                <li>Homepage draft generation</li>
+                <li>Store page draft generation</li>
+                <li>Canva branding briefs</li>
+                <li>Canva marketing briefs</li>
+                <li>Shipping setup advice</li>
+                <li>Payment setup guidance</li>
+                <li>Domain setup guidance</li>
+                <li>Launch package</li>
+            </ul>
+
+            <h3>Limits</h3>
+            <ul class="pricing-list pricing-limits">
+                <li>10 business plans</li>
+                <li>10 product research reports</li>
+                <li>20 AI Store Agent tasks</li>
+                <li>Up to 10 Shopify draft products</li>
+                <li>Canva branding and marketing briefs</li>
+                <li>Standard support</li>
             </ul>
             <a href="/paystack_checkout?plan=pro" class="primary-button pricing-button">Choose Pro</a>
         </article>
@@ -89,15 +123,37 @@
             <p class="eyebrow">Premium Build</p>
             <h2>Premium Build Package</h2>
             <div class="pricing-amount">
-                <strong>R1999</strong>
+                <strong>R1,999</strong>
                 <span>once-off payment</span>
             </div>
+            <p class="pricing-copy">For users who want the most complete AI-assisted store launch package.</p>
+
+            <h3>Includes</h3>
             <ul class="pricing-list">
                 <li>Everything in Pro</li>
-                <li>Full launch package summary</li>
-                <li>Launch package PDF export</li>
-                <li>Priority build workflow</li>
-                <li>Highest usage limits</li>
+                <li>Full AI Store Agent workflow</li>
+                <li>Advanced product sourcing strategy</li>
+                <li>Competitor discovery</li>
+                <li>Advanced Shopify draft product creation</li>
+                <li>Homepage structure and section drafts</li>
+                <li>Store pages and policy drafts</li>
+                <li>Shipping zone recommendations</li>
+                <li>Payment setup checklist</li>
+                <li>Domain buying/connection guidance</li>
+                <li>Canva brand package briefs</li>
+                <li>Canva marketing asset briefs</li>
+                <li>Advanced launch readiness review</li>
+                <li>Premium launch package PDF</li>
+            </ul>
+
+            <h3>Limits</h3>
+            <ul class="pricing-list pricing-limits">
+                <li>Unlimited business plans with fair-use protection</li>
+                <li>Unlimited product research with fair-use protection</li>
+                <li>Unlimited AI Store Agent tasks with fair-use protection</li>
+                <li>Up to 30 Shopify draft products</li>
+                <li>Advanced launch package</li>
+                <li>Priority support</li>
             </ul>
             <a href="/paystack_checkout?plan=premium" class="primary-button pricing-button">Choose Premium Build</a>
         </article>

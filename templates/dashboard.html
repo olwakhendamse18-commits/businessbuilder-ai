@@ -90,17 +90,25 @@
     <div class="package-status-card">
         <p class="eyebrow">Current Package</p>
         <h2>{{ current_package }}</h2>
-        <p>Your package controls which business tools and usage limits are available.</p>
+        {% if current_package == "Starter" %}
+            <p>Starter includes business plans, basic product research, limited AI Store Agent drafts, and PDF downloads. Upgrade to Pro for AI Store Builder, Shopify draft product creation, and Canva draft creation.</p>
+        {% elif current_package == "Pro" %}
+            <p>Pro unlocks AI Store Builder, AI Product Finder, Shopify draft products, Canva briefs and drafts where supported, and launch package tools.</p>
+        {% elif current_package == "Premium Build" %}
+            <p>Premium Build adds the full AI Store Agent workflow, advanced product sourcing, higher Shopify draft-product limits, advanced launch readiness, and priority support.</p>
+        {% else %}
+            <p>Your package controls which business tools and usage limits are available.</p>
+        {% endif %}
 
         {% if current_package == "Starter" %}
             <div class="generator-actions">
                 <a href="/paystack_checkout?plan=pro" class="primary-button">Upgrade to Pro - R999</a>
-                <a href="/paystack_checkout?plan=premium" class="secondary-button">Upgrade to Premium Build - R1999</a>
+                <a href="/paystack_checkout?plan=premium" class="secondary-button">Upgrade to Premium Build - R1,999</a>
                 <a href="/pricing" class="secondary-button">Compare Packages</a>
             </div>
         {% elif current_package == "Pro" %}
             <div class="generator-actions">
-                <a href="/paystack_checkout?plan=premium" class="primary-button">Upgrade to Premium Build - R1999</a>
+                <a href="/paystack_checkout?plan=premium" class="primary-button">Upgrade to Premium Build - R1,999</a>
                 <a href="/pricing" class="secondary-button">Compare Packages</a>
             </div>
         {% endif %}
@@ -140,7 +148,11 @@
             <a href="/build_center">
                 <button type="button">Continue Building Your Business</button>
             </a>
-            <a href="/store_builder" class="primary-button">AI Store Builder</a>
+            {% if pro_package %}
+                <a href="/store_builder" class="primary-button">AI Store Builder</a>
+            {% else %}
+                <a href="/pricing" class="primary-button">Upgrade to Pro for Store Builder</a>
+            {% endif %}
             <a href="/product_finder" class="secondary-button">AI Product Finder</a>
             <a href="/ai_store_agent" class="secondary-button">AI Store Agent</a>
         </div>
@@ -208,7 +220,11 @@
     <p>Generate a complete Shopify store package from your saved workflow answers, then create safe draft products, collections, and pages when Shopify is connected.</p>
 
     <div class="generator-actions">
-        <a href="/store_builder" class="primary-button">Generate My Store</a>
+        {% if pro_package %}
+            <a href="/store_builder" class="primary-button">Generate My Store</a>
+        {% else %}
+            <a href="/pricing" class="primary-button">Upgrade to Pro for Store Builder</a>
+        {% endif %}
     </div>
 </section>
 
@@ -548,7 +564,24 @@
         </div>
         <div class="usage-stat">
             <span>Business plans</span>
-            <strong>{{ usage_summary["business_plans"] }} / {{ usage_summary["business_plan_limit"] }}</strong>
+            <strong>
+                {{ usage_summary["business_plans"] }} /
+                {{ usage_summary["business_plan_limit"] if usage_summary["business_plan_limit"] else "Fair use" }}
+            </strong>
+        </div>
+        <div class="usage-stat">
+            <span>Product research</span>
+            <strong>
+                {{ usage_summary["product_research_reports"] }} /
+                {{ usage_summary["product_research_limit"] if usage_summary["product_research_limit"] else "Fair use" }}
+            </strong>
+        </div>
+        <div class="usage-stat">
+            <span>Store Agent tasks</span>
+            <strong>
+                {{ usage_summary["store_agent_tasks"] }} /
+                {{ usage_summary["store_agent_task_limit"] if usage_summary["store_agent_task_limit"] else "Fair use" }}
+            </strong>
         </div>
         <div class="usage-stat">
             <span>Shopify actions</span>
@@ -566,7 +599,11 @@
             <span>Canva actions</span>
             <strong>{{ usage_summary["canva_actions"] }}</strong>
             <small>
-                {{ usage_summary["canva_branding"] }} branding / {{ usage_summary["canva_branding_limit"] }},
+                {% if usage_summary["canva_branding_limit"] %}
+                    {{ usage_summary["canva_branding"] }} branding / {{ usage_summary["canva_branding_limit"] }},
+                {% else %}
+                    Canva branding unlocks with Pro,
+                {% endif %}
                 {% if usage_summary["canva_design_brief_limit"] %}
                     {{ usage_summary["canva_design_briefs"] }} briefs / {{ usage_summary["canva_design_brief_limit"] }},
                     {{ usage_summary["canva_designs"] }} drafts / {{ usage_summary["canva_design_limit"] }}

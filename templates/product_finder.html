@@ -47,6 +47,13 @@
             <p class="form-notice">The product research could not be generated. Please try again.</p>
         {% endif %}
 
+        {% if request.args.get("usage_limit") == "product_research" %}
+            <p class="form-notice">
+                You have reached your AI Product Finder research limit for this package. Starter includes 3 reports, Pro includes 10 reports, and Premium Build includes fair-use research.
+                <a href="/pricing">Compare packages</a>.
+            </p>
+        {% endif %}
+
         <section class="project-form">
             <h2>Find Products To Sell</h2>
             <p class="form-help">No websites are scraped. Amazon output is limited to search suggestions and research links you must verify yourself.</p>

@@ -48,6 +48,13 @@
             <p class="form-notice">The AI store package could not be generated. Please try again.</p>
         {% endif %}
 
+        {% if request.args.get("package_required") or not pro_package %}
+            <p class="form-notice">
+                AI Store Builder is available with Pro and Premium Build. Starter users can generate plans, basic product research, and limited AI Store Agent drafts.
+                <a href="/pricing">Compare packages</a>.
+            </p>
+        {% endif %}
+
         <section class="next-action-card">
             <p class="eyebrow">Main Builder</p>
             <h2>Generate My Store</h2>
@@ -57,7 +64,11 @@
             </p>
 
             <div class="generator-actions">
-                {% if has_workflow_answers %}
+                {% if not pro_package %}
+                    <a href="/pricing" class="primary-button">Upgrade to Pro for Store Builder</a>
+                    <a href="/product_finder" class="secondary-button">Find Products</a>
+                    <a href="/ai_store_agent" class="secondary-button">Open AI Store Agent</a>
+                {% elif has_workflow_answers %}
                     <a href="{{ generate_url }}" class="primary-button">Generate My Store</a>
                     <a href="/product_finder" class="secondary-button">Find Products</a>
                     <a href="/ai_store_agent" class="secondary-button">Open AI Store Agent</a>
@@ -100,8 +111,8 @@
                 </div>
 
                 <div class="requirement-item ready">
-                    <strong>Active</strong>
-                    <span>Paid plan active</span>
+                    <strong>{{ "Pro+" if pro_package else "Starter" }}</strong>
+                    <span>{{ "Store Builder included" if pro_package else "Upgrade needed for Store Builder" }}</span>
                 </div>
             </div>
 
