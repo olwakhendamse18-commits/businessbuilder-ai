@@ -1,0 +1,11 @@
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#0f172a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="BusinessBuilder">
+<link rel="apple-touch-icon" href="/static/logo.png">
+<script>
+    (function() {
+        const savedTheme = localStorage.getItem("bbai-theme") || "{{ current_user_theme|default('default') }}";
+        document.documentElement.setAttribute("data-theme", savedTheme);
+    })();
+</script>

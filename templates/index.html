@@ -5,6 +5,7 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "_pwa_head.html" %}
 </head>
 
 <body>
@@ -23,8 +24,13 @@
 
         <a href="/dashboard">Dashboard</a>
         <a href="/build_center">Build Center</a>
+        <a href="/ai_store_agent">AI Store Agent</a>
+        <a href="/product_finder">Product Finder</a>
         <a href="/business_workflow">Workflow</a>
         <a href="/pricing">Pricing</a>
+        <a href="/shopify_settings">Shopify</a>
+        <a href="/canva_settings">Canva</a>
+        <a href="/settings">Settings</a>
         <a href="/logout">Logout</a>
 
         <div class="tool-box">
@@ -45,16 +51,20 @@
 
             <a href="/dashboard">Dashboard</a>
             <a href="/build_center">Build Center</a>
+            <a href="/ai_store_agent">AI Store Agent</a>
+            <a href="/product_finder">Product Finder</a>
             <a href="/business_workflow">Business Workflow</a>
             <a href="/shopify_settings">Connect Shopify</a>
             <a href="/canva_settings">Connect Canva</a>
             <a href="/pricing">Pricing</a>
+            <a href="/settings">Settings</a>
 
         </div>
 
     </aside>
 
     <main class="chat-area">
+        {% include "_settings_menu.html" %}
 
         <div class="header">
 
@@ -229,5 +239,6 @@ document
 
 </script>
 
+{% include "_app_scripts.html" %}
 </body>
 </html>

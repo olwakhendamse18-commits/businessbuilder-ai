@@ -1,0 +1,85 @@
+<script>
+    (function() {
+        const toggle = document.getElementById("settingsMenuToggle");
+        const menu = document.getElementById("settingsMenu");
+
+        if (toggle && menu) {
+            toggle.addEventListener("click", function() {
+                const isHidden = menu.hasAttribute("hidden");
+                if (isHidden) {
+                    menu.removeAttribute("hidden");
+                    toggle.setAttribute("aria-expanded", "true");
+                } else {
+                    menu.setAttribute("hidden", "");
+                    toggle.setAttribute("aria-expanded", "false");
+                }
+            });
+
+            document.addEventListener("click", function(event) {
+                if (!menu.contains(event.target) && !toggle.contains(event.target)) {
+                    menu.setAttribute("hidden", "");
+                    toggle.setAttribute("aria-expanded", "false");
+                }
+            });
+        }
+
+        function applyTheme(theme) {
+            const safeTheme = theme || "default";
+            document.documentElement.setAttribute("data-theme", safeTheme);
+            localStorage.setItem("bbai-theme", safeTheme);
+        }
+
+        document.querySelectorAll("[data-theme-choice]").forEach(function(button) {
+            button.addEventListener("click", function() {
+                const theme = button.getAttribute("data-theme-choice");
+                applyTheme(theme);
+
+                fetch("/update_settings", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ theme })
+                }).catch(function() {});
+            });
+        });
+
+        if ("serviceWorker" in navigator) {
+            window.addEventListener("load", function() {
+                navigator.serviceWorker.register("/service-worker.js").catch(function() {});
+            });
+        }
+
+        let deferredInstallPrompt = null;
+        const installButtons = Array.from(document.querySelectorAll(".install-app-button"));
+
+        window.addEventListener("beforeinstallprompt", function(event) {
+            event.preventDefault();
+            deferredInstallPrompt = event;
+            if (localStorage.getItem("bbai-install-dismissed") !== "1") {
+                installButtons.forEach(function(button) {
+                    button.hidden = false;
+                });
+            }
+        });
+
+        installButtons.forEach(function(installButton) {
+            installButton.addEventListener("click", async function() {
+                if (!deferredInstallPrompt) {
+                    localStorage.setItem("bbai-install-dismissed", "1");
+                    installButtons.forEach(function(button) {
+                        button.hidden = true;
+                    });
+                    return;
+                }
+
+                deferredInstallPrompt.prompt();
+                await deferredInstallPrompt.userChoice;
+                deferredInstallPrompt = null;
+                installButtons.forEach(function(button) {
+                    button.hidden = true;
+                });
+            });
+        });
+    })();
+</script>

@@ -5,6 +5,7 @@
     <title>Canva Connection - BusinessBuilder AI</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
 </head>
 
 <body>
@@ -25,16 +26,19 @@
         <a href="/dashboard">Dashboard</a>
         <a href="/build_center">Build Center</a>
         <a href="/ai_store_agent">AI Store Agent</a>
+        <a href="/product_finder">Product Finder</a>
         <a href="/store_builder">AI Store Builder</a>
         <a href="/business_workflow">Workflow</a>
         <a href="/shopify_settings">Shopify</a>
         <a href="/canva_settings">Canva</a>
         <a href="/pricing">Pricing</a>
+        <a href="/settings">Settings</a>
         <a href="/logout">Logout</a>
 
     </aside>
 
     <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
 
         <div class="dashboard-header">
             <p class="eyebrow">Design Integration</p>
@@ -79,5 +83,6 @@
 
 </div>
 
+{% include "_app_scripts.html" %}
 </body>
 </html>

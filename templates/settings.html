@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Account settings</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/ai_store_agent">AI Store Agent</a>
+        <a href="/product_finder">Product Finder</a>
+        <a href="/business_workflow">Workflow</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/shopify_settings">Shopify</a>
+        <a href="/canva_settings">Canva</a>
+        <a href="/settings">Settings</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
+
+        <div class="dashboard-header">
+            <p class="eyebrow">Account Preferences</p>
+            <h1>Settings</h1>
+            <p>Manage your account details, package, connected tools, theme, and app installation options.</p>
+        </div>
+
+        {% if request.args.get("settings_notice") == "saved" %}
+            <p class="success-notice">Settings saved.</p>
+        {% endif %}
+
+        <section class="settings-grid">
+            <article class="project-form">
+                <p class="eyebrow">Account</p>
+                <h2>Workspace Details</h2>
+                <p><strong>Email:</strong> {{ email or "Not available" }}</p>
+                <p><strong>Package:</strong> {{ current_package }}</p>
+                {% if latest_payment %}
+                    <p><strong>Payment status:</strong> {{ latest_payment[2] }}</p>
+                    <p><strong>Latest payment:</strong> R{{ latest_payment[1] / 100 }}</p>
+                {% else %}
+                    <p><strong>Payment status:</strong> No payment recorded</p>
+                {% endif %}
+
+                <div class="generator-actions">
+                    <a href="/dashboard" class="primary-button">Dashboard</a>
+                    <a href="/pricing" class="secondary-button">Pricing / Manage Plan</a>
+                    <a href="/logout" class="secondary-button">Logout</a>
+                </div>
+            </article>
+
+            <article class="project-form">
+                <p class="eyebrow">Appearance</p>
+                <h2>Theme</h2>
+                <p>Theme changes apply instantly in this browser and are saved to your account when you click save.</p>
+
+                <form method="POST" action="/update_settings">
+                    <label for="theme">Website theme</label>
+                    <select id="theme" name="theme" onchange="document.documentElement.setAttribute('data-theme', this.value); localStorage.setItem('bbai-theme', this.value);">
+                        {% for theme_id, theme_label in theme_options.items() %}
+                            <option value="{{ theme_id }}" {{ "selected" if settings["theme"] == theme_id else "" }}>
+                                {{ theme_label }}
+                            </option>
+                        {% endfor %}
+                    </select>
+
+                    <button type="submit">Save Settings</button>
+                </form>
+            </article>
+        </section>
+
+        <section class="settings-grid">
+            <article class="project-form">
+                <p class="eyebrow">Shopify</p>
+                <h2>Store Connection</h2>
+                {% if shopify_connection and shopify_connection[3] == "connected" %}
+                    <p class="connection-status connected">Connected</p>
+                    <p>Your Shopify connection is ready for approved draft product and page actions.</p>
+                {% else %}
+                    <p class="connection-status not-connected">Not connected</p>
+                    <p>Connect Shopify when you are ready to create draft products and safe store assets.</p>
+                {% endif %}
+                <a href="/shopify_settings" class="primary-button">Shopify Settings</a>
+            </article>
+
+            <article class="project-form">
+                <p class="eyebrow">Canva</p>
+                <h2>Design Connection</h2>
+                {% if canva_connection and canva_connection[2] == "connected" %}
+                    <p class="connection-status connected">Connected</p>
+                    <p>Your Canva account is ready for approved design brief and draft creation where supported.</p>
+                {% else %}
+                    <p class="connection-status not-connected">Not connected</p>
+                    <p>Connect Canva to create editable drafts from approved branding and marketing briefs.</p>
+                {% endif %}
+                <a href="/canva_settings" class="primary-button">Canva Settings</a>
+            </article>
+        </section>
+
+        <section class="project-form">
+            <p class="eyebrow">Progressive Web App</p>
+            <h2>Install BusinessBuilder AI</h2>
+            <p>When your browser supports installation, use the Install App button in the settings menu or browser address bar to add BusinessBuilder AI to your device.</p>
+        </section>
+    </main>
+</div>
+
+{% include "_app_scripts.html" %}
+</body>
+</html>

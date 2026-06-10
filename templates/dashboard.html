@@ -5,6 +5,7 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "_pwa_head.html" %}
 </head>
 
 <body>
@@ -30,6 +31,7 @@
 <a href="/shopify_settings">Shopify</a>
 <a href="/canva_settings">Canva</a>
 <a href="/pricing">Pricing</a>
+<a href="/settings">Settings</a>
 <a href="/launch_readiness">Launch Readiness</a>
 
 {% if is_admin %}
@@ -40,12 +42,23 @@
     </aside>
 
     <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
 
         <div class="dashboard-header">
             <p class="eyebrow">Your Business Workspace</p>
             <h1>Your Business Dashboard</h1>
             <p>Review your package, saved plans, draft store assets, branding outputs, and the next step in your business build.</p>
         </div>
+
+        <section class="next-action-card">
+            <p class="eyebrow">Next Recommended Action</p>
+            <h2>{{ next_action["title"] }}</h2>
+            <p>{{ next_action["description"] }}</p>
+            <div class="generator-actions">
+                <a href="{{ next_action['url'] }}" class="primary-button">{{ next_action["label"] }}</a>
+                <button type="button" class="secondary-button install-app-button" id="installAppButtonDashboard" hidden>Install App</button>
+            </div>
+        </section>
 
         {% if usage_limit_message %}
             <p class="form-notice">{{ usage_limit_message }}</p>
@@ -196,6 +209,64 @@
     {% endif %}
 
     {% if paid %}
+
+<section class="cards dashboard-tool-grid">
+    <article class="card">
+        <p class="eyebrow">Command Center</p>
+        <h3>Build Center</h3>
+        <p>Track progress, approvals, draft assets, connected tools, and launch readiness in one place.</p>
+        <a href="/build_center" class="primary-button">Open Build Center</a>
+    </article>
+
+    <article class="card">
+        <p class="eyebrow">AI Agent</p>
+        <h3>AI Store Agent</h3>
+        <p>Generate, review, approve, delete, or safely apply supported Shopify and Canva tasks.</p>
+        <a href="/ai_store_agent" class="primary-button">Open Agent</a>
+    </article>
+
+    <article class="card">
+        <p class="eyebrow">Product Research</p>
+        <h3>AI Product Finder</h3>
+        <p>Find product ideas, sourcing paths, competitor examples, pricing notes, and next steps.</p>
+        <a href="/product_finder" class="primary-button">Find Products</a>
+    </article>
+
+    <article class="card">
+        <p class="eyebrow">Foundation</p>
+        <h3>Business Workflow</h3>
+        <p>Complete the guided questions that power every plan, store draft, design brief, and launch package.</p>
+        <a href="/business_workflow" class="primary-button">Open Workflow</a>
+    </article>
+
+    <article class="card">
+        <p class="eyebrow">Strategy</p>
+        <h3>Business Plans</h3>
+        <p>{{ business_plans|length }} saved plans. Generate and download business strategy documents from workflow answers.</p>
+        <a href="/business_workflow" class="primary-button">Generate Plan</a>
+    </article>
+
+    <article class="card">
+        <p class="eyebrow">Store</p>
+        <h3>Shopify</h3>
+        <p>{{ "Connected" if shopify_connection and shopify_connection["status"] == "connected" else "Connect Shopify to create draft products and pages where supported." }}</p>
+        <a href="/shopify_settings" class="primary-button">Shopify Settings</a>
+    </article>
+
+    <article class="card">
+        <p class="eyebrow">Design</p>
+        <h3>Canva</h3>
+        <p>{{ "Connected" if canva_connection and canva_connection["status"] == "connected" else "Connect Canva to create editable drafts from approved briefs where supported." }}</p>
+        <a href="/canva_settings" class="primary-button">Canva Settings</a>
+    </article>
+
+    <article class="card">
+        <p class="eyebrow">Final Package</p>
+        <h3>Launch Package</h3>
+        <p>Combine your plans, product research, Shopify drafts, Canva assets, and launch checklist.</p>
+        <a href="{{ '/launch_package' if premium_build else '/pricing' }}" class="primary-button">{{ "View Launch Package" if premium_build else "Unlock Premium Build" }}</a>
+    </article>
+</section>
 
 <section class="project-form">
     <h2>AI Product Finder</h2>
@@ -829,5 +900,6 @@
 
 </div>
 
+{% include "_app_scripts.html" %}
 </body>
 </html>

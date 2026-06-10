@@ -5,6 +5,7 @@
     <title>Business Setup Workflow - BusinessBuilder AI</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
 </head>
 
 <body>
@@ -31,11 +32,13 @@
         <a href="/shopify_settings">Shopify</a>
         <a href="/canva_settings">Canva</a>
         <a href="/pricing">Pricing</a>
+        <a href="/settings">Settings</a>
         <a href="/logout">Logout</a>
 
     </aside>
 
     <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
 
         <div class="dashboard-header">
             <p class="eyebrow">Your Business Foundation</p>
@@ -280,5 +283,6 @@
 
 </div>
 
+{% include "_app_scripts.html" %}
 </body>
 </html>

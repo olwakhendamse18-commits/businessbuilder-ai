@@ -408,6 +408,21 @@ def init_db():
         )
     """)
 
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS user_settings (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            theme TEXT NOT NULL DEFAULT 'default',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_user_settings_user
+        ON user_settings (user_id)
+    """))
+
     cur.execute(sql("""
         CREATE INDEX IF NOT EXISTS idx_user_packages_user_status
         ON user_packages (user_id, status)
@@ -1257,6 +1272,106 @@ def get_latest_payment(user_id):
     conn.close()
 
     return payment
+
+
+THEME_OPTIONS = {
+    "default": "Default Blue",
+    "dark": "Dark Mode",
+    "light": "Light Mode",
+    "teal": "Teal",
+    "purple": "Purple",
+    "gold": "Gold"
+}
+
+
+def normalize_theme(theme):
+    theme = (theme or "default").strip().lower()
+    return theme if theme in THEME_OPTIONS else "default"
+
+
+def get_user_settings(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT theme
+            FROM user_settings
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+        """),
+        (user_id,)
+    )
+
+    settings = cur.fetchone()
+    conn.close()
+
+    return {
+        "theme": normalize_theme(settings[0] if settings else "default")
+    }
+
+
+def save_user_settings(user_id, theme):
+    theme = normalize_theme(theme)
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id
+            FROM user_settings
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+        """),
+        (user_id,)
+    )
+
+    settings = cur.fetchone()
+
+    if settings:
+        cur.execute(
+            sql("""
+                UPDATE user_settings
+                SET theme = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                AND user_id = ?
+            """),
+            (theme, settings[0], user_id)
+        )
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO user_settings (user_id, theme)
+                VALUES (?, ?)
+            """),
+            (user_id, theme)
+        )
+
+    conn.commit()
+    conn.close()
+
+    return theme
+
+
+@app.context_processor
+def inject_global_template_context():
+    user_id = session.get("user_id")
+
+    if not user_id:
+        return {
+            "current_user_email": "",
+            "current_user_theme": "default",
+            "theme_options": THEME_OPTIONS
+        }
+
+    return {
+        "current_user_email": get_user_email(user_id) or "",
+        "current_user_theme": get_user_settings(user_id)["theme"],
+        "theme_options": THEME_OPTIONS
+    }
 
 
 USAGE_LABELS = {
@@ -3980,6 +4095,43 @@ def dashboard():
     shopify_products = get_shopify_products(user_id)
     shopify_collections = get_shopify_collections(user_id)
     shopify_pages = get_shopify_pages(user_id)
+    workflow_answers = get_nonempty_workflow_answers(user_id)
+
+    if not paid:
+        next_action = {
+            "title": "Choose a package",
+            "description": "Activate Starter, Pro, or Premium Build to unlock the guided business workspace.",
+            "url": "/pricing",
+            "label": "View Pricing"
+        }
+    elif not workflow_answers:
+        next_action = {
+            "title": "Complete your business workflow",
+            "description": "Save your business details once, then reuse them for plans, research, store assets, and launch packages.",
+            "url": "/business_workflow",
+            "label": "Open Workflow"
+        }
+    elif not product_research_list:
+        next_action = {
+            "title": "Find products before building the store",
+            "description": "Use AI Product Finder to identify product ideas, sourcing paths, competitors, pricing, and first draft products.",
+            "url": "/product_finder",
+            "label": "Find Products"
+        }
+    elif user_package_at_least(user_id, "Pro") and not ai_store_builds:
+        next_action = {
+            "title": "Generate your store package",
+            "description": "Use AI Store Builder to create the full Shopify store package, then approve safe draft asset creation.",
+            "url": "/store_builder",
+            "label": "Generate My Store"
+        }
+    else:
+        next_action = {
+            "title": "Open the Build Center",
+            "description": "Review progress, approvals, draft assets, and launch package steps from the command center.",
+            "url": "/build_center",
+            "label": "Open Build Center"
+        }
 
     shopify_connection_summary = None
 
@@ -4016,6 +4168,7 @@ def dashboard():
         shopify_collections=shopify_collections,
         shopify_pages=shopify_pages,
         usage_summary=get_usage_summary(user_id),
+        next_action=next_action,
         usage_limit_message=get_usage_limit_message(
             request.args.get("usage_limit"),
             user_id
@@ -5637,6 +5790,50 @@ def canva_settings():
     )
 
 
+@app.route("/settings")
+def settings():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    latest_payment = get_latest_payment(user_id)
+
+    return render_template(
+        "settings.html",
+        email=get_user_email(user_id),
+        current_package=get_user_package(user_id) or "No active package",
+        latest_payment=latest_payment,
+        settings=get_user_settings(user_id),
+        theme_options=THEME_OPTIONS,
+        shopify_connection=get_shopify_connection(user_id),
+        canva_connection=get_canva_connection(user_id)
+    )
+
+
+@app.route("/update_settings", methods=["POST"])
+def update_settings():
+    if "user_id" not in session:
+        if request.is_json:
+            return jsonify({"error": "Login required."}), 401
+
+        return redirect("/login")
+
+    theme = normalize_theme(
+        (request.get_json(silent=True) or {}).get("theme")
+        if request.is_json
+        else request.form.get("theme")
+    )
+    save_user_settings(session["user_id"], theme)
+
+    if request.is_json:
+        return jsonify({
+            "status": "saved",
+            "theme": theme
+        })
+
+    return redirect("/settings?settings_notice=saved")
+
+
 @app.route("/connect_canva")
 def connect_canva():
     if "user_id" not in session:
@@ -6052,6 +6249,17 @@ def launch_readiness():
 @app.route("/pricing")
 def pricing():
     return render_template("pricing.html")
+
+
+@app.route("/service-worker.js")
+def service_worker():
+    response = send_file(
+        os.path.join("static", "service-worker.js"),
+        mimetype="application/javascript"
+    )
+    response.headers["Service-Worker-Allowed"] = "/"
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.route("/terms")

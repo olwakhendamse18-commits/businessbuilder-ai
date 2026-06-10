@@ -5,6 +5,7 @@
     <title>AI Product Finder - BusinessBuilder AI</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
 </head>
 
 <body>
@@ -30,10 +31,12 @@
         <a href="/shopify_settings">Shopify</a>
         <a href="/canva_settings">Canva</a>
         <a href="/pricing">Pricing</a>
+        <a href="/settings">Settings</a>
         <a href="/logout">Logout</a>
     </aside>
 
     <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
 
         <div class="dashboard-header">
             <p class="eyebrow">Product Sourcing + Competitor Discovery</p>
@@ -56,49 +59,63 @@
 
         <section class="project-form">
             <h2>Find Products To Sell</h2>
-            <p class="form-help">No websites are scraped. Amazon output is limited to search suggestions and research links you must verify yourself.</p>
+            <p class="form-help">No websites are scraped. Amazon output is limited to search suggestions and research links unless an official API is configured. Verify prices, suppliers, stock, shipping, reviews, restrictions, and policies yourself.</p>
 
-            <form method="POST" action="/generate_product_research">
-                <label>Business/store idea</label>
-                <input name="business_type" placeholder="Example: Affordable skincare store for students" required>
+            <div class="product-finder-layout">
+                <form method="POST" action="/generate_product_research">
+                    <label>Business/store idea</label>
+                    <input name="business_type" placeholder="Example: Affordable skincare store for students" required>
 
-                <label>Target customer</label>
-                <input name="target_market" placeholder="Example: South African students aged 18-25" required>
+                    <label>Target customer</label>
+                    <input name="target_market" placeholder="Example: South African students aged 18-25" required>
 
-                <label>Country/market</label>
-                <input name="country" placeholder="Example: South Africa">
+                    <label>Country/market</label>
+                    <input name="country" placeholder="Example: South Africa">
 
-                <label>Budget</label>
-                <input name="budget" placeholder="Example: R2,000 launch budget">
+                    <label>Budget</label>
+                    <input name="budget" placeholder="Example: R2,000 launch budget">
 
-                <label>Product type</label>
-                <select name="product_type">
-                    <option value="physical">Physical</option>
-                    <option value="digital">Digital</option>
-                    <option value="service">Service</option>
-                    <option value="affiliate">Affiliate</option>
-                    <option value="print-on-demand">Print-on-demand</option>
-                </select>
+                    <label>Product type</label>
+                    <select name="product_type">
+                        <option value="physical">Physical</option>
+                        <option value="digital">Digital</option>
+                        <option value="service">Service</option>
+                        <option value="affiliate">Affiliate</option>
+                        <option value="print-on-demand">Print-on-demand</option>
+                    </select>
 
-                <label>Sourcing preference</label>
-                <select name="sourcing_preference">
-                    <option value="not sure">Not sure</option>
-                    <option value="Amazon">Amazon</option>
-                    <option value="AliExpress/Alibaba">AliExpress/Alibaba</option>
-                    <option value="local supplier">Local supplier</option>
-                    <option value="print-on-demand">Print-on-demand</option>
-                    <option value="digital products">Digital products</option>
-                </select>
+                    <label>Sourcing preference</label>
+                    <select name="sourcing_preference">
+                        <option value="not sure">Not sure</option>
+                        <option value="Amazon">Amazon</option>
+                        <option value="AliExpress/Alibaba">AliExpress/Alibaba</option>
+                        <option value="local supplier">Local supplier</option>
+                        <option value="print-on-demand">Print-on-demand</option>
+                        <option value="digital products">Digital products</option>
+                    </select>
 
-                <label>Risk level</label>
-                <select name="risk_level">
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                </select>
+                    <label>Risk level</label>
+                    <select name="risk_level">
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                    </select>
 
-                <button type="submit">Generate Product Research</button>
-            </form>
+                    <button type="submit">Generate Product Research</button>
+                </form>
+
+                <aside class="research-output-guide">
+                    <h3>Your report will include</h3>
+                    <ul>
+                        <li>Product ideas and fit reasoning</li>
+                        <li>Sourcing and Amazon research suggestions</li>
+                        <li>Competitor examples to investigate</li>
+                        <li>Pricing, difficulty, shipping, and profit notes</li>
+                        <li>First 5 Shopify draft product candidates</li>
+                        <li>Warnings and next steps</li>
+                    </ul>
+                </aside>
+            </div>
         </section>
 
         <section>
@@ -129,5 +146,6 @@
 
 </div>
 
+{% include "_app_scripts.html" %}
 </body>
 </html>

@@ -5,6 +5,7 @@
     <title>Build Center - BusinessBuilder AI</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
 </head>
 
 <body>
@@ -31,12 +32,14 @@
         <a href="/shopify_settings">Shopify</a>
         <a href="/canva_settings">Canva</a>
         <a href="/pricing">Pricing</a>
+        <a href="/settings">Settings</a>
         <a href="/launch_readiness">Launch Readiness</a>
         <a href="/logout">Logout</a>
 
     </aside>
 
     <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
 
         <div class="dashboard-header">
             <p class="eyebrow">Business Progress</p>
@@ -54,6 +57,15 @@
                     style="width: {{ ((completed_count / total_steps) * 100)|int }}%;"
                 ></div>
             </div>
+
+            <div class="status-legend">
+                <span class="build-status not-started">Not Started</span>
+                <span class="build-status in-progress">In Progress</span>
+                <span class="build-status needs-approval">Needs Approval</span>
+                <span class="build-status approved">Approved</span>
+                <span class="build-status applied">Applied</span>
+                <span class="build-status completed">Completed</span>
+            </div>
         </section>
 
         <section class="next-action-card">
@@ -65,6 +77,7 @@
                 {% else %}
                     Starter includes business plans, basic product research, and limited AI Store Agent drafts. Upgrade to Pro when you are ready to create Shopify draft assets.
                 {% endif %}
+                Product Finder is the recommended step before store creation because it helps choose what to sell before the AI builds product and page drafts.
             </p>
 
             <div class="generator-actions">
@@ -143,5 +156,6 @@
 
 </div>
 
+{% include "_app_scripts.html" %}
 </body>
 </html>

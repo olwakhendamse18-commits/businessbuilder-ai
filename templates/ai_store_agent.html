@@ -5,6 +5,7 @@
     <title>AI Store Agent - BusinessBuilder AI</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
 </head>
 
 <body>
@@ -30,11 +31,13 @@
         <a href="/shopify_settings">Shopify</a>
         <a href="/canva_settings">Canva</a>
         <a href="/pricing">Pricing</a>
+        <a href="/settings">Settings</a>
         <a href="/launch_readiness">Launch Readiness</a>
         <a href="/logout">Logout</a>
     </aside>
 
     <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
 
         <div class="dashboard-header">
             <p class="eyebrow">Shopify + Canva Command Center</p>
@@ -99,7 +102,7 @@
 
         <section>
             <h2>Store Agent Tasks</h2>
-            <p>Generate, review, edit, approve, delete, or safely apply each store-building draft.</p>
+            <p>The AI generates drafts and applies safe approved changes only after user approval. Unsupported or sensitive actions stay as guidance for you to complete manually.</p>
 
             <div class="agent-task-grid">
                 {% for section in sections %}
@@ -145,6 +148,11 @@
 
                                 {% if section["task"] %}
                                     <a href="/review_store_agent_task/{{ section['task'][0] }}" class="secondary-button">Review / Edit</a>
+                                    {% if section["status"] == "Needs Approval" %}
+                                        <a href="/review_store_agent_task/{{ section['task'][0] }}" class="secondary-button">Approve</a>
+                                    {% elif section["status"] == "Approved" and section["apply_supported"] %}
+                                        <a href="/review_store_agent_task/{{ section['task'][0] }}" class="secondary-button">Apply</a>
+                                    {% endif %}
                                 {% else %}
                                     <a href="/business_workflow" class="secondary-button">Edit Workflow</a>
                                 {% endif %}
@@ -160,5 +168,6 @@
 
 </div>
 
+{% include "_app_scripts.html" %}
 </body>
 </html>
