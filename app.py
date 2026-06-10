@@ -369,6 +369,21 @@ def init_db():
     """)
 
     execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS store_agent_tasks (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            task_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            draft_content TEXT NOT NULL,
+            status TEXT NOT NULL,
+            approved INTEGER NOT NULL DEFAULT 0,
+            applied INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS user_packages (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -1895,6 +1910,263 @@ def get_ai_store_build(user_id, build_id):
     conn.close()
 
     return build
+
+
+STORE_AGENT_TASK_DEFINITIONS = {
+    "theme_recommendation": {
+        "section": "Store Theme",
+        "title": "Store Theme Recommendation",
+        "mode": "Advice Mode",
+        "explanation": "Get theme suggestions and setup guidance without installing or changing a live theme.",
+        "apply_supported": False
+    },
+    "homepage_design": {
+        "section": "Homepage Design",
+        "title": "Homepage Design Draft",
+        "mode": "Draft Mode",
+        "explanation": "Generate homepage sections, CTA copy, trust badges, FAQ, footer copy, and a Canva banner brief.",
+        "apply_supported": True
+    },
+    "theme_sections": {
+        "section": "Homepage Design",
+        "title": "Theme Section Draft",
+        "mode": "Draft Mode",
+        "explanation": "Generate section-by-section Shopify theme guidance without editing live theme files.",
+        "apply_supported": True
+    },
+    "products": {
+        "section": "Shopify Products",
+        "title": "Shopify Draft Products",
+        "mode": "Action Mode",
+        "explanation": "Generate product drafts and apply them as draft Shopify products after approval.",
+        "apply_supported": True
+    },
+    "pages": {
+        "section": "Shopify Pages",
+        "title": "Shopify Page Drafts",
+        "mode": "Action Mode",
+        "explanation": "Generate About, Contact, FAQ, Shipping, and Refund page drafts for unpublished Shopify pages.",
+        "apply_supported": True
+    },
+    "shipping_zones": {
+        "section": "Shipping Zones",
+        "title": "Shipping Zone Setup Plan",
+        "mode": "Advice Mode",
+        "explanation": "Create shipping recommendations and manual Shopify setup steps. No shipping settings are changed automatically.",
+        "apply_supported": True
+    },
+    "payments_setup": {
+        "section": "Payments Setup",
+        "title": "Payments Setup Checklist",
+        "mode": "Advice Mode",
+        "explanation": "Create a Shopify payments checklist. Banking information must be entered directly inside Shopify.",
+        "apply_supported": True
+    },
+    "domain_setup": {
+        "section": "Domain Setup",
+        "title": "Domain Setup Guide",
+        "mode": "Advice Mode",
+        "explanation": "Suggest domains, providers, costs, and connection steps. Domains are never bought automatically.",
+        "apply_supported": True
+    },
+    "canva_branding": {
+        "section": "Canva Branding",
+        "title": "Canva Branding Brief",
+        "mode": "Draft Mode",
+        "explanation": "Generate logo, brand kit, banner, product mockup, and visual identity briefs.",
+        "apply_supported": True
+    },
+    "canva_marketing": {
+        "section": "Canva Marketing Assets",
+        "title": "Canva Marketing Asset Brief",
+        "mode": "Draft Mode",
+        "explanation": "Generate social post, story, ad, launch graphic, and product promotion briefs.",
+        "apply_supported": True
+    },
+    "launch_checklist": {
+        "section": "Launch Checklist",
+        "title": "Store Launch Checklist",
+        "mode": "Advice Mode",
+        "explanation": "Create a review checklist that guides the user through launch without publishing automatically.",
+        "apply_supported": True
+    }
+}
+
+
+STORE_AGENT_SECTION_ORDER = [
+    "theme_recommendation",
+    "homepage_design",
+    "products",
+    "pages",
+    "shipping_zones",
+    "payments_setup",
+    "domain_setup",
+    "canva_branding",
+    "canva_marketing",
+    "launch_checklist"
+]
+
+
+def normalize_store_agent_task_type(task_type):
+    return task_type
+
+
+def create_store_agent_task(user_id, task_type, title, draft_content, status):
+    task_type = normalize_store_agent_task_type(task_type)
+    conn = db()
+    cur = conn.cursor()
+
+    if using_postgres():
+        cur.execute(
+            sql("""
+                INSERT INTO store_agent_tasks (
+                    user_id,
+                    task_type,
+                    title,
+                    draft_content,
+                    status
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            """),
+            (user_id, task_type, title, draft_content, status)
+        )
+        task_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO store_agent_tasks (
+                    user_id,
+                    task_type,
+                    title,
+                    draft_content,
+                    status
+                )
+                VALUES (?, ?, ?, ?, ?)
+            """),
+            (user_id, task_type, title, draft_content, status)
+        )
+        task_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return task_id
+
+
+def get_store_agent_tasks(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, user_id, task_type, title, draft_content, status,
+                   approved, applied, created_at, updated_at
+            FROM store_agent_tasks
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+
+    tasks = cur.fetchall()
+    conn.close()
+
+    return tasks
+
+
+def get_store_agent_task(user_id, task_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, user_id, task_type, title, draft_content, status,
+                   approved, applied, created_at, updated_at
+            FROM store_agent_tasks
+            WHERE id = ?
+            AND user_id = ?
+            LIMIT 1
+        """),
+        (task_id, user_id)
+    )
+
+    task = cur.fetchone()
+    conn.close()
+
+    return task
+
+
+def update_store_agent_task_status(task_id, user_id, status, approved, applied):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            UPDATE store_agent_tasks
+            SET status = ?,
+                approved = ?,
+                applied = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            AND user_id = ?
+        """),
+        (status, int(bool(approved)), int(bool(applied)), task_id, user_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def update_store_agent_task_content(task_id, user_id, draft_content):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            UPDATE store_agent_tasks
+            SET draft_content = ?,
+                status = ?,
+                approved = ?,
+                applied = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            AND user_id = ?
+        """),
+        (draft_content, "Needs Approval", 0, 0, task_id, user_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def delete_store_agent_task_record(task_id, user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            DELETE FROM store_agent_tasks
+            WHERE id = ?
+            AND user_id = ?
+        """),
+        (task_id, user_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def get_latest_store_agent_tasks_by_type(user_id):
+    latest = {}
+
+    for task in get_store_agent_tasks(user_id):
+        task_type = task[2]
+
+        if task_type not in latest:
+            latest[task_type] = task
+
+    return latest
 
 
 def save_shopify_plan(user_id, title, content):
@@ -3511,6 +3783,7 @@ def dashboard():
     canva_designs = get_canva_designs(user_id)
     build_quotes = get_build_quotes(user_id)
     ai_store_builds = get_ai_store_builds(user_id)
+    store_agent_tasks = get_store_agent_tasks(user_id)
     shopify_connection = get_shopify_connection(user_id)
     canva_connection = get_canva_connection(user_id)
     shopify_products = get_shopify_products(user_id)
@@ -3544,6 +3817,7 @@ def dashboard():
         canva_designs=canva_designs,
         build_quotes=build_quotes,
         ai_store_builds=ai_store_builds,
+        store_agent_tasks=store_agent_tasks,
         shopify_connection=shopify_connection_summary,
         canva_connection=canva_connection_summary,
         shopify_products=shopify_products,
@@ -3607,6 +3881,7 @@ def build_center():
     latest_payment = get_latest_payment(user_id)
     shopify_connection = get_shopify_connection(user_id)
     canva_connection = get_canva_connection(user_id)
+    store_agent_tasks = get_store_agent_tasks(user_id)
 
     def status_for(completed, started=False):
         if completed:
@@ -3647,6 +3922,17 @@ def build_center():
             "url": "/business_workflow",
             "action": "Open Workflow",
             "count": f"{completed_count} / {total_steps} steps"
+        },
+        {
+            "title": "AI Store Agent",
+            "status": status_for(
+                any(task[5] == "Applied" for task in store_agent_tasks),
+                bool(store_agent_tasks)
+            ),
+            "description": "Review, edit, approve, and safely apply Shopify and Canva store tasks from one command center.",
+            "url": "/ai_store_agent",
+            "action": "Open AI Store Agent",
+            "count": f"{len(store_agent_tasks)} tasks"
         },
         {
             "title": "AI Store Builder",
@@ -3875,6 +4161,603 @@ def store_builder():
         paid_plan_active=True,
         store_builds=get_ai_store_builds(user_id),
         generate_url=generate_url
+    )
+
+
+def get_store_agent_sections(user_id):
+    latest_tasks = get_latest_store_agent_tasks_by_type(user_id)
+    sections = []
+
+    for task_type in STORE_AGENT_SECTION_ORDER:
+        definition = STORE_AGENT_TASK_DEFINITIONS[task_type]
+        task = latest_tasks.get(task_type)
+        status = "Not Started"
+
+        if task:
+            status = task[5]
+
+        sections.append({
+            "task_type": task_type,
+            "section": definition["section"],
+            "title": definition["title"],
+            "mode": definition["mode"],
+            "explanation": definition["explanation"],
+            "status": status,
+            "task": task,
+            "apply_supported": definition["apply_supported"]
+        })
+
+    return sections
+
+
+def store_agent_json_prompt(task_type):
+    if task_type == "products":
+        return """
+Return JSON only with one top-level key named "products".
+The products value must be an array of 5 to 10 objects.
+Each product must include title, description, suggested_price, category, seo_title, and meta_description.
+Products must be suitable for draft Shopify creation and must not be published.
+"""
+
+    if task_type == "pages":
+        return """
+Return JSON only with one top-level key named "pages".
+The pages value must be an array of objects.
+Each page object must include title, page_type, and content.
+Use these page_type values where appropriate: about, contact, faq, shipping_policy, refund_policy.
+Pages must be customer-facing drafts and must not claim the store is live.
+"""
+
+    return ""
+
+
+def build_store_agent_prompt(task_type, workflow_text, extra_context=""):
+    definition = STORE_AGENT_TASK_DEFINITIONS[task_type]
+    section = definition["section"]
+    safety = """
+Safety rules:
+- Do not claim the store is live or published.
+- Do not buy domains, charge the user, collect banking details, or configure sensitive payment information.
+- Do not install themes, publish products, publish pages, or edit live theme files.
+- Clearly separate advice, draft content, and actions that need user approval.
+"""
+    task_instructions = {
+        "theme_recommendation": """
+Ask and answer these theme planning points:
+1. Whether the user already has a Shopify theme installed.
+2. Whether free or paid theme suggestions fit their current budget.
+3. Recommended styles such as luxury, simple, bold, playful, tech, fashion, beauty, or another fit.
+Recommend Shopify themes and explain why each one fits. Include manual installation guidance only.
+""",
+        "homepage_design": """
+Generate a full homepage design draft with:
+1. Hero section
+2. CTA buttons
+3. Featured collections
+4. Product sections
+5. About section
+6. Trust badges
+7. FAQ section
+8. Footer copy
+9. Canva banner brief
+Do not edit theme files.
+""",
+        "theme_sections": """
+Generate a Shopify theme section plan with section names, order, copy, image/design notes, and manual setup instructions.
+Do not edit live theme files or install a theme.
+""",
+        "products": """
+Generate Shopify product drafts with descriptions, categories, suggested prices, SEO titles, and meta descriptions.
+""",
+        "pages": """
+Generate Shopify page drafts for About, Contact, FAQ, Shipping Policy, and Refund Policy.
+""",
+        "shipping_zones": """
+Generate recommended shipping zones, local delivery options, free shipping thresholds, courier notes, and Shopify manual setup steps.
+If API support is not available, make clear the user must configure this inside Shopify.
+""",
+        "payments_setup": """
+Generate a Shopify payments setup checklist. Explain that banking details must be entered directly in Shopify and never inside BusinessBuilder AI.
+""",
+        "domain_setup": """
+Suggest domain names, providers, cheaper offers, likely costs, buying decision questions, and Shopify connection instructions.
+Make clear the user must approve billing and payment directly with the domain provider or Shopify.
+""",
+        "canva_branding": """
+Generate a Canva branding package with logo brief, banner brief, product mockup brief, social post brief, and brand kit suggestions.
+""",
+        "canva_marketing": """
+Generate Canva marketing asset briefs for launch posts, product posts, story templates, promo banners, ads, and short-form video covers.
+""",
+        "launch_checklist": """
+Generate a launch checklist that guides the user through reviewing store content, legal pages, payments, shipping, domains, Canva assets, test orders, and final manual publishing.
+"""
+    }
+
+    return f"""
+You are the BusinessBuilder AI Store Agent working in {definition["mode"]}.
+Generate the draft for this command-center section: {section}.
+
+{safety}
+
+Task instructions:
+{task_instructions[task_type]}
+
+{store_agent_json_prompt(task_type)}
+
+Extra user preferences:
+{extra_context or "No extra preferences supplied."}
+
+User workflow answers:
+{workflow_text}
+"""
+
+
+def parse_task_json_content(content):
+    try:
+        return json.loads(content)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        pass
+
+    match = re.search(r"\{.*\}", content or "", re.DOTALL)
+
+    if not match:
+        return None
+
+    try:
+        return json.loads(match.group(0))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+@app.route("/ai_store_agent")
+def ai_store_agent():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    return render_template(
+        "ai_store_agent.html",
+        sections=get_store_agent_sections(user_id),
+        task_definitions=STORE_AGENT_TASK_DEFINITIONS,
+        workflow_answers=get_nonempty_workflow_answers(user_id),
+        shopify_connected=bool(
+            get_shopify_connection(user_id)
+            and get_shopify_connection(user_id)[3] == "connected"
+        ),
+        canva_connected=bool(
+            get_canva_connection(user_id)
+            and get_canva_connection(user_id)[2] == "connected"
+        )
+    )
+
+
+@app.route("/generate_store_agent_task/<task_type>", methods=["GET", "POST"])
+def generate_store_agent_task(task_type):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    task_type = normalize_store_agent_task_type(task_type)
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    if task_type not in STORE_AGENT_TASK_DEFINITIONS:
+        return redirect("/ai_store_agent")
+
+    answers = get_nonempty_workflow_answers(user_id)
+
+    if not answers:
+        return redirect("/ai_store_agent?agent_error=no_answers")
+
+    extra_context = ""
+
+    if task_type == "theme_recommendation":
+        extra_context = (
+            f"Existing Shopify theme installed: {request.values.get('has_theme', 'Not answered')}\n"
+            f"Theme budget preference: {request.values.get('theme_budget', 'Not answered')}\n"
+            f"Preferred style: {request.values.get('theme_style', 'Not answered')}"
+        )
+    elif request.values.get("notes"):
+        extra_context = request.values.get("notes", "").strip()
+
+    workflow_text = build_workflow_text(answers)
+    prompt = build_store_agent_prompt(task_type, workflow_text, extra_context)
+
+    completion_kwargs = {
+        "model": "gpt-4.1-mini",
+        "messages": [
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    }
+
+    if task_type in {"products", "pages"}:
+        completion_kwargs["response_format"] = {"type": "json_object"}
+
+    try:
+        response = safe_openai_chat_completion(
+            **completion_kwargs
+        )
+    except Exception:
+        return redirect("/ai_store_agent?agent_error=ai_response")
+
+    draft_content = response.choices[0].message.content.strip()
+    definition = STORE_AGENT_TASK_DEFINITIONS[task_type]
+    task_id = create_store_agent_task(
+        user_id,
+        task_type,
+        definition["title"],
+        draft_content,
+        "Needs Approval"
+    )
+
+    return redirect(f"/review_store_agent_task/{task_id}")
+
+
+@app.route("/review_store_agent_task/<int:task_id>")
+def review_store_agent_task(task_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    task = get_store_agent_task(user_id, task_id)
+
+    if not task:
+        return redirect("/ai_store_agent")
+
+    return render_template(
+        "review_store_agent_task.html",
+        task=task,
+        definition=STORE_AGENT_TASK_DEFINITIONS.get(task[2], {}),
+        ai_edit_mode=request.args.get("edit") == "ai",
+        manual_edit_mode=request.args.get("edit") == "manual"
+    )
+
+
+@app.route("/approve_store_agent_task/<int:task_id>", methods=["POST"])
+def approve_store_agent_task(task_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    task = get_store_agent_task(user_id, task_id)
+
+    if not task:
+        return redirect("/ai_store_agent")
+
+    update_store_agent_task_status(task_id, user_id, "Approved", True, task[7])
+
+    return redirect(f"/review_store_agent_task/{task_id}?agent_notice=approved")
+
+
+@app.route("/edit_store_agent_task_ai/<int:task_id>", methods=["GET", "POST"])
+def edit_store_agent_task_ai(task_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    task = get_store_agent_task(user_id, task_id)
+
+    if not task:
+        return redirect("/ai_store_agent")
+
+    if request.method == "GET":
+        return redirect(f"/review_store_agent_task/{task_id}?edit=ai")
+
+    feedback = request.form.get("feedback", "").strip()
+
+    if not feedback:
+        return redirect(f"/review_store_agent_task/{task_id}?edit=ai&agent_error=feedback")
+
+    prompt = f"""
+Revise this BusinessBuilder AI Store Agent draft using the user's feedback.
+Keep the same task type and keep all safety rules: do not publish, charge, buy domains,
+collect banking information, install themes, or edit live theme files.
+
+User feedback:
+{feedback}
+
+Current draft:
+{task[4]}
+"""
+
+    completion_kwargs = {
+        "model": "gpt-4.1-mini",
+        "messages": [
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    }
+
+    if task[2] in {"products", "pages"}:
+        completion_kwargs["response_format"] = {"type": "json_object"}
+
+    try:
+        response = safe_openai_chat_completion(
+            **completion_kwargs
+        )
+    except Exception:
+        return redirect(f"/review_store_agent_task/{task_id}?agent_error=ai_response")
+
+    update_store_agent_task_content(
+        task_id,
+        user_id,
+        response.choices[0].message.content.strip()
+    )
+
+    return redirect(f"/review_store_agent_task/{task_id}?agent_notice=updated")
+
+
+@app.route("/edit_store_agent_task_manual/<int:task_id>", methods=["GET", "POST"])
+def edit_store_agent_task_manual(task_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    task = get_store_agent_task(user_id, task_id)
+
+    if not task:
+        return redirect("/ai_store_agent")
+
+    if request.method == "GET":
+        return redirect(f"/review_store_agent_task/{task_id}?edit=manual")
+
+    draft_content = request.form.get("draft_content", "").strip()
+    save_status = request.form.get("save_status", "needs_approval")
+
+    if not draft_content:
+        return redirect(f"/review_store_agent_task/{task_id}?edit=manual&agent_error=empty")
+
+    update_store_agent_task_content(task_id, user_id, draft_content)
+
+    if save_status == "approved":
+        update_store_agent_task_status(task_id, user_id, "Approved", True, False)
+
+    return redirect(f"/review_store_agent_task/{task_id}?agent_notice=updated")
+
+
+@app.route("/delete_store_agent_task/<int:task_id>", methods=["POST"])
+def delete_store_agent_task(task_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    delete_store_agent_task_record(task_id, user_id)
+
+    return redirect("/ai_store_agent?agent_notice=deleted")
+
+
+def apply_store_agent_products(user_id, task):
+    parsed = parse_task_json_content(task[4]) or {}
+    products = parsed.get("products", [])
+    created_count = 0
+    failed_count = 0
+
+    if not isinstance(products, list):
+        return False, "The product draft is not valid JSON. Edit it before applying."
+
+    if not get_shopify_connection(user_id) or get_shopify_connection(user_id)[3] != "connected":
+        return False, "Connect Shopify before applying product drafts."
+
+    for product in products:
+        if usage_limit_reached(user_id, "shopify_product"):
+            break
+
+        try:
+            title = str(product["title"]).strip()
+            description = str(product["description"]).strip()
+            suggested_price = str(product.get("suggested_price", "")).strip()
+            category = str(product.get("category", "")).strip()
+            seo_title = str(product.get("seo_title", "")).strip()
+            meta_description = str(product.get("meta_description", "")).strip()
+        except (KeyError, TypeError):
+            failed_count += 1
+            continue
+
+        shopify_product_id, status, error = create_shopify_product(
+            user_id,
+            title,
+            description,
+            suggested_price,
+            category
+        )
+
+        if error:
+            failed_count += 1
+            continue
+
+        save_shopify_product(
+            user_id,
+            title,
+            (
+                f"{description}\n\nSuggested price: {suggested_price}\n"
+                f"Collection / category: {category}\nSEO title: {seo_title}\n"
+                f"Meta description: {meta_description}"
+            ),
+            shopify_product_id,
+            status
+        )
+        log_usage(user_id, "shopify_product")
+        created_count += 1
+
+    if not created_count:
+        return False, "No draft Shopify products were created."
+
+    return True, f"{created_count} draft products created. {failed_count} products failed."
+
+
+def apply_store_agent_pages(user_id, task):
+    parsed = parse_task_json_content(task[4]) or {}
+    pages = parsed.get("pages", [])
+    created_count = 0
+    failed_count = 0
+
+    if not isinstance(pages, list):
+        return False, "The page draft is not valid JSON. Edit it before applying."
+
+    if not get_shopify_connection(user_id) or get_shopify_connection(user_id)[3] != "connected":
+        return False, "Connect Shopify before applying page drafts."
+
+    for page in pages:
+        try:
+            title = str(page["title"]).strip()
+            page_type = str(page.get("page_type", "custom")).strip()
+            content = str(page["content"]).strip()
+        except (KeyError, TypeError):
+            failed_count += 1
+            continue
+
+        shopify_page_id, status, error = create_shopify_page(
+            user_id,
+            title,
+            content
+        )
+
+        if error:
+            failed_count += 1
+            continue
+
+        save_shopify_page(
+            user_id,
+            title,
+            page_type,
+            content,
+            shopify_page_id,
+            status
+        )
+        created_count += 1
+
+    if not created_count:
+        return False, "No unpublished Shopify pages were created."
+
+    return True, f"{created_count} unpublished pages created. {failed_count} pages failed."
+
+
+def apply_store_agent_canva(user_id, task):
+    if usage_limit_reached(user_id, "canva_design_brief"):
+        return False, get_usage_limit_message("canva_design_brief", user_id)
+
+    brief_id = save_canva_design_brief(
+        user_id,
+        task[3],
+        task[4]
+    )
+    created_design = False
+
+    if get_canva_connection(user_id) and get_canva_connection(user_id)[2] == "connected":
+        if not usage_limit_reached(user_id, "canva_design"):
+            canva_design_id, edit_url, view_url, status, error = create_canva_design(
+                user_id,
+                f"{task[3]} Draft"[:255]
+            )
+
+            if not error:
+                save_canva_design(
+                    user_id,
+                    f"{task[3]} Draft"[:255],
+                    canva_design_id,
+                    edit_url,
+                    view_url,
+                    status
+                )
+                log_usage(user_id, "canva_design")
+                created_design = True
+
+    log_usage(user_id, "canva_design_brief")
+
+    if created_design:
+        return True, f"Canva design brief saved and one Canva draft created. Brief ID: {brief_id}."
+
+    return True, f"Canva design brief saved. Brief ID: {brief_id}."
+
+
+@app.route("/apply_store_agent_task/<int:task_id>", methods=["POST"])
+def apply_store_agent_task(task_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    task = get_store_agent_task(user_id, task_id)
+
+    if not task:
+        return redirect("/ai_store_agent")
+
+    if not task[6]:
+        return redirect(f"/review_store_agent_task/{task_id}?agent_error=not_approved")
+
+    task_type = task[2]
+
+    if task_type == "products":
+        applied, message = apply_store_agent_products(user_id, task)
+    elif task_type == "pages":
+        applied, message = apply_store_agent_pages(user_id, task)
+    elif task_type in {"canva_branding", "canva_marketing"}:
+        applied, message = apply_store_agent_canva(user_id, task)
+    elif task_type in {"homepage_design", "theme_sections"}:
+        save_shopify_plan(user_id, "Approved Homepage Design Plan", task[4])
+        applied, message = True, "Homepage design plan saved. Theme files were not edited."
+    elif task_type == "theme_recommendation":
+        save_shopify_plan(user_id, "Approved Theme Recommendation", task[4])
+        applied, message = True, "Theme recommendation saved. No theme was installed."
+    elif task_type in {"shipping_zones", "payments_setup", "domain_setup", "launch_checklist"}:
+        save_shopify_plan(user_id, task[3], task[4])
+        applied = True
+        message = "Approved guidance saved. Manual review is still required inside Shopify or the provider account."
+    else:
+        applied, message = False, "This task type is not supported."
+
+    if applied:
+        update_store_agent_task_status(task_id, user_id, "Applied", True, True)
+        return redirect(
+            f"/review_store_agent_task/{task_id}?agent_notice=applied"
+            f"&apply_message={urllib.parse.quote(message)}"
+        )
+
+    return redirect(
+        f"/review_store_agent_task/{task_id}?agent_error=apply_failed"
+        f"&apply_message={urllib.parse.quote(message)}"
     )
 
 

@@ -23,6 +23,7 @@
 <a href="/">Chat</a>
 <a href="/dashboard">Dashboard</a>
 <a href="/build_center">Build Center</a>
+<a href="/ai_store_agent">AI Store Agent</a>
 <a href="/store_builder">AI Store Builder</a>
 <a href="/business_workflow">Workflow</a>
 <a href="/shopify_settings">Shopify</a>
@@ -139,6 +140,7 @@
                 <button type="button">Continue Building Your Business</button>
             </a>
             <a href="/store_builder" class="primary-button">AI Store Builder</a>
+            <a href="/ai_store_agent" class="secondary-button">AI Store Agent</a>
         </div>
 
     {% else %}
@@ -180,6 +182,15 @@
     {% endif %}
 
     {% if paid %}
+
+<section class="project-form">
+    <h2>AI Store Agent</h2>
+    <p>Review, edit, approve, and safely apply Shopify and Canva store tasks. The agent advises, generates drafts, and only applies supported approved changes.</p>
+
+    <div class="generator-actions">
+        <a href="/ai_store_agent" class="primary-button">Open AI Store Agent</a>
+    </div>
+</section>
 
 <section class="project-form">
     <h2>AI Store Builder</h2>
@@ -371,6 +382,22 @@
 
             </div>
         </section>
+
+<section>
+    <h2>AI Store Agent Tasks</h2>
+    <p>Manage store, Shopify, Canva, domain, payment, shipping, and launch drafts before applying any safe approved changes.</p>
+
+    <div class="cards">
+        <div class="card plan-card">
+            <h3>Store Agent Command Center</h3>
+            <p><strong>Saved tasks:</strong> {{ store_agent_tasks|length }}</p>
+            <p>Advice Mode, Draft Mode, and Action Mode are controlled from one review workspace.</p>
+            <div class="card-actions">
+                <a href="/ai_store_agent" class="primary-button">Open AI Store Agent</a>
+            </div>
+        </div>
+    </div>
+</section>
 
 <section>
     <h2>AI Store Builds</h2>

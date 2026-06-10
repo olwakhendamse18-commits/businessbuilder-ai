@@ -572,6 +572,79 @@ a {
     gap: 12px;
 }
 
+.agent-mode-grid,
+.agent-task-grid {
+    display: grid;
+    gap: 18px;
+    margin-bottom: 28px;
+}
+
+.agent-mode-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.agent-task-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.agent-mode-card {
+    padding: 22px;
+    border-radius: 22px;
+    background: rgba(15, 23, 42, 0.76);
+    border: 1px solid rgba(148, 163, 184, 0.17);
+    box-shadow: var(--shadow);
+}
+
+.agent-mode-card h2,
+.agent-task-card h3 {
+    margin-top: 0;
+    color: white;
+}
+
+.agent-mode-card p:not(.eyebrow),
+.agent-task-card p {
+    color: var(--text-soft);
+    line-height: 1.6;
+}
+
+.agent-task-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.agent-task-card .card-actions {
+    margin-top: auto;
+    padding-top: 14px;
+}
+
+.agent-mini-form {
+    display: grid;
+    gap: 10px;
+    margin-top: auto;
+    padding-top: 12px;
+}
+
+.agent-mini-form label {
+    color: #bfdbfe;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.agent-mini-form input,
+.agent-mini-form select {
+    width: 100%;
+    padding: 13px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(2, 6, 23, 0.62);
+    color: white;
+    outline: none;
+}
+
+.agent-mini-form button {
+    margin-top: 4px;
+}
+
 .approval-warning,
 .approval-actions,
 .approval-context {
@@ -1626,6 +1699,7 @@ a {
     .landing-feature-grid,
     .landing-step-grid,
     .landing-confidence,
+    .agent-mode-grid,
     .workflow-tool-grid,
     .store-package-grid {
         grid-template-columns: 1fr;

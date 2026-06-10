@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Store Agent - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>AI store agent</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/ai_store_agent">AI Store Agent</a>
+        <a href="/store_builder">AI Store Builder</a>
+        <a href="/business_workflow">Workflow</a>
+        <a href="/shopify_settings">Shopify</a>
+        <a href="/canva_settings">Canva</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/launch_readiness">Launch Readiness</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <p class="eyebrow">Shopify + Canva Command Center</p>
+            <h1>AI Store Agent</h1>
+            <p>Get advice, generate drafts, then apply only safe approved changes. BusinessBuilder AI never publishes your store, buys domains, charges you externally, or handles banking details.</p>
+        </div>
+
+        {% if request.args.get("agent_error") == "no_answers" %}
+            <p class="form-notice">Save at least one workflow answer before generating an AI Store Agent task.</p>
+        {% elif request.args.get("agent_error") == "ai_response" %}
+            <p class="form-notice">The AI draft could not be generated. Please try again.</p>
+        {% endif %}
+
+        {% if request.args.get("agent_notice") == "deleted" %}
+            <p class="success-notice">Draft deleted.</p>
+        {% endif %}
+
+        <section class="agent-mode-grid">
+            <div class="agent-mode-card">
+                <p class="eyebrow">Advice Mode</p>
+                <h2>Recommend</h2>
+                <p>Explains options, risks, costs, and manual setup steps.</p>
+            </div>
+
+            <div class="agent-mode-card">
+                <p class="eyebrow">Draft Mode</p>
+                <h2>Generate</h2>
+                <p>Creates product copy, page drafts, Canva briefs, theme plans, and launch checklists.</p>
+            </div>
+
+            <div class="agent-mode-card">
+                <p class="eyebrow">Action Mode</p>
+                <h2>Apply</h2>
+                <p>Applies only supported safe changes after approval, such as draft Shopify products or unpublished pages.</p>
+            </div>
+        </section>
+
+        <section class="project-form">
+            <h2>Connection Status</h2>
+            <div class="requirement-grid">
+                <div class="requirement-item {{ 'ready' if workflow_answers else 'missing' }}">
+                    <strong>{{ "Ready" if workflow_answers else "Needed" }}</strong>
+                    <span>Workflow answers</span>
+                </div>
+                <div class="requirement-item {{ 'ready' if shopify_connected else 'missing' }}">
+                    <strong>{{ "Connected" if shopify_connected else "Not connected" }}</strong>
+                    <span>Shopify safe apply actions</span>
+                </div>
+                <div class="requirement-item {{ 'ready' if canva_connected else 'optional' }}">
+                    <strong>{{ "Connected" if canva_connected else "Optional" }}</strong>
+                    <span>Canva draft creation</span>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2>Store Agent Tasks</h2>
+            <p>Generate, review, edit, approve, delete, or safely apply each store-building draft.</p>
+
+            <div class="agent-task-grid">
+                {% for section in sections %}
+                    <article class="card agent-task-card">
+                        <p class="build-status {{ section['status']|lower|replace(' ', '-') }}">
+                            {{ section["status"] }}
+                        </p>
+
+                        <p class="eyebrow">{{ section["mode"] }}</p>
+                        <h3>{{ section["section"] }}</h3>
+                        <p>{{ section["explanation"] }}</p>
+
+                        {% if section["task_type"] == "theme_recommendation" and not section["task"] %}
+                            <form method="POST" action="/generate_store_agent_task/theme_recommendation" class="agent-mini-form">
+                                <label>Do you already have a Shopify theme installed?</label>
+                                <select name="has_theme">
+                                    <option value="Not sure">Not sure</option>
+                                    <option value="Yes">Yes</option>
+                                    <option value="No">No</option>
+                                </select>
+
+                                <label>Theme budget</label>
+                                <select name="theme_budget">
+                                    <option value="Free suggestions">Free suggestions</option>
+                                    <option value="Paid suggestions">Paid suggestions</option>
+                                    <option value="Both free and paid">Both free and paid</option>
+                                </select>
+
+                                <label>Style</label>
+                                <input name="theme_style" placeholder="luxury, simple, bold, playful, tech, fashion, beauty">
+
+                                <button type="submit">Generate Draft</button>
+                            </form>
+                        {% else %}
+                            <div class="card-actions">
+                                <a href="/generate_store_agent_task/{{ section['task_type'] }}" class="primary-button">
+                                    {{ "Generate Draft" if not section["task"] else "Generate New Draft" }}
+                                </a>
+
+                                {% if section["task"] %}
+                                    <a href="/review_store_agent_task/{{ section['task'][0] }}" class="secondary-button">Review / Edit</a>
+                                {% else %}
+                                    <a href="/business_workflow" class="secondary-button">Edit Workflow</a>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ task[3] }} - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Task review</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/ai_store_agent">AI Store Agent</a>
+        <a href="/store_builder">AI Store Builder</a>
+        <a href="/business_workflow">Workflow</a>
+        <a href="/shopify_settings">Shopify</a>
+        <a href="/canva_settings">Canva</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <p class="eyebrow">{{ definition.get("mode", "Draft Mode") }}</p>
+            <h1>{{ task[3] }}</h1>
+            <p>Status: {{ task[5] }}. Review, edit, approve, or delete this draft before any safe apply action runs.</p>
+        </div>
+
+        {% if request.args.get("agent_notice") == "approved" %}
+            <p class="success-notice">Draft approved. It has not been applied yet.</p>
+        {% elif request.args.get("agent_notice") == "updated" %}
+            <p class="success-notice">Draft updated and returned to review.</p>
+        {% elif request.args.get("agent_notice") == "applied" %}
+            <p class="success-notice">{{ request.args.get("apply_message", "Approved changes applied safely.") }}</p>
+        {% endif %}
+
+        {% if request.args.get("agent_error") == "not_approved" %}
+            <p class="form-notice">Approve this draft before applying changes.</p>
+        {% elif request.args.get("agent_error") == "apply_failed" %}
+            <p class="form-notice">{{ request.args.get("apply_message", "The approved task could not be applied.") }}</p>
+        {% elif request.args.get("agent_error") == "feedback" %}
+            <p class="form-notice">Enter feedback before asking AI to edit the draft.</p>
+        {% elif request.args.get("agent_error") == "empty" %}
+            <p class="form-notice">Draft content cannot be empty.</p>
+        {% elif request.args.get("agent_error") == "ai_response" %}
+            <p class="form-notice">The AI edit could not be generated. Please try again.</p>
+        {% endif %}
+
+        <section class="approval-warning">
+            <h2>Safety Guardrails</h2>
+            <p>
+                BusinessBuilder AI will not publish your store, buy a domain, charge external services,
+                collect banking details, install themes, or edit live theme files automatically.
+            </p>
+        </section>
+
+        <section class="business-plan-document">
+            <div class="business-plan-document-header">
+                <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+                <h2>{{ task[3] }}</h2>
+            </div>
+
+            <pre class="business-plan-output">{{ task[4] }}</pre>
+        </section>
+
+        {% if ai_edit_mode %}
+            <section class="project-form">
+                <h2>Edit With AI</h2>
+                <form method="POST" action="/edit_store_agent_task_ai/{{ task[0] }}">
+                    <label>Feedback</label>
+                    <textarea name="feedback" placeholder="Example: make it more luxury, target South African students, simplify the copy..." required></textarea>
+                    <button type="submit">Regenerate Draft</button>
+                </form>
+            </section>
+        {% endif %}
+
+        {% if manual_edit_mode %}
+            <section class="project-form">
+                <h2>Edit Manually</h2>
+                <form method="POST" action="/edit_store_agent_task_manual/{{ task[0] }}">
+                    <label>Draft Content</label>
+                    <textarea name="draft_content" required>{{ task[4] }}</textarea>
+                    <div class="generator-actions">
+                        <button type="submit" name="save_status" value="needs_approval">Save For Review</button>
+                        <button type="submit" name="save_status" value="approved">Save And Approve</button>
+                    </div>
+                </form>
+            </section>
+        {% endif %}
+
+        <section class="approval-actions">
+            <div>
+                <p class="eyebrow">Review Actions</p>
+                <h2>Approve Or Edit</h2>
+                <p>Approving marks the draft ready. Applying is a separate action and only runs supported safe changes.</p>
+            </div>
+
+            <div class="generator-actions">
+                <form method="POST" action="/approve_store_agent_task/{{ task[0] }}">
+                    <button type="submit">Approve</button>
+                </form>
+
+                <a href="/review_store_agent_task/{{ task[0] }}?edit=ai" class="secondary-button">Edit With AI</a>
+                <a href="/review_store_agent_task/{{ task[0] }}?edit=manual" class="secondary-button">Edit Manually</a>
+
+                {% if task[6] %}
+                    <form method="POST" action="/apply_store_agent_task/{{ task[0] }}">
+                        <button type="submit">Apply Approved Changes</button>
+                    </form>
+                {% else %}
+                    <button type="button" disabled>Apply Approved Changes</button>
+                {% endif %}
+
+                <form method="POST" action="/delete_store_agent_task/{{ task[0] }}">
+                    <button type="submit">Delete Draft</button>
+                </form>
+
+                <a href="/ai_store_agent" class="secondary-button">Back to AI Store Agent</a>
+            </div>
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>

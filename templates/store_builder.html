@@ -23,6 +23,7 @@
         <a href="/">Chat</a>
         <a href="/dashboard">Dashboard</a>
         <a href="/build_center">Build Center</a>
+        <a href="/ai_store_agent">AI Store Agent</a>
         <a href="/store_builder">AI Store Builder</a>
         <a href="/business_workflow">Workflow</a>
         <a href="/shopify_settings">Shopify</a>
@@ -57,11 +58,18 @@
             <div class="generator-actions">
                 {% if has_workflow_answers %}
                     <a href="{{ generate_url }}" class="primary-button">Generate My Store</a>
+                    <a href="/ai_store_agent" class="secondary-button">Open AI Store Agent</a>
                 {% else %}
                     <button type="button" disabled>Generate My Store</button>
                     <a href="/business_workflow" class="secondary-button">Complete Workflow</a>
                 {% endif %}
             </div>
+        </section>
+
+        <section class="project-form">
+            <h2>AI Store Agent</h2>
+            <p>Use the agent to review, edit, approve, delete, or safely apply specific Shopify and Canva tasks after your full store package is generated.</p>
+            <a href="/ai_store_agent" class="primary-button">Open AI Store Agent</a>
         </section>
 
         <section class="project-form">
