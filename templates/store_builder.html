@@ -23,6 +23,7 @@
         <a href="/">Chat</a>
         <a href="/dashboard">Dashboard</a>
         <a href="/build_center">Build Center</a>
+        <a href="/product_finder">AI Product Finder</a>
         <a href="/ai_store_agent">AI Store Agent</a>
         <a href="/store_builder">AI Store Builder</a>
         <a href="/business_workflow">Workflow</a>
@@ -58,12 +59,19 @@
             <div class="generator-actions">
                 {% if has_workflow_answers %}
                     <a href="{{ generate_url }}" class="primary-button">Generate My Store</a>
+                    <a href="/product_finder" class="secondary-button">Find Products</a>
                     <a href="/ai_store_agent" class="secondary-button">Open AI Store Agent</a>
                 {% else %}
                     <button type="button" disabled>Generate My Store</button>
                     <a href="/business_workflow" class="secondary-button">Complete Workflow</a>
                 {% endif %}
             </div>
+        </section>
+
+        <section class="project-form">
+            <h2>AI Product Finder</h2>
+            <p>Need stronger product ideas first? Research product options, competitor examples, supplier search paths, and Shopify draft candidates.</p>
+            <a href="/product_finder" class="primary-button">Find Products</a>
         </section>
 
         <section class="project-form">

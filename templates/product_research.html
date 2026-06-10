@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ research[1] }} - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Product research</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/product_finder">AI Product Finder</a>
+        <a href="/ai_store_agent">AI Store Agent</a>
+        <a href="/store_builder">AI Store Builder</a>
+        <a href="/business_workflow">Workflow</a>
+        <a href="/shopify_settings">Shopify</a>
+        <a href="/canva_settings">Canva</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <p class="eyebrow">AI Product Finder</p>
+            <h1>{{ research[1] }}</h1>
+            <p>Review product ideas, source options, competitor research suggestions, and Shopify draft candidates.</p>
+        </div>
+
+        {% if request.args.get("research_notice") == "products_created" %}
+            <p class="success-notice">
+                {{ request.args.get("created_count", "0") }} Shopify draft products created.
+                {% if request.args.get("failed_count", "0") != "0" %}
+                    {{ request.args.get("failed_count") }} products could not be created.
+                {% endif %}
+            </p>
+        {% endif %}
+
+        {% if request.args.get("research_error") == "shopify_connection" %}
+            <p class="form-notice">Connect Shopify before creating draft products.</p>
+        {% elif request.args.get("research_error") == "no_products" %}
+            <p class="form-notice">This research does not include valid Shopify product candidates.</p>
+        {% elif request.args.get("research_error") == "create_failed" %}
+            <p class="form-notice">Shopify could not create any draft products. Check your Admin API permissions and try again.</p>
+        {% endif %}
+
+        <section class="quote-summary-grid">
+            <div class="quote-summary-card">
+                <p>Business Idea</p>
+                <h3>{{ research[2] }}</h3>
+            </div>
+            <div class="quote-summary-card">
+                <p>Target Customer</p>
+                <h3>{{ research[3] }}</h3>
+            </div>
+            <div class="quote-summary-card">
+                <p>Market</p>
+                <h3>{{ research[6] }}</h3>
+            </div>
+            <div class="quote-summary-card">
+                <p>Budget</p>
+                <h3>{{ research[5] }}</h3>
+            </div>
+        </section>
+
+        <section class="approval-warning">
+            <h2>Research Safety Note</h2>
+            <p>
+                BusinessBuilder AI does not scrape Amazon or access live Amazon data here.
+                Verify prices, suppliers, reviews, stock, shipping terms, return policies, legal restrictions,
+                and marketplace rules before buying inventory or publishing products.
+            </p>
+        </section>
+
+        <div class="generator-actions summary-actions">
+            <a href="/product_finder" class="secondary-button">Back to Product Finder</a>
+            <a href="/store_builder" class="secondary-button">Open Store Builder</a>
+            {% if shopify_connected %}
+                <a href="/build_approval?action=product_research_products&research_id={{ research[0] }}" class="primary-button">Create These as Shopify Draft Products</a>
+            {% else %}
+                <a href="/shopify_settings" class="primary-button">Connect Shopify to Create Draft Products</a>
+            {% endif %}
+        </div>
+
+        {% if research_data %}
+            <section>
+                <h2>Recommended Product Ideas</h2>
+                <div class="cards">
+                    {% for product in research_data.get("recommended_product_ideas", []) %}
+                        <div class="card">
+                            <h3>{{ product.get("name") }}</h3>
+                            <p><strong>Fit:</strong> {{ product.get("why_it_fits") }}</p>
+                            <p><strong>Price:</strong> {{ product.get("suggested_selling_price_range") }}</p>
+                            <p><strong>Difficulty:</strong> {{ product.get("estimated_difficulty_level") }}</p>
+                            <p><strong>Shipping:</strong> {{ product.get("shipping_difficulty") }}</p>
+                            <p><strong>Branding:</strong> {{ product.get("branding_angle") }}</p>
+                            <p><strong>Margin notes:</strong> {{ product.get("profit_margin_notes") }}</p>
+                        </div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section class="launch-package-grid">
+                <div class="launch-package-section">
+                    <h2>Supplier/Source Options</h2>
+                    <p class="summary-copy">{{ research_data.get("supplier_source_options") }}</p>
+                </div>
+                <div class="launch-package-section">
+                    <h2>Amazon Research Suggestions</h2>
+                    <p class="summary-copy">{{ research_data.get("amazon_research_suggestions") }}</p>
+                </div>
+                <div class="launch-package-section">
+                    <h2>Competitor Examples To Research</h2>
+                    <p class="summary-copy">{{ research_data.get("competitor_examples") }}</p>
+                </div>
+                <div class="launch-package-section">
+                    <h2>Differentiation Ideas</h2>
+                    <p class="summary-copy">{{ research_data.get("product_differentiation_ideas") }}</p>
+                </div>
+                <div class="launch-package-section">
+                    <h2>Risk Warnings</h2>
+                    <p class="summary-copy">{{ research_data.get("risky_product_warnings") }}</p>
+                </div>
+                <div class="launch-package-section">
+                    <h2>Next Steps</h2>
+                    <p class="summary-copy">{{ research_data.get("next_steps") }}</p>
+                </div>
+            </section>
+
+            <section>
+                <h2>Recommended First 5 Shopify Products</h2>
+                <div class="cards">
+                    {% for product in research_data.get("recommended_first_5_shopify_products", []) %}
+                        <div class="card">
+                            <h3>{{ product.get("title") }}</h3>
+                            <p>{{ product.get("description") }}</p>
+                            <p><strong>Suggested price:</strong> {{ product.get("suggested_price") }}</p>
+                            <p><strong>Category:</strong> {{ product.get("category") }}</p>
+                        </div>
+                    {% endfor %}
+                </div>
+            </section>
+        {% else %}
+            <section class="business-plan-document">
+                <pre class="business-plan-output">{{ research[7] }}</pre>
+            </section>
+        {% endif %}
+
+    </main>
+
+</div>
+
+</body>
+</html>

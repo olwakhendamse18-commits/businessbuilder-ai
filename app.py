@@ -384,6 +384,21 @@ def init_db():
     """)
 
     execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS product_research (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            business_type TEXT NOT NULL,
+            target_market TEXT NOT NULL,
+            sourcing_preference TEXT NOT NULL,
+            budget TEXT NOT NULL,
+            country TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS user_packages (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -1710,7 +1725,8 @@ BUILD_APPROVAL_ACTIONS = {
     "shopify_store": "/build_shopify_store_draft",
     "canva_designs": "/create_canva_designs",
     "full_build": "/build_shopify_store_draft",
-    "ai_store": "/generate_full_store"
+    "ai_store": "/generate_full_store",
+    "product_research_products": "/create_product_research_shopify_products"
 }
 
 
@@ -1912,6 +1928,131 @@ def get_ai_store_build(user_id, build_id):
     return build
 
 
+def save_product_research(
+    user_id,
+    title,
+    business_type,
+    target_market,
+    sourcing_preference,
+    budget,
+    country,
+    content
+):
+    conn = db()
+    cur = conn.cursor()
+
+    if using_postgres():
+        cur.execute(
+            sql("""
+                INSERT INTO product_research (
+                    user_id,
+                    title,
+                    business_type,
+                    target_market,
+                    sourcing_preference,
+                    budget,
+                    country,
+                    content
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """),
+            (
+                user_id,
+                title,
+                business_type,
+                target_market,
+                sourcing_preference,
+                budget,
+                country,
+                content
+            )
+        )
+        research_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO product_research (
+                    user_id,
+                    title,
+                    business_type,
+                    target_market,
+                    sourcing_preference,
+                    budget,
+                    country,
+                    content
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """),
+            (
+                user_id,
+                title,
+                business_type,
+                target_market,
+                sourcing_preference,
+                budget,
+                country,
+                content
+            )
+        )
+        research_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return research_id
+
+
+def get_product_research_list(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, business_type, target_market,
+                   sourcing_preference, budget, country, content, created_at
+            FROM product_research
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+
+    research = cur.fetchall()
+    conn.close()
+
+    return research
+
+
+def get_product_research(user_id, research_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, business_type, target_market,
+                   sourcing_preference, budget, country, content, created_at
+            FROM product_research
+            WHERE id = ?
+            AND user_id = ?
+            LIMIT 1
+        """),
+        (research_id, user_id)
+    )
+
+    research = cur.fetchone()
+    conn.close()
+
+    return research
+
+
+def parse_product_research_content(content):
+    try:
+        return json.loads(content)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
 STORE_AGENT_TASK_DEFINITIONS = {
     "theme_recommendation": {
         "section": "Store Theme",
@@ -1940,6 +2081,13 @@ STORE_AGENT_TASK_DEFINITIONS = {
         "mode": "Action Mode",
         "explanation": "Generate product drafts and apply them as draft Shopify products after approval.",
         "apply_supported": True
+    },
+    "product_sourcing": {
+        "section": "Product Sourcing",
+        "title": "Product Sourcing Research",
+        "mode": "Advice Mode",
+        "explanation": "Find product ideas, supplier search paths, competitor examples, and the first products to add to Shopify.",
+        "apply_supported": False
     },
     "pages": {
         "section": "Shopify Pages",
@@ -1997,6 +2145,7 @@ STORE_AGENT_SECTION_ORDER = [
     "theme_recommendation",
     "homepage_design",
     "products",
+    "product_sourcing",
     "pages",
     "shipping_zones",
     "payments_setup",
@@ -3784,6 +3933,7 @@ def dashboard():
     build_quotes = get_build_quotes(user_id)
     ai_store_builds = get_ai_store_builds(user_id)
     store_agent_tasks = get_store_agent_tasks(user_id)
+    product_research_list = get_product_research_list(user_id)
     shopify_connection = get_shopify_connection(user_id)
     canva_connection = get_canva_connection(user_id)
     shopify_products = get_shopify_products(user_id)
@@ -3818,6 +3968,7 @@ def dashboard():
         build_quotes=build_quotes,
         ai_store_builds=ai_store_builds,
         store_agent_tasks=store_agent_tasks,
+        product_research_list=product_research_list,
         shopify_connection=shopify_connection_summary,
         canva_connection=canva_connection_summary,
         shopify_products=shopify_products,
@@ -3882,6 +4033,7 @@ def build_center():
     shopify_connection = get_shopify_connection(user_id)
     canva_connection = get_canva_connection(user_id)
     store_agent_tasks = get_store_agent_tasks(user_id)
+    product_research_list = get_product_research_list(user_id)
 
     def status_for(completed, started=False):
         if completed:
@@ -3933,6 +4085,20 @@ def build_center():
             "url": "/ai_store_agent",
             "action": "Open AI Store Agent",
             "count": f"{len(store_agent_tasks)} tasks"
+        },
+        {
+            "title": "AI Product Finder",
+            "status": status_for(product_research_list, workflow_started),
+            "description": "Discover product ideas, supplier search paths, competitor examples, and first Shopify products.",
+            "url": (
+                f"/product_research/{product_research_list[0][0]}"
+                if product_research_list
+                else "/product_finder"
+            ),
+            "action": "View Product Research" if product_research_list else "Find Products",
+            "secondary_url": "/product_finder",
+            "secondary_action": "New Product Search",
+            "count": f"{len(product_research_list)} saved"
         },
         {
             "title": "AI Store Builder",
@@ -4184,7 +4350,8 @@ def get_store_agent_sections(user_id):
             "explanation": definition["explanation"],
             "status": status,
             "task": task,
-            "apply_supported": definition["apply_supported"]
+            "apply_supported": definition["apply_supported"],
+            "url": "/product_finder" if task_type == "product_sourcing" else ""
         })
 
     return sections
@@ -4248,6 +4415,10 @@ Do not edit live theme files or install a theme.
 """,
         "products": """
 Generate Shopify product drafts with descriptions, categories, suggested prices, SEO titles, and meta descriptions.
+""",
+        "product_sourcing": """
+Generate product sourcing research, supplier search paths, competitor examples to study, and initial product recommendations.
+Do not scrape Amazon or claim live supplier access.
 """,
         "pages": """
 Generate Shopify page drafts for About, Contact, FAQ, Shipping Policy, and Refund Policy.
@@ -4758,6 +4929,293 @@ def apply_store_agent_task(task_id):
     return redirect(
         f"/review_store_agent_task/{task_id}?agent_error=apply_failed"
         f"&apply_message={urllib.parse.quote(message)}"
+    )
+
+
+def product_research_to_text(research_data):
+    if not isinstance(research_data, dict):
+        return ""
+
+    lines = []
+    labels = [
+        ("recommended_product_ideas", "Recommended product ideas"),
+        ("supplier_source_options", "Supplier/source options"),
+        ("amazon_research_suggestions", "Amazon product research suggestions"),
+        ("competitor_examples", "Similar business/competitor examples to research"),
+        ("product_differentiation_ideas", "Product differentiation ideas"),
+        ("recommended_first_5_shopify_products", "Recommended first 5 products to add to Shopify"),
+        ("risky_product_warnings", "Warnings about risky products"),
+        ("next_steps", "Next steps")
+    ]
+
+    for key, label in labels:
+        value = research_data.get(key)
+
+        if not value:
+            continue
+
+        lines.append(f"{label}:")
+
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    title = item.get("name") or item.get("title") or "Item"
+                    lines.append(f"- {title}")
+
+                    for detail_key, detail_value in item.items():
+                        if detail_key in {"name", "title"}:
+                            continue
+                        lines.append(f"  {detail_key.replace('_', ' ').title()}: {detail_value}")
+                else:
+                    lines.append(f"- {item}")
+        elif isinstance(value, dict):
+            for detail_key, detail_value in value.items():
+                lines.append(f"- {detail_key.replace('_', ' ').title()}: {detail_value}")
+        else:
+            lines.append(str(value))
+
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
+@app.route("/product_finder")
+def product_finder():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    return render_template(
+        "product_finder.html",
+        product_research_list=get_product_research_list(user_id)
+    )
+
+
+@app.route("/generate_product_research", methods=["GET", "POST"])
+def generate_product_research():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    if request.method == "GET":
+        return redirect("/product_finder")
+
+    business_type = request.form.get("business_type", "").strip()
+    target_market = request.form.get("target_market", "").strip()
+    country = request.form.get("country", "").strip()
+    budget = request.form.get("budget", "").strip()
+    product_type = request.form.get("product_type", "").strip()
+    sourcing_preference = request.form.get("sourcing_preference", "").strip()
+    risk_level = request.form.get("risk_level", "").strip()
+
+    if not business_type or not target_market:
+        return redirect("/product_finder?research_error=missing_fields")
+
+    prompt = f"""
+Create AI product sourcing and competitor discovery research for a new Shopify business.
+Return JSON only.
+
+Important Amazon rule:
+- Do not scrape Amazon.
+- Do not pretend to access Amazon live data.
+- Generate Amazon search suggestions and research links only.
+- Make clear that users must verify prices, suppliers, stock, policies, reviews, and restrictions themselves.
+
+Use exactly these top-level keys:
+- recommended_product_ideas
+- supplier_source_options
+- amazon_research_suggestions
+- competitor_examples
+- product_differentiation_ideas
+- recommended_first_5_shopify_products
+- risky_product_warnings
+- next_steps
+
+recommended_product_ideas must be an array of 8 to 12 objects with:
+- name
+- why_it_fits
+- suggested_selling_price_range
+- estimated_difficulty_level
+- shipping_difficulty
+- branding_angle
+- profit_margin_notes
+
+recommended_first_5_shopify_products must be an array of exactly 5 objects with:
+- title
+- description
+- suggested_price
+- category
+
+supplier_source_options must include options for the user's sourcing preference and at least two alternatives.
+competitor_examples must be research examples or search queries to investigate, not claims of live competitor data.
+
+Business/store idea: {business_type}
+Target customer: {target_market}
+Country/market: {country}
+Budget: {budget}
+Product type: {product_type}
+Sourcing preference: {sourcing_preference}
+Risk level: {risk_level}
+"""
+
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
+        research_data = json.loads(response.choices[0].message.content)
+    except Exception:
+        return redirect("/product_finder?research_error=ai_response")
+
+    title = f"Product Research - {business_type[:80]}"
+    research_id = save_product_research(
+        user_id,
+        title,
+        business_type,
+        target_market,
+        sourcing_preference,
+        budget,
+        country,
+        json.dumps(research_data, indent=2)
+    )
+
+    return redirect(f"/product_research/{research_id}")
+
+
+@app.route("/product_research/<int:research_id>")
+def product_research_detail(research_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    research = get_product_research(user_id, research_id)
+
+    if not research:
+        return redirect("/product_finder")
+
+    research_data = parse_product_research_content(research[7])
+
+    return render_template(
+        "product_research.html",
+        research=research,
+        research_data=research_data,
+        research_text=product_research_to_text(research_data),
+        shopify_connected=bool(
+            get_shopify_connection(user_id)
+            and get_shopify_connection(user_id)[3] == "connected"
+        )
+    )
+
+
+@app.route("/create_product_research_shopify_products")
+def create_product_research_shopify_products():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    if not consume_build_approval("product_research_products"):
+        return build_approval_redirect("product_research_products")
+
+    research_id = session.pop("product_research_id", None)
+
+    if not research_id:
+        return redirect("/product_finder?research_error=no_research")
+
+    research = get_product_research(user_id, int(research_id))
+
+    if not research:
+        return redirect("/product_finder?research_error=no_research")
+
+    connection = get_shopify_connection(user_id)
+
+    if not connection or connection[3] != "connected":
+        return redirect(f"/product_research/{research_id}?research_error=shopify_connection")
+
+    research_data = parse_product_research_content(research[7]) or {}
+    products = research_data.get("recommended_first_5_shopify_products", [])
+
+    if not isinstance(products, list) or not products:
+        return redirect(f"/product_research/{research_id}?research_error=no_products")
+
+    created_count = 0
+    failed_count = 0
+
+    for product in products[:5]:
+        if usage_limit_reached(user_id, "shopify_product"):
+            break
+
+        try:
+            title = str(product["title"]).strip()
+            description = str(product["description"]).strip()
+            suggested_price = str(product.get("suggested_price", "")).strip()
+            category = str(product.get("category", "")).strip()
+        except (KeyError, TypeError):
+            failed_count += 1
+            continue
+
+        if not title or not description:
+            failed_count += 1
+            continue
+
+        shopify_product_id, status, error = create_shopify_product(
+            user_id,
+            title,
+            description,
+            suggested_price,
+            category
+        )
+
+        if error:
+            failed_count += 1
+            continue
+
+        save_shopify_product(
+            user_id,
+            title,
+            (
+                f"{description}\n\n"
+                f"Suggested price: {suggested_price}\n"
+                f"Collection / category: {category}\n"
+                "Source: AI Product Finder research"
+            ),
+            shopify_product_id,
+            status
+        )
+        log_usage(user_id, "shopify_product")
+        created_count += 1
+
+    if not created_count:
+        return redirect(f"/product_research/{research_id}?research_error=create_failed")
+
+    return redirect(
+        f"/product_research/{research_id}?research_notice=products_created"
+        f"&created_count={created_count}&failed_count={failed_count}"
     )
 
 
@@ -5958,6 +6416,9 @@ def build_approval():
     if requested_action not in BUILD_APPROVAL_ACTIONS:
         requested_action = "full_build"
 
+    if requested_action == "product_research_products" and request.values.get("research_id"):
+        session["product_research_id"] = request.values.get("research_id")
+
     if requested_action != "ai_store" and not user_package_at_least(user_id, "Pro"):
         return package_access_redirect("Pro")
 
@@ -5994,6 +6455,12 @@ def build_approval():
             "Unpublished About, Contact, FAQ, Shipping, and Refund pages",
             "Canva logo, banner, and social template briefs",
             "Launch checklist"
+        ],
+        product_research_preview=[
+            "Up to 5 Shopify draft products from approved AI Product Finder research",
+            "Product titles, descriptions, suggested prices, and categories",
+            "Draft products only; nothing is published automatically",
+            "Supplier, stock, legal, and pricing details must be verified manually"
         ],
         canva_design_preview=[
             "Logo concept draft",

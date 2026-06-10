@@ -23,6 +23,7 @@
         <a href="/">Chat</a>
         <a href="/dashboard">Dashboard</a>
         <a href="/build_center">Build Center</a>
+        <a href="/product_finder">AI Product Finder</a>
         <a href="/ai_store_agent">AI Store Agent</a>
         <a href="/store_builder">AI Store Builder</a>
         <a href="/business_workflow">Workflow</a>
@@ -104,7 +105,11 @@
                         <h3>{{ section["section"] }}</h3>
                         <p>{{ section["explanation"] }}</p>
 
-                        {% if section["task_type"] == "theme_recommendation" and not section["task"] %}
+                        {% if section["url"] %}
+                            <div class="card-actions">
+                                <a href="{{ section['url'] }}" class="primary-button">Open Product Finder</a>
+                            </div>
+                        {% elif section["task_type"] == "theme_recommendation" and not section["task"] %}
                             <form method="POST" action="/generate_store_agent_task/theme_recommendation" class="agent-mini-form">
                                 <label>Do you already have a Shopify theme installed?</label>
                                 <select name="has_theme">
@@ -138,6 +143,7 @@
                                 {% endif %}
                             </div>
                         {% endif %}
+
                     </article>
                 {% endfor %}
             </div>

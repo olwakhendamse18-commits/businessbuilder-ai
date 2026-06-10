@@ -23,6 +23,7 @@
 <a href="/">Chat</a>
 <a href="/dashboard">Dashboard</a>
 <a href="/build_center">Build Center</a>
+<a href="/product_finder">AI Product Finder</a>
 <a href="/ai_store_agent">AI Store Agent</a>
 <a href="/store_builder">AI Store Builder</a>
 <a href="/business_workflow">Workflow</a>
@@ -140,6 +141,7 @@
                 <button type="button">Continue Building Your Business</button>
             </a>
             <a href="/store_builder" class="primary-button">AI Store Builder</a>
+            <a href="/product_finder" class="secondary-button">AI Product Finder</a>
             <a href="/ai_store_agent" class="secondary-button">AI Store Agent</a>
         </div>
 
@@ -182,6 +184,15 @@
     {% endif %}
 
     {% if paid %}
+
+<section class="project-form">
+    <h2>AI Product Finder</h2>
+    <p>Discover products to sell, supplier search paths, competitor examples, and the first Shopify draft products to test.</p>
+
+    <div class="generator-actions">
+        <a href="/product_finder" class="primary-button">Find Products</a>
+    </div>
+</section>
 
 <section class="project-form">
     <h2>AI Store Agent</h2>
@@ -382,6 +393,32 @@
 
             </div>
         </section>
+
+<section>
+    <h2>Saved Product Research</h2>
+    <p>Review product sourcing and competitor discovery reports.</p>
+
+    <div class="cards">
+        {% for research in product_research_list %}
+            <div class="card plan-card">
+                <h3>{{ research[1] }}</h3>
+                <p><strong>Business:</strong> {{ research[2] }}</p>
+                <p><strong>Market:</strong> {{ research[6] }}</p>
+                <div class="card-actions">
+                    <a href="/product_research/{{ research[0] }}" class="primary-button">View Research</a>
+                </div>
+            </div>
+        {% else %}
+            <div class="card empty-card">
+                <h3>No product research yet</h3>
+                <p>Use AI Product Finder to discover products and competitor research ideas.</p>
+                {% if paid %}
+                    <a href="/product_finder" class="primary-button">Find Products</a>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+</section>
 
 <section>
     <h2>AI Store Agent Tasks</h2>

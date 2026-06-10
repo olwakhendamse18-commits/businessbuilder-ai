@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Product Finder - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Product finder</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/product_finder">AI Product Finder</a>
+        <a href="/ai_store_agent">AI Store Agent</a>
+        <a href="/store_builder">AI Store Builder</a>
+        <a href="/business_workflow">Workflow</a>
+        <a href="/shopify_settings">Shopify</a>
+        <a href="/canva_settings">Canva</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <p class="eyebrow">Product Sourcing + Competitor Discovery</p>
+            <h1>AI Product Finder</h1>
+            <p>Discover products to sell, research similar businesses, compare positioning, and connect product ideas to Shopify draft creation.</p>
+        </div>
+
+        {% if request.args.get("research_error") == "missing_fields" %}
+            <p class="form-notice">Enter at least a business/store idea and target customer.</p>
+        {% elif request.args.get("research_error") == "ai_response" %}
+            <p class="form-notice">The product research could not be generated. Please try again.</p>
+        {% endif %}
+
+        <section class="project-form">
+            <h2>Find Products To Sell</h2>
+            <p class="form-help">No websites are scraped. Amazon output is limited to search suggestions and research links you must verify yourself.</p>
+
+            <form method="POST" action="/generate_product_research">
+                <label>Business/store idea</label>
+                <input name="business_type" placeholder="Example: Affordable skincare store for students" required>
+
+                <label>Target customer</label>
+                <input name="target_market" placeholder="Example: South African students aged 18-25" required>
+
+                <label>Country/market</label>
+                <input name="country" placeholder="Example: South Africa">
+
+                <label>Budget</label>
+                <input name="budget" placeholder="Example: R2,000 launch budget">
+
+                <label>Product type</label>
+                <select name="product_type">
+                    <option value="physical">Physical</option>
+                    <option value="digital">Digital</option>
+                    <option value="service">Service</option>
+                    <option value="affiliate">Affiliate</option>
+                    <option value="print-on-demand">Print-on-demand</option>
+                </select>
+
+                <label>Sourcing preference</label>
+                <select name="sourcing_preference">
+                    <option value="not sure">Not sure</option>
+                    <option value="Amazon">Amazon</option>
+                    <option value="AliExpress/Alibaba">AliExpress/Alibaba</option>
+                    <option value="local supplier">Local supplier</option>
+                    <option value="print-on-demand">Print-on-demand</option>
+                    <option value="digital products">Digital products</option>
+                </select>
+
+                <label>Risk level</label>
+                <select name="risk_level">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                </select>
+
+                <button type="submit">Generate Product Research</button>
+            </form>
+        </section>
+
+        <section>
+            <h2>Saved Product Research</h2>
+            <p>Open previous research to review product ideas and create Shopify draft products after approval.</p>
+
+            <div class="cards">
+                {% for research in product_research_list %}
+                    <div class="card plan-card">
+                        <h3>{{ research[1] }}</h3>
+                        <p><strong>Business:</strong> {{ research[2] }}</p>
+                        <p><strong>Market:</strong> {{ research[6] }}</p>
+                        <p><strong>Sourcing:</strong> {{ research[4] }}</p>
+                        <div class="card-actions">
+                            <a href="/product_research/{{ research[0] }}" class="primary-button">View Research</a>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="card empty-card">
+                        <h3>No product research yet</h3>
+                        <p>Generate your first sourcing and competitor discovery report.</p>
+                    </div>
+                {% endfor %}
+            </div>
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>
