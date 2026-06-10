@@ -21,17 +21,16 @@
             </div>
         </div>
 
-        <a href="/">Chat</a>
         <a href="/dashboard">Dashboard</a>
         <a href="/build_center">Build Center</a>
         <a href="/ai_store_agent">AI Store Agent</a>
         <a href="/product_finder">Product Finder</a>
-        <a href="/business_workflow">Workflow</a>
-        <a href="/pricing">Pricing</a>
-        <a href="/shopify_settings">Shopify</a>
-        <a href="/canva_settings">Canva</a>
+        <a href="/business_workflow">Business Workflow</a>
+        <a href="/business_workflow">Business Plans</a>
+        {% if premium_build %}
+            <a href="/launch_package">Launch Package</a>
+        {% endif %}
         <a href="/settings">Settings</a>
-        <a href="/logout">Logout</a>
     </aside>
 
     <main class="dashboard-main">
@@ -40,7 +39,7 @@
         <div class="dashboard-header">
             <p class="eyebrow">Account Preferences</p>
             <h1>Settings</h1>
-            <p>Manage your account details, package, connected tools, theme, and app installation options.</p>
+            <p>Manage your account, appearance, plan, integrations, app install, and security actions from one place.</p>
         </div>
 
         {% if request.args.get("settings_notice") == "saved" %}
@@ -48,14 +47,13 @@
         {% endif %}
 
         <section class="settings-grid">
-            <article class="project-form">
+            <article class="project-form settings-section">
                 <p class="eyebrow">Account</p>
                 <h2>Workspace Details</h2>
                 <p><strong>Email:</strong> {{ email or "Not available" }}</p>
-                <p><strong>Package:</strong> {{ current_package }}</p>
+                <p><strong>Current package:</strong> {{ current_package }}</p>
                 {% if latest_payment %}
                     <p><strong>Payment status:</strong> {{ latest_payment[2] }}</p>
-                    <p><strong>Latest payment:</strong> R{{ latest_payment[1] / 100 }}</p>
                 {% else %}
                     <p><strong>Payment status:</strong> No payment recorded</p>
                 {% endif %}
@@ -67,7 +65,7 @@
                 </div>
             </article>
 
-            <article class="project-form">
+            <article class="project-form settings-section">
                 <p class="eyebrow">Appearance</p>
                 <h2>Theme</h2>
                 <p>Theme changes apply instantly in this browser and are saved to your account when you click save.</p>
@@ -82,15 +80,15 @@
                         {% endfor %}
                     </select>
 
-                    <button type="submit">Save Settings</button>
+                    <button type="submit">Save Theme</button>
                 </form>
             </article>
         </section>
 
         <section class="settings-grid">
-            <article class="project-form">
-                <p class="eyebrow">Shopify</p>
-                <h2>Store Connection</h2>
+            <article class="project-form settings-section">
+                <p class="eyebrow">Integrations</p>
+                <h2>Shopify</h2>
                 {% if shopify_connection and shopify_connection[3] == "connected" %}
                     <p class="connection-status connected">Connected</p>
                     <p>Your Shopify connection is ready for approved draft product and page actions.</p>
@@ -101,9 +99,9 @@
                 <a href="/shopify_settings" class="primary-button">Shopify Settings</a>
             </article>
 
-            <article class="project-form">
-                <p class="eyebrow">Canva</p>
-                <h2>Design Connection</h2>
+            <article class="project-form settings-section">
+                <p class="eyebrow">Integrations</p>
+                <h2>Canva</h2>
                 {% if canva_connection and canva_connection[2] == "connected" %}
                     <p class="connection-status connected">Connected</p>
                     <p>Your Canva account is ready for approved design brief and draft creation where supported.</p>
@@ -115,11 +113,59 @@
             </article>
         </section>
 
-        <section class="project-form">
-            <p class="eyebrow">Progressive Web App</p>
-            <h2>Install BusinessBuilder AI</h2>
-            <p>When your browser supports installation, use the Install App button in the settings menu or browser address bar to add BusinessBuilder AI to your device.</p>
-            <button type="button" class="secondary-button install-app-button" hidden>Install App</button>
+        <section class="project-form settings-section">
+            <p class="eyebrow">Billing</p>
+            <h2>Plan and Package Limits</h2>
+            <p><strong>Current plan:</strong> {{ current_package }}</p>
+            {% if latest_payment %}
+                <p><strong>Latest payment:</strong> R{{ latest_payment[1] / 100 }} via {{ latest_payment[0] }} ({{ latest_payment[2] }})</p>
+            {% else %}
+                <p><strong>Latest payment:</strong> No payment recorded</p>
+            {% endif %}
+
+            <div class="usage-summary-grid compact-usage-grid">
+                <div class="usage-stat">
+                    <span>Business plans</span>
+                    <strong>{{ usage_summary["business_plans"] }} / {{ usage_summary["business_plan_limit"] if usage_summary["business_plan_limit"] else "Fair use" }}</strong>
+                </div>
+                <div class="usage-stat">
+                    <span>Product research</span>
+                    <strong>{{ usage_summary["product_research_reports"] }} / {{ usage_summary["product_research_limit"] if usage_summary["product_research_limit"] else "Fair use" }}</strong>
+                </div>
+                <div class="usage-stat">
+                    <span>Store Agent tasks</span>
+                    <strong>{{ usage_summary["store_agent_tasks"] }} / {{ usage_summary["store_agent_task_limit"] if usage_summary["store_agent_task_limit"] else "Fair use" }}</strong>
+                </div>
+                <div class="usage-stat">
+                    <span>PDF exports</span>
+                    <strong>{{ usage_summary["pdf_exports"] }} / {{ usage_summary["pdf_export_limit"] }}</strong>
+                </div>
+            </div>
+
+            <div class="generator-actions">
+                <a href="/pricing" class="primary-button">Upgrade / Change Plan</a>
+                <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
+            </div>
+        </section>
+
+        <section class="settings-grid">
+            <article class="project-form settings-section">
+                <p class="eyebrow">App / PWA</p>
+                <h2>Install BusinessBuilder AI</h2>
+                <p>Install BusinessBuilder AI on your phone or home screen when your browser supports Progressive Web App installation.</p>
+                <p class="form-help">PWA support is active when the browser can load the manifest and service worker.</p>
+                <button type="button" class="secondary-button install-app-button" hidden>Install App</button>
+            </article>
+
+            <article class="project-form settings-section">
+                <p class="eyebrow">Security</p>
+                <h2>Account Actions</h2>
+                <p>Never share your Shopify, Canva, payment, or account credentials with anyone. BusinessBuilder AI will not ask you for banking details inside the dashboard.</p>
+                <div class="generator-actions">
+                    <a href="/logout" class="primary-button">Logout</a>
+                    <a href="/privacy" class="secondary-button">Privacy Policy</a>
+                </div>
+            </article>
         </section>
     </main>
 </div>

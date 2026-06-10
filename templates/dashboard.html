@@ -14,51 +14,36 @@
 
     <aside class="sidebar">
         <div class="brand">
-    <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
-    <div>
-        <h2>BusinessBuilder AI</h2>
-        <p>Business workspace</p>
-    </div>
-</div>
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Business workspace</p>
+            </div>
+        </div>
 
-<a href="/">Chat</a>
-<a href="/dashboard">Dashboard</a>
-<a href="/build_center">Build Center</a>
-<a href="/product_finder">AI Product Finder</a>
-<a href="/ai_store_agent">AI Store Agent</a>
-<a href="/store_builder">AI Store Builder</a>
-<a href="/business_workflow">Workflow</a>
-<a href="/shopify_settings">Shopify</a>
-<a href="/canva_settings">Canva</a>
-<a href="/pricing">Pricing</a>
-<a href="/settings">Settings</a>
-<a href="/launch_readiness">Launch Readiness</a>
-
-{% if is_admin %}
-    <a href="/admin">Admin</a>
-{% endif %}
-
-<a href="/logout">Logout</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/ai_store_agent">AI Store Agent</a>
+        <a href="/product_finder">Product Finder</a>
+        <a href="/business_workflow">Business Workflow</a>
+        <a href="/business_workflow">Business Plans</a>
+        {% if premium_build %}
+            <a href="/launch_package">Launch Package</a>
+        {% endif %}
+        <a href="/settings">Settings</a>
+        {% if is_admin %}
+            <a href="/admin">Admin</a>
+        {% endif %}
     </aside>
 
-    <main class="dashboard-main">
+    <main class="dashboard-main dashboard-focus">
         {% include "_settings_menu.html" %}
 
         <div class="dashboard-header">
-            <p class="eyebrow">Your Business Workspace</p>
-            <h1>Your Business Dashboard</h1>
-            <p>Review your package, saved plans, draft store assets, branding outputs, and the next step in your business build.</p>
+            <p class="eyebrow">Continue Building</p>
+            <h1>Welcome back to your business build</h1>
+            <p>Pick up from your next recommended action, generate store drafts, or open the Build Center to review progress.</p>
         </div>
-
-        <section class="next-action-card">
-            <p class="eyebrow">Next Recommended Action</p>
-            <h2>{{ next_action["title"] }}</h2>
-            <p>{{ next_action["description"] }}</p>
-            <div class="generator-actions">
-                <a href="{{ next_action['url'] }}" class="primary-button">{{ next_action["label"] }}</a>
-                <button type="button" class="secondary-button install-app-button" id="installAppButtonDashboard" hidden>Install App</button>
-            </div>
-        </section>
 
         {% if usage_limit_message %}
             <p class="form-notice">{{ usage_limit_message }}</p>
@@ -97,805 +82,165 @@
             </p>
         {% endif %}
 
-       <section class="project-form">
-    {% if paid %}
+        <section class="dashboard-summary-grid">
+            <article class="card dashboard-summary-card">
+                <p class="eyebrow">Current Package</p>
+                <h3>{{ current_package }}</h3>
+                <p>
+                    {% if paid %}
+                        {{ latest_payment[2]|title if latest_payment else "Active" }} package access.
+                    {% else %}
+                        Choose a package to unlock the guided business workspace.
+                    {% endif %}
+                </p>
+                <a href="/settings" class="secondary-button">View Account Settings</a>
+            </article>
 
-    <div class="package-status-card">
-        <p class="eyebrow">Current Package</p>
-        <h2>{{ current_package }}</h2>
-        {% if current_package == "Starter" %}
-            <p>Starter includes business plans, basic product research, limited AI Store Agent drafts, and PDF downloads. Upgrade to Pro for AI Store Builder, Shopify draft product creation, and Canva draft creation.</p>
-        {% elif current_package == "Pro" %}
-            <p>Pro unlocks AI Store Builder, AI Product Finder, Shopify draft products, Canva briefs and drafts where supported, and launch package tools.</p>
-        {% elif current_package == "Premium Build" %}
-            <p>Premium Build adds the full AI Store Agent workflow, advanced product sourcing, higher Shopify draft-product limits, advanced launch readiness, and priority support.</p>
-        {% else %}
-            <p>Your package controls which business tools and usage limits are available.</p>
-        {% endif %}
-
-        {% if current_package == "Starter" %}
-            <div class="generator-actions">
-                <a href="/paystack_checkout?plan=pro" class="primary-button">Upgrade to Pro - R999</a>
-                <a href="/paystack_checkout?plan=premium" class="secondary-button">Upgrade to Premium Build - R1,999</a>
-                <a href="/pricing" class="secondary-button">Compare Packages</a>
-            </div>
-        {% elif current_package == "Pro" %}
-            <div class="generator-actions">
-                <a href="/paystack_checkout?plan=premium" class="primary-button">Upgrade to Premium Build - R1,999</a>
-                <a href="/pricing" class="secondary-button">Compare Packages</a>
-            </div>
-        {% endif %}
-    </div>
-
-    {% if latest_payment %}
-
-    <div class="card">
-        <h3>Payment Details</h3>
-
-        <p>
-            <strong>Provider:</strong>
-            {{ latest_payment[0] }}
-        </p>
-
-        <p>
-            <strong>Amount:</strong>
-            R{{ latest_payment[1] / 100 }}
-        </p>
-
-        <p>
-            <strong>Status:</strong>
-            {{ latest_payment[2] }}
-        </p>
-
-        <p>
-            <strong>Reference:</strong>
-            {{ latest_payment[3] }}
-        </p>
-    </div>
-
-{% endif %}
-
-        <h2>Package Active</h2>
-        <p>Your BusinessBuilder AI {{ current_package }} package is active.</p>
-        <div class="generator-actions">
-            <a href="/build_center">
-                <button type="button">Continue Building Your Business</button>
-            </a>
-            {% if pro_package %}
-                <a href="/store_builder" class="primary-button">AI Store Builder</a>
-            {% else %}
-                <a href="/pricing" class="primary-button">Upgrade to Pro for Store Builder</a>
-            {% endif %}
-            <a href="/product_finder" class="secondary-button">AI Product Finder</a>
-            <a href="/ai_store_agent" class="secondary-button">AI Store Agent</a>
-        </div>
-
-    {% else %}
-
-        <p class="eyebrow">Getting Started</p>
-        <h2>Choose a plan to unlock BusinessBuilder AI</h2>
-        <p>Select Starter, Pro, or Premium Build, then complete payment securely through Paystack.</p>
-
-        <div class="onboarding-steps">
-            <div class="onboarding-step active">
-                <strong>1</strong>
-                <div>
-                    <h3>Choose your package</h3>
-                    <p>Compare the available plans and select the right level for your build.</p>
-                </div>
-            </div>
-            <div class="onboarding-step">
-                <strong>2</strong>
-                <div>
-                    <h3>Complete secure payment</h3>
-                    <p>Pay through Paystack to unlock your selected package.</p>
-                </div>
-            </div>
-            <div class="onboarding-step">
-                <strong>3</strong>
-                <div>
-                    <h3>Start your guided workflow</h3>
-                    <p>Answer the setup questions, then generate your business assets.</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="generator-actions">
-            <a href="/pricing">
-                <button type="button">Choose Your Plan</button>
-            </a>
-        </div>
-
-    {% endif %}
-
-    {% if paid %}
-
-<section class="cards dashboard-tool-grid">
-    <article class="card">
-        <p class="eyebrow">Command Center</p>
-        <h3>Build Center</h3>
-        <p>Track progress, approvals, draft assets, connected tools, and launch readiness in one place.</p>
-        <a href="/build_center" class="primary-button">Open Build Center</a>
-    </article>
-
-    <article class="card">
-        <p class="eyebrow">AI Agent</p>
-        <h3>AI Store Agent</h3>
-        <p>Generate, review, approve, delete, or safely apply supported Shopify and Canva tasks.</p>
-        <a href="/ai_store_agent" class="primary-button">Open Agent</a>
-    </article>
-
-    <article class="card">
-        <p class="eyebrow">Product Research</p>
-        <h3>AI Product Finder</h3>
-        <p>Find product ideas, sourcing paths, competitor examples, pricing notes, and next steps.</p>
-        <a href="/product_finder" class="primary-button">Find Products</a>
-    </article>
-
-    <article class="card">
-        <p class="eyebrow">Foundation</p>
-        <h3>Business Workflow</h3>
-        <p>Complete the guided questions that power every plan, store draft, design brief, and launch package.</p>
-        <a href="/business_workflow" class="primary-button">Open Workflow</a>
-    </article>
-
-    <article class="card">
-        <p class="eyebrow">Strategy</p>
-        <h3>Business Plans</h3>
-        <p>{{ business_plans|length }} saved plans. Generate and download business strategy documents from workflow answers.</p>
-        <a href="/business_workflow" class="primary-button">Generate Plan</a>
-    </article>
-
-    <article class="card">
-        <p class="eyebrow">Store</p>
-        <h3>Shopify</h3>
-        <p>{{ "Connected" if shopify_connection and shopify_connection["status"] == "connected" else "Connect Shopify to create draft products and pages where supported." }}</p>
-        <a href="/shopify_settings" class="primary-button">Shopify Settings</a>
-    </article>
-
-    <article class="card">
-        <p class="eyebrow">Design</p>
-        <h3>Canva</h3>
-        <p>{{ "Connected" if canva_connection and canva_connection["status"] == "connected" else "Connect Canva to create editable drafts from approved briefs where supported." }}</p>
-        <a href="/canva_settings" class="primary-button">Canva Settings</a>
-    </article>
-
-    <article class="card">
-        <p class="eyebrow">Final Package</p>
-        <h3>Launch Package</h3>
-        <p>Combine your plans, product research, Shopify drafts, Canva assets, and launch checklist.</p>
-        <a href="{{ '/launch_package' if premium_build else '/pricing' }}" class="primary-button">{{ "View Launch Package" if premium_build else "Unlock Premium Build" }}</a>
-    </article>
-</section>
-
-<section class="project-form">
-    <h2>AI Product Finder</h2>
-    <p>Discover products to sell, supplier search paths, competitor examples, and the first Shopify draft products to test.</p>
-
-    <div class="generator-actions">
-        <a href="/product_finder" class="primary-button">Find Products</a>
-    </div>
-</section>
-
-<section class="project-form">
-    <h2>AI Store Agent</h2>
-    <p>Review, edit, approve, and safely apply Shopify and Canva store tasks. The agent advises, generates drafts, and only applies supported approved changes.</p>
-
-    <div class="generator-actions">
-        <a href="/ai_store_agent" class="primary-button">Open AI Store Agent</a>
-    </div>
-</section>
-
-<section class="project-form">
-    <h2>AI Store Builder</h2>
-    <p>Generate a complete Shopify store package from your saved workflow answers, then create safe draft products, collections, and pages when Shopify is connected.</p>
-
-    <div class="generator-actions">
-        {% if pro_package %}
-            <a href="/store_builder" class="primary-button">Generate My Store</a>
-        {% else %}
-            <a href="/pricing" class="primary-button">Upgrade to Pro for Store Builder</a>
-        {% endif %}
-    </div>
-</section>
-
-<section class="project-form">
-    <h2>Guided Business Setup Workflow</h2>
-    <p>Use a structured step-by-step workflow to build your business foundation.</p>
-
-    <a href="/business_workflow">
-        <button type="button">Open Workflow</button>
-    </a>
-</section>
-
-{% endif %}
-
-</section>
-
-{% if paid %}
-
-<section class="project-form">
-    <h2>Build Center</h2>
-    <p>Track your full business creation progress and open the next tool you need.</p>
-
-    <div class="generator-actions">
-        <a href="/build_center">
-            <button type="button">Open Build Center</button>
-        </a>
-        {% if premium_build %}
-            <a href="/launch_package">
-                <button type="button">View Launch Package</button>
-            </a>
-        {% else %}
-            <a href="/pricing" class="secondary-button">Unlock Premium Launch Package</a>
-        {% endif %}
-    </div>
-</section>
-
-{% endif %}
-
-{% if paid %}
-
-<section class="project-form">
-    <h2>Upload Business File</h2>
-    <p>Upload TXT, PDF, DOCX, or image files for AI analysis.</p>
-
-    <form method="POST" action="/upload" enctype="multipart/form-data">
-        <input type="file" name="file" required>
-        <button type="submit">Upload File</button>
-    </form>
-</section>
-
-{% else %}
-
-<section class="project-form">
-    <h2>File Analysis Locked</h2>
-    <p>Upgrade to the Starter Package to upload files and get AI document/image analysis.</p>
-</section>
-
-{% endif %}
-
-{% if paid %}
-
-<section class="project-form">
-    <h2>Shopify Connection</h2>
-
-    {% if not pro_package %}
-        <p class="connection-status not-connected">Available with Pro</p>
-        <p>Upgrade to Pro to connect Shopify and create draft store assets.</p>
-
-        <a href="/pricing">
-            <button type="button">Compare Packages</button>
-        </a>
-    {% elif shopify_connection and shopify_connection["status"] == "connected" %}
-        <p class="connection-status connected">Shopify Connected</p>
-        <p><strong>Store:</strong> {{ shopify_connection["shop_domain"] }}</p>
-
-        <a href="/shopify_settings">
-            <button type="button">Manage Shopify Connection</button>
-        </a>
-    {% else %}
-        <p class="connection-status not-connected">Connect Shopify Store</p>
-        <p>Connect your Shopify store to test your Admin API access.</p>
-
-        <a href="/shopify_settings">
-            <button type="button">Connect Shopify</button>
-        </a>
-    {% endif %}
-</section>
-
-{% endif %}
-
-{% if paid %}
-
-<section class="project-form">
-    <h2>Canva Connection</h2>
-
-    {% if not pro_package %}
-        <p class="connection-status not-connected">Available with Pro</p>
-        <p>Upgrade to Pro to connect Canva and create editable design drafts.</p>
-    {% elif canva_connection and canva_connection["status"] == "connected" %}
-        <p class="connection-status connected">Canva Connected</p>
-        <p>Your Canva OAuth connection is ready to create editable design drafts.</p>
-    {% else %}
-        <p class="connection-status not-connected">Canva Not Connected</p>
-        <p>Connect your Canva account securely through Canva OAuth.</p>
-    {% endif %}
-
-    {% if pro_package %}
-        <a href="/canva_settings">
-            <button type="button">Open Canva Settings</button>
-        </a>
-    {% else %}
-        <a href="/pricing">
-            <button type="button">Compare Packages</button>
-        </a>
-    {% endif %}
-</section>
-
-{% endif %}
-
-        <section class="project-form">
-            <h2>Create New Business Project</h2>
-            <p>Save a business idea so you can build on it later.</p>
-
-            <form method="POST" action="/create_project">
-
-                <label>Project Name</label>
-                <input
-                    type="text"
-                    name="title"
-                    placeholder="Example: Student Clothing Brand"
-                    required
-                >
-
-                <label>Business Type</label>
-                <input
-                    type="text"
-                    name="business_type"
-                    placeholder="Example: Fashion / Shopify Store"
-                    required
-                >
-
-                <label>Description</label>
-                <textarea
-                    name="description"
-                    placeholder="Describe your business idea, target customers, products, or goals..."
-                    required
-                ></textarea>
-
-                <button type="submit">Save Project</button>
-
-            </form>
+            <article class="card dashboard-summary-card">
+                <p class="eyebrow">Workflow Progress</p>
+                <h3>{{ usage_summary["business_plans"] }} plans generated</h3>
+                <p>{{ business_plans|length }} saved plan{{ "" if business_plans|length == 1 else "s" }} and {{ product_research_list|length }} product research report{{ "" if product_research_list|length == 1 else "s" }}.</p>
+                <a href="/business_workflow" class="secondary-button">Open Workflow</a>
+            </article>
         </section>
 
-        <section>
-            <h2>Saved Projects</h2>
-
-            <div class="cards">
-
-                {% for project in projects %}
-
-                    <div class="card">
-
-                        <h3>{{ project[0] }}</h3>
-
-                        <p>
-                            <strong>Type:</strong>
-                            {{ project[1] }}
-                        </p>
-
-                        <p>{{ project[2] }}</p>
-
-                    </div>
-
-                {% else %}
-
-                    <div class="card empty-card">
-                        <h3>No saved projects yet</h3>
-                        <p>Save your first business idea to keep your notes and direction in one workspace.</p>
-                    </div>
-
-                {% endfor %}
-
+        <section class="next-action-card">
+            <p class="eyebrow">Next Recommended Action</p>
+            <h2>{{ next_action["title"] }}</h2>
+            <p>{{ next_action["description"] }}</p>
+            <div class="generator-actions">
+                <a href="{{ next_action['url'] }}" class="primary-button">{{ next_action["label"] }}</a>
+                <a href="/build_center" class="secondary-button">Open Build Center</a>
             </div>
         </section>
 
-<section>
-    <h2>Saved Product Research</h2>
-    <p>Review product sourcing and competitor discovery reports.</p>
-
-    <div class="cards">
-        {% for research in product_research_list %}
-            <div class="card plan-card">
-                <h3>{{ research[1] }}</h3>
-                <p><strong>Business:</strong> {{ research[2] }}</p>
-                <p><strong>Market:</strong> {{ research[6] }}</p>
-                <div class="card-actions">
-                    <a href="/product_research/{{ research[0] }}" class="primary-button">View Research</a>
-                </div>
-            </div>
+        {% if not paid %}
+            <section class="project-form dashboard-onboarding">
+                <p class="eyebrow">Getting Started</p>
+                <h2>Choose a plan to start building</h2>
+                <p>Select Starter, Pro, or Premium Build, then complete payment securely through Paystack.</p>
+                <a href="/pricing" class="primary-button">Choose Your Plan</a>
+            </section>
         {% else %}
-            <div class="card empty-card">
-                <h3>No product research yet</h3>
-                <p>Use AI Product Finder to discover products and competitor research ideas.</p>
-                {% if paid %}
-                    <a href="/product_finder" class="primary-button">Find Products</a>
-                {% endif %}
-            </div>
-        {% endfor %}
-    </div>
-</section>
-
-<section>
-    <h2>AI Store Agent Tasks</h2>
-    <p>Manage store, Shopify, Canva, domain, payment, shipping, and launch drafts before applying any safe approved changes.</p>
-
-    <div class="cards">
-        <div class="card plan-card">
-            <h3>Store Agent Command Center</h3>
-            <p><strong>Saved tasks:</strong> {{ store_agent_tasks|length }}</p>
-            <p>Advice Mode, Draft Mode, and Action Mode are controlled from one review workspace.</p>
-            <div class="card-actions">
-                <a href="/ai_store_agent" class="primary-button">Open AI Store Agent</a>
-            </div>
-        </div>
-    </div>
-</section>
-
-<section>
-    <h2>AI Store Builds</h2>
-    <p>Open your generated Shopify store packages and review created draft assets.</p>
-
-    <div class="cards">
-
-        {% for build in ai_store_builds %}
-
-            <div class="card plan-card">
-                <p class="build-count">{{ build[4]|replace("_", " ")|title }}</p>
-                <h3>{{ build[2] }}</h3>
-                <p>{{ build[1] }}</p>
-
-                <div class="card-actions">
-                    <a href="/store_build/{{ build[0] }}" class="primary-button">View Store Build</a>
-                    <a href="/download_store_build/{{ build[0] }}" class="secondary-button">Download PDF</a>
-                </div>
-            </div>
-
-        {% else %}
-
-            <div class="card empty-card">
-                <h3>No AI store builds yet</h3>
-                <p>Complete your workflow, then generate your first complete Shopify store package.</p>
-                {% if paid %}
-                    <a href="/store_builder" class="primary-button">Generate My Store</a>
-                {% endif %}
-            </div>
-
-        {% endfor %}
-
-    </div>
-</section>
-
-<section>
-    <h2>Saved Business Plans</h2>
-    <p>Open a generated plan whenever you want to review your business strategy.</p>
-
-    <div class="cards">
-
-        {% for plan in business_plans %}
-
-            <div class="card plan-card">
-                <h3>{{ plan[1] }}</h3>
-
-                <p>{{ plan[2][:250] }}{% if plan[2]|length > 250 %}...{% endif %}</p>
-
-                <div class="card-actions">
-                    <a href="/business_plan/{{ plan[0] }}" class="primary-button">View Plan</a>
-                    <a href="/download_business_plan/{{ plan[0] }}" class="secondary-button">Download PDF</a>
-                </div>
-            </div>
-
-        {% else %}
-
-            <div class="card empty-card">
-                <h3>No saved plans yet</h3>
-                <p>Complete your guided workflow, then generate a business plan to save it here.</p>
-                {% if paid %}
-                    <a href="/business_workflow" class="primary-button">Open Business Workflow</a>
-                {% endif %}
-            </div>
-
-        {% endfor %}
-
-    </div>
-</section>
-
-<section>
-    <h2>Created Shopify Products</h2>
-    <p>Review draft products created from your saved workflow answers.</p>
-
-    <div class="cards">
-
-        {% for product in shopify_products %}
-
-            <div class="card plan-card">
-                <h3>{{ product[0] }}</h3>
-
-                <p>{{ product[1][:250] }}{% if product[1]|length > 250 %}...{% endif %}</p>
-
-                <p><strong>Shopify Product ID:</strong> {{ product[2] }}</p>
-                <p><strong>Status:</strong> {{ product[3] }}</p>
-            </div>
-
-        {% else %}
-
-            <div class="card empty-card">
-                <h3>No Shopify products created yet</h3>
-                <p>Connect Shopify, complete your workflow, and create draft products for review before publishing.</p>
-                {% if paid %}
-                    <a href="/shopify_settings" class="primary-button">Connect Shopify Store</a>
-                {% endif %}
-            </div>
-
-        {% endfor %}
-
-    </div>
-</section>
-
-<section class="project-form">
-    <p class="eyebrow">Account Usage</p>
-    <h2>Usage Summary</h2>
-    <p>Track your current {{ usage_summary["package_name"] }} package activity and remaining generation capacity.</p>
-
-    <div class="usage-summary-grid">
-        <div class="usage-stat">
-            <span>Chat messages today</span>
-            <strong>{{ usage_summary["chat_messages"] }} / {{ usage_summary["chat_message_limit"] }}</strong>
-        </div>
-        <div class="usage-stat">
-            <span>Business plans</span>
-            <strong>
-                {{ usage_summary["business_plans"] }} /
-                {{ usage_summary["business_plan_limit"] if usage_summary["business_plan_limit"] else "Fair use" }}
-            </strong>
-        </div>
-        <div class="usage-stat">
-            <span>Product research</span>
-            <strong>
-                {{ usage_summary["product_research_reports"] }} /
-                {{ usage_summary["product_research_limit"] if usage_summary["product_research_limit"] else "Fair use" }}
-            </strong>
-        </div>
-        <div class="usage-stat">
-            <span>Store Agent tasks</span>
-            <strong>
-                {{ usage_summary["store_agent_tasks"] }} /
-                {{ usage_summary["store_agent_task_limit"] if usage_summary["store_agent_task_limit"] else "Fair use" }}
-            </strong>
-        </div>
-        <div class="usage-stat">
-            <span>Shopify actions</span>
-            <strong>{{ usage_summary["shopify_actions"] }}</strong>
-            <small>
-                {{ usage_summary["shopify_plans"] }} plans / {{ usage_summary["shopify_plan_limit"] }},
-                {% if usage_summary["shopify_product_limit"] %}
-                    {{ usage_summary["shopify_products"] }} products / {{ usage_summary["shopify_product_limit"] }}
-                {% else %}
-                    product automation unlocks with Pro
-                {% endif %}
-            </small>
-        </div>
-        <div class="usage-stat">
-            <span>Canva actions</span>
-            <strong>{{ usage_summary["canva_actions"] }}</strong>
-            <small>
-                {% if usage_summary["canva_branding_limit"] %}
-                    {{ usage_summary["canva_branding"] }} branding / {{ usage_summary["canva_branding_limit"] }},
-                {% else %}
-                    Canva branding unlocks with Pro,
-                {% endif %}
-                {% if usage_summary["canva_design_brief_limit"] %}
-                    {{ usage_summary["canva_design_briefs"] }} briefs / {{ usage_summary["canva_design_brief_limit"] }},
-                    {{ usage_summary["canva_designs"] }} drafts / {{ usage_summary["canva_design_limit"] }}
-                {% else %}
-                    design automation unlocks with Pro
-                {% endif %}
-            </small>
-        </div>
-        <div class="usage-stat">
-            <span>PDF exports</span>
-            <strong>{{ usage_summary["pdf_exports"] }} / {{ usage_summary["pdf_export_limit"] }}</strong>
-        </div>
-    </div>
-</section>
-
-{% if paid %}
-
-<section>
-    <h2>Shopify Store Draft</h2>
-    <p>Review unpublished collections and page drafts created for your connected Shopify store.</p>
-
-    <div class="cards">
-        <div class="card plan-card">
-            <h3>Draft Store Build Summary</h3>
-            <p><strong>Collections:</strong> {{ shopify_collections|length }}</p>
-            <p><strong>Pages:</strong> {{ shopify_pages|length }}</p>
-
-            <div class="card-actions">
-                <a href="/shopify_build_summary" class="primary-button">View Shopify Build Summary</a>
-                {% if pro_package %}
-                    <a href="/build_approval?action=shopify_store" class="secondary-button">Build Shopify Store Draft</a>
-                {% else %}
-                    <a href="/pricing" class="secondary-button">Upgrade to Pro</a>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</section>
-
-{% endif %}
-
-<section>
-    <h2>Launch Package</h2>
-    <p>Bring your strategy, Shopify drafts, Canva assets, checklist, and next 30-day plan together.</p>
-
-    <div class="cards">
-        <div class="card empty-card">
-            {% if premium_build %}
-                <h3>Your final launch package is ready to generate</h3>
-                <p>Open your launch package whenever you want the latest combined summary of your saved work.</p>
-                <a href="/launch_package" class="primary-button">View Launch Package</a>
-            {% else %}
-                <h3>No launch package available yet</h3>
-                <p>The complete launch package unlocks with Premium Build.</p>
-                <a href="/pricing" class="primary-button">View Premium Build</a>
-            {% endif %}
-        </div>
-    </div>
-</section>
-
-<section>
-    <h2>Saved Shopify Setup Plans</h2>
-    <p>Open a saved Shopify plan to review your store structure, copy, policies, and launch checklist.</p>
-
-    <div class="cards">
-
-        {% for plan in shopify_plans %}
-
-            <div class="card plan-card">
-                <h3>{{ plan[1] }}</h3>
-
-                <p>{{ plan[2][:250] }}{% if plan[2]|length > 250 %}...{% endif %}</p>
-
-                <div class="card-actions">
-                    <a href="/shopify_plan/{{ plan[0] }}" class="primary-button">View Plan</a>
-                </div>
-            </div>
-
-        {% else %}
-
-            <div class="card empty-card">
-                <h3>No saved Shopify plans yet</h3>
-                <p>Save your workflow answers, then generate a Shopify setup plan to add it here.</p>
-            </div>
-
-        {% endfor %}
-
-    </div>
-</section>
-
-<section>
-    <h2>Saved Store + Branding Quotes</h2>
-    <p>Review informational estimates for your Shopify store build and Canva branding package.</p>
-
-    <div class="cards">
-
-        {% for quote in build_quotes %}
-
-            <div class="card plan-card">
-                <h3>{{ quote[1] }}</h3>
-
-                <p>{{ quote[2][:250] }}{% if quote[2]|length > 250 %}...{% endif %}</p>
-
-                <div class="card-actions">
-                    <a href="/build_quote/{{ quote[0] }}" class="primary-button">View Quote</a>
-                </div>
-            </div>
-
-        {% else %}
-
-            <div class="card empty-card">
-                <h3>No saved quotes yet</h3>
-                <p>Save your workflow answers, then generate a store and branding quote to add it here.</p>
-            </div>
-
-        {% endfor %}
-
-    </div>
-</section>
-
-<section>
-    <h2>Saved Canva Branding Packages</h2>
-    <p>Open a saved Canva-ready package to review your brand direction, asset ideas, and creation checklist.</p>
-
-    <div class="cards">
-
-        {% for package in canva_branding_packages %}
-
-            <div class="card plan-card">
-                <h3>{{ package[1] }}</h3>
-
-                <p>{{ package[2][:250] }}{% if package[2]|length > 250 %}...{% endif %}</p>
-
-                <div class="card-actions">
-                    <a href="/canva_branding/{{ package[0] }}" class="primary-button">View Package</a>
-                </div>
-            </div>
-
-        {% else %}
-
-            <div class="card empty-card">
-                <h3>No saved Canva branding packages yet</h3>
-                <p>Save your workflow answers, then generate a Canva-ready branding package to add it here.</p>
-            </div>
-
-        {% endfor %}
-
-    </div>
-</section>
-
-<section>
-    <h2>Saved Canva Design Briefs</h2>
-    <p>Open a saved design brief to review practical Canva instructions for your brand assets.</p>
-
-    <div class="cards">
-
-        {% for brief in canva_design_briefs %}
-
-            <div class="card plan-card">
-                <h3>{{ brief[1] }}</h3>
-
-                <p>{{ brief[2][:250] }}{% if brief[2]|length > 250 %}...{% endif %}</p>
-
-                <div class="card-actions">
-                    <a href="/canva_design_brief/{{ brief[0] }}" class="primary-button">View Brief</a>
-                </div>
-            </div>
-
-        {% else %}
-
-            <div class="card empty-card">
-                <h3>No saved Canva design briefs yet</h3>
-                <p>Save your workflow answers, then generate a Canva design brief to add it here.</p>
-            </div>
-
-        {% endfor %}
-
-    </div>
-</section>
-
-<section>
-    <h2>Created Canva Designs</h2>
-    <p>Open a Canva draft to continue editing the design inside Canva.</p>
-
-    <div class="cards">
-
-        {% for design in canva_designs %}
-
-            <div class="card plan-card">
-                <h3>{{ design[0] }}</h3>
-
-                <p><strong>Status:</strong> {{ design[4] }}</p>
-                <p><strong>Canva Design ID:</strong> {{ design[1] }}</p>
-
-                {% if design[2] or design[3] %}
+            <section class="cards dashboard-main-actions">
+                <article class="card main-action-card">
+                    <p class="eyebrow">Main Action</p>
+                    <h3>{{ "Generate My Store" if pro_package else "AI Store Agent" }}</h3>
+                    <p>
+                        {% if pro_package %}
+                            Generate a Shopify store package from your saved workflow answers, then review and approve safe draft changes.
+                        {% else %}
+                            Use the AI Store Agent for draft guidance and upgrade to Pro when you are ready for Shopify draft asset creation.
+                        {% endif %}
+                    </p>
                     <div class="card-actions">
-                        <a
-                            href="{{ design[2] or design[3] }}"
-                            class="primary-button"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >Open in Canva</a>
+                        {% if pro_package %}
+                            <a href="/store_builder" class="primary-button">Generate My Store</a>
+                        {% else %}
+                            <a href="/ai_store_agent" class="primary-button">Open AI Store Agent</a>
+                        {% endif %}
+                        <a href="/ai_store_agent" class="secondary-button">AI Store Agent</a>
                     </div>
-                {% endif %}
-            </div>
+                </article>
 
-        {% else %}
+                <article class="card">
+                    <p class="eyebrow">Command Center</p>
+                    <h3>Build Center</h3>
+                    <p>Track workflow progress, approvals, product research, store drafts, Canva outputs, and launch readiness.</p>
+                    <a href="/build_center" class="primary-button">Open Build Center</a>
+                </article>
 
-            <div class="card empty-card">
-                <h3>No Canva designs created yet</h3>
-                <p>Connect Canva, generate a design brief, and create editable design drafts for your brand.</p>
-                {% if paid %}
-                    <a href="/canva_settings" class="primary-button">Open Canva Settings</a>
-                {% endif %}
-            </div>
+                <article class="card">
+                    <p class="eyebrow">Product Research</p>
+                    <h3>Product Finder</h3>
+                    <p>Find product ideas, sourcing paths, competitor research prompts, pricing direction, and next steps.</p>
+                    <a href="/product_finder" class="primary-button">Find Products</a>
+                </article>
 
-        {% endfor %}
+                <article class="card">
+                    <p class="eyebrow">Foundation</p>
+                    <h3>Business Workflow</h3>
+                    <p>Complete the guided answers that power business plans, store drafts, branding briefs, and launch packages.</p>
+                    <a href="/business_workflow" class="primary-button">Continue Workflow</a>
+                </article>
+            </section>
 
-    </div>
-</section>
+            <section>
+                <div class="section-heading-row">
+                    <div>
+                        <p class="eyebrow">Recent Outputs</p>
+                        <h2>Latest work from your build</h2>
+                    </div>
+                    <a href="/build_center" class="secondary-button">View All Progress</a>
+                </div>
 
+                <div class="cards recent-output-grid">
+                    <article class="card">
+                        <p class="eyebrow">Business Plan</p>
+                        {% if business_plans %}
+                            {% set latest_plan = business_plans[0] %}
+                            <h3>{{ latest_plan[1] }}</h3>
+                            <p>{{ latest_plan[2][:180] }}{% if latest_plan[2]|length > 180 %}...{% endif %}</p>
+                            <div class="card-actions">
+                                <a href="/business_plan/{{ latest_plan[0] }}" class="primary-button">View Plan</a>
+                                <a href="/download_business_plan/{{ latest_plan[0] }}" class="secondary-button">Download PDF</a>
+                            </div>
+                        {% else %}
+                            <h3>No business plan yet</h3>
+                            <p>Complete your workflow, then generate your first business plan.</p>
+                            <a href="/business_workflow" class="primary-button">Generate Plan</a>
+                        {% endif %}
+                    </article>
+
+                    <article class="card">
+                        <p class="eyebrow">Store Build</p>
+                        {% if ai_store_builds %}
+                            {% set latest_build = ai_store_builds[0] %}
+                            <h3>{{ latest_build[2] }}</h3>
+                            <p>Status: {{ latest_build[4]|replace("_", " ")|title }}</p>
+                            <div class="card-actions">
+                                <a href="/store_build/{{ latest_build[0] }}" class="primary-button">View Store Build</a>
+                                <a href="/download_store_build/{{ latest_build[0] }}" class="secondary-button">Download PDF</a>
+                            </div>
+                        {% else %}
+                            <h3>No store build yet</h3>
+                            <p>Use Product Finder first, then generate a draft store package.</p>
+                            <a href="{{ '/store_builder' if pro_package else '/pricing' }}" class="primary-button">{{ "Generate My Store" if pro_package else "Upgrade to Pro" }}</a>
+                        {% endif %}
+                    </article>
+
+                    <article class="card">
+                        <p class="eyebrow">Product Research</p>
+                        {% if product_research_list %}
+                            {% set latest_research = product_research_list[0] %}
+                            <h3>{{ latest_research[1] }}</h3>
+                            <p>{{ latest_research[2] }} for {{ latest_research[3] }}</p>
+                            <a href="/product_research/{{ latest_research[0] }}" class="primary-button">View Research</a>
+                        {% else %}
+                            <h3>No product research yet</h3>
+                            <p>Find product ideas before creating product and store drafts.</p>
+                            <a href="/product_finder" class="primary-button">Find Products</a>
+                        {% endif %}
+                    </article>
+
+                    <article class="card">
+                        <p class="eyebrow">Launch Package</p>
+                        {% if premium_build %}
+                            <h3>Launch package available</h3>
+                            <p>Combine your strategy, product research, store assets, Canva outputs, and launch checklist.</p>
+                            <div class="card-actions">
+                                <a href="/launch_package" class="primary-button">View Launch Package</a>
+                                <a href="/download_launch_package" class="secondary-button">Download PDF</a>
+                            </div>
+                        {% else %}
+                            <h3>Launch package locked</h3>
+                            <p>Upgrade to Premium Build when you want the full launch summary.</p>
+                            <a href="/pricing" class="primary-button">View Premium Build</a>
+                        {% endif %}
+                    </article>
+                </div>
+            </section>
+        {% endif %}
     </main>
 
 </div>

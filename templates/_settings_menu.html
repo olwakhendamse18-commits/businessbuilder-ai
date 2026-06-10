@@ -8,26 +8,12 @@
             <p class="eyebrow">Account</p>
             <strong>{{ current_user_email or "Logged in" }}</strong>
             <a href="/dashboard">Dashboard</a>
-            <a href="/pricing">Pricing / Manage Plan</a>
             <a href="/settings">Settings</a>
+            <a href="/pricing">Pricing / Manage Plan</a>
+            <a href="/shopify_settings">Shopify Settings</a>
+            <a href="/canva_settings">Canva Settings</a>
             <a href="/logout">Logout</a>
         </div>
 
-        <div class="settings-dropdown-section">
-            <p class="eyebrow">Theme</p>
-            <div class="theme-picker">
-                {% for theme_id, theme_label in theme_options.items() %}
-                    <button
-                        type="button"
-                        class="theme-choice"
-                        data-theme-choice="{{ theme_id }}"
-                    >{{ theme_label }}</button>
-                {% endfor %}
-            </div>
-        </div>
-
-        <button type="button" class="secondary-button install-app-button" id="installAppButton" hidden>
-            Install App
-        </button>
     </div>
 </div>

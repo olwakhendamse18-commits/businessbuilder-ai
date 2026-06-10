@@ -2403,6 +2403,61 @@ html[data-theme="light"] .auth-body {
     margin-bottom: 28px;
 }
 
+.dashboard-focus {
+    max-width: 1280px;
+}
+
+.dashboard-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    margin-bottom: 28px;
+}
+
+.dashboard-summary-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.dashboard-summary-card .secondary-button {
+    margin-top: auto;
+    align-self: flex-start;
+}
+
+.dashboard-main-actions,
+.recent-output-grid {
+    margin-bottom: 30px;
+}
+
+.main-action-card {
+    border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+}
+
+.section-heading-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+    margin: 4px 0 16px;
+}
+
+.section-heading-row h2 {
+    margin: 0;
+    color: var(--text);
+}
+
+.section-heading-row .secondary-button {
+    flex: 0 0 auto;
+}
+
+.settings-section {
+    height: auto;
+}
+
+.compact-usage-grid {
+    margin-bottom: 20px;
+}
+
 .install-app-button[hidden] {
     display: none;
 }
@@ -2466,9 +2521,19 @@ html[data-theme="light"] .business-plan-document-header h2 {
 
     .approval-grid,
     .approval-context,
+    .dashboard-summary-grid,
     .settings-grid,
     .product-finder-layout {
         grid-template-columns: 1fr;
+    }
+
+    .section-heading-row {
+        display: block;
+    }
+
+    .section-heading-row .secondary-button {
+        margin-top: 14px;
+        width: 100%;
     }
 
     .approval-actions form,

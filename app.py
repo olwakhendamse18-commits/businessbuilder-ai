@@ -5803,10 +5803,12 @@ def settings():
         email=get_user_email(user_id),
         current_package=get_user_package(user_id) or "No active package",
         latest_payment=latest_payment,
+        usage_summary=get_usage_summary(user_id),
         settings=get_user_settings(user_id),
         theme_options=THEME_OPTIONS,
         shopify_connection=get_shopify_connection(user_id),
-        canva_connection=get_canva_connection(user_id)
+        canva_connection=get_canva_connection(user_id),
+        premium_build=user_package_at_least(user_id, "Premium Build")
     )
 
 
