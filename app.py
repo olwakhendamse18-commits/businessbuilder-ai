@@ -357,6 +357,18 @@ def init_db():
     """)
 
     execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS ai_store_builds (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            store_name TEXT NOT NULL,
+            content TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS user_packages (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -1682,7 +1694,8 @@ BUILD_APPROVAL_ACTIONS = {
     "shopify_products": "/create_shopify_products",
     "shopify_store": "/build_shopify_store_draft",
     "canva_designs": "/create_canva_designs",
-    "full_build": "/build_shopify_store_draft"
+    "full_build": "/build_shopify_store_draft",
+    "ai_store": "/generate_full_store"
 }
 
 
@@ -1799,6 +1812,89 @@ def get_business_plan(user_id, plan_id):
     conn.close()
 
     return plan
+
+
+def save_ai_store_build(user_id, title, store_name, content, status):
+    conn = db()
+    cur = conn.cursor()
+
+    if using_postgres():
+        cur.execute(
+            sql("""
+            INSERT INTO ai_store_builds (
+                user_id,
+                title,
+                store_name,
+                content,
+                status
+            )
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+            """),
+            (user_id, title, store_name, content, status)
+        )
+        build_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            sql("""
+            INSERT INTO ai_store_builds (
+                user_id,
+                title,
+                store_name,
+                content,
+                status
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """),
+            (user_id, title, store_name, content, status)
+        )
+        build_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return build_id
+
+
+def get_ai_store_builds(user_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, store_name, content, status, created_at
+            FROM ai_store_builds
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+
+    builds = cur.fetchall()
+    conn.close()
+
+    return builds
+
+
+def get_ai_store_build(user_id, build_id):
+    conn = db()
+    cur = conn.cursor()
+
+    cur.execute(
+        sql("""
+            SELECT id, title, store_name, content, status, created_at
+            FROM ai_store_builds
+            WHERE id = ?
+            AND user_id = ?
+            LIMIT 1
+        """),
+        (build_id, user_id)
+    )
+
+    build = cur.fetchone()
+    conn.close()
+
+    return build
 
 
 def save_shopify_plan(user_id, title, content):
@@ -3414,6 +3510,7 @@ def dashboard():
     canva_design_briefs = get_canva_design_briefs(user_id)
     canva_designs = get_canva_designs(user_id)
     build_quotes = get_build_quotes(user_id)
+    ai_store_builds = get_ai_store_builds(user_id)
     shopify_connection = get_shopify_connection(user_id)
     canva_connection = get_canva_connection(user_id)
     shopify_products = get_shopify_products(user_id)
@@ -3446,6 +3543,7 @@ def dashboard():
         canva_design_briefs=canva_design_briefs,
         canva_designs=canva_designs,
         build_quotes=build_quotes,
+        ai_store_builds=ai_store_builds,
         shopify_connection=shopify_connection_summary,
         canva_connection=canva_connection_summary,
         shopify_products=shopify_products,
@@ -3501,6 +3599,7 @@ def build_center():
     shopify_products = get_shopify_products(user_id)
     shopify_collections = get_shopify_collections(user_id)
     shopify_pages = get_shopify_pages(user_id)
+    ai_store_builds = get_ai_store_builds(user_id)
     canva_branding_packages = get_canva_branding_packages(user_id)
     canva_design_briefs = get_canva_design_briefs(user_id)
     canva_designs = get_canva_designs(user_id)
@@ -3548,6 +3647,20 @@ def build_center():
             "url": "/business_workflow",
             "action": "Open Workflow",
             "count": f"{completed_count} / {total_steps} steps"
+        },
+        {
+            "title": "AI Store Builder",
+            "status": status_for(ai_store_builds, workflow_started),
+            "description": "Generate a complete Shopify store package and create safe draft store assets.",
+            "url": (
+                f"/store_build/{ai_store_builds[0][0]}"
+                if ai_store_builds
+                else "/store_builder"
+            ),
+            "action": "View Latest Store Build" if ai_store_builds else "Generate My Store",
+            "secondary_url": "/store_builder",
+            "secondary_action": "Open Store Builder",
+            "count": f"{len(ai_store_builds)} saved"
         },
         {
             "title": "Business Plan",
@@ -3720,6 +3833,48 @@ def build_center():
         next_recommended_action=next_recommended_action,
         current_package=current_package,
         premium_build=user_package_at_least(user_id, "Premium Build")
+    )
+
+
+@app.route("/store_builder")
+def store_builder():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    workflow_answers = get_nonempty_workflow_answers(user_id)
+    completed_steps = get_completed_steps(user_id)
+    shopify_connection = get_shopify_connection(user_id)
+    canva_connection = get_canva_connection(user_id)
+
+    shopify_connected = bool(
+        shopify_connection
+        and shopify_connection[3] == "connected"
+    )
+    canva_connected = bool(
+        canva_connection
+        and canva_connection[2] == "connected"
+    )
+    generate_url = (
+        "/build_approval?action=ai_store"
+        if shopify_connected
+        else "/generate_full_store"
+    )
+
+    return render_template(
+        "store_builder.html",
+        workflow_answers=workflow_answers,
+        workflow_completed=len(completed_steps) == len(WORKFLOW_STEPS),
+        has_workflow_answers=bool(workflow_answers),
+        shopify_connected=shopify_connected,
+        canva_connected=canva_connected,
+        paid_plan_active=True,
+        store_builds=get_ai_store_builds(user_id),
+        generate_url=generate_url
     )
 
 
@@ -4915,13 +5070,13 @@ def build_approval():
     if not user_is_paid(user_id):
         return redirect("/dashboard")
 
-    if not user_package_at_least(user_id, "Pro"):
-        return package_access_redirect("Pro")
-
     requested_action = request.values.get("action", "full_build")
 
     if requested_action not in BUILD_APPROVAL_ACTIONS:
         requested_action = "full_build"
+
+    if requested_action != "ai_store" and not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro")
 
     if request.method == "POST":
         grant_build_approval(requested_action)
@@ -4948,6 +5103,14 @@ def build_approval():
             "Contact Us page draft",
             "Shipping Policy page draft",
             "Refund Policy page draft"
+        ],
+        ai_store_preview=[
+            "Complete AI-generated Shopify store package",
+            "5 to 10 draft Shopify products",
+            "Unpublished Shopify collections",
+            "Unpublished About, Contact, FAQ, Shipping, and Refund pages",
+            "Canva logo, banner, and social template briefs",
+            "Launch checklist"
         ],
         canva_design_preview=[
             "Logo concept draft",
@@ -5593,6 +5756,430 @@ User workflow answers:
     )
 
     return redirect(f"/build_quote/{quote_id}")
+
+
+def build_workflow_text(answers):
+    workflow_text = ""
+
+    for step_number, step_name, answer in answers:
+        workflow_text += f"""
+Step {step_number}: {step_name}
+Answer:
+{answer}
+
+"""
+
+    return workflow_text
+
+
+def normalize_store_package(raw_package):
+    if not isinstance(raw_package, dict):
+        raise ValueError
+
+    products = raw_package.get("products")
+    collections = raw_package.get("product_collections")
+
+    if collections is None:
+        collections = raw_package.get("collections")
+
+    if not isinstance(products, list) or not 5 <= len(products) <= 10:
+        raise ValueError
+
+    if not isinstance(collections, list) or not collections:
+        raise ValueError
+
+    required_text_keys = [
+        "store_name",
+        "store_positioning",
+        "homepage_hero_headline",
+        "homepage_subheadline",
+        "homepage_section_copy",
+        "about_page_copy",
+        "contact_page_copy",
+        "faq_page_copy",
+        "shipping_policy_draft",
+        "refund_policy_draft",
+        "navigation_menu_plan",
+        "canva_logo_brief",
+        "canva_banner_brief",
+        "canva_social_media_template_brief",
+        "launch_checklist"
+    ]
+
+    normalized = {}
+
+    for key in required_text_keys:
+        value = raw_package.get(key)
+
+        if isinstance(value, (list, dict)):
+            value = json.dumps(value, indent=2)
+
+        value = str(value or "").strip()
+
+        if not value:
+            raise ValueError
+
+        normalized[key] = value
+
+    normalized_products = []
+
+    for product in products:
+        if not isinstance(product, dict):
+            raise ValueError
+
+        title = str(product.get("title", "")).strip()
+        description = str(product.get("description", "")).strip()
+        suggested_price = str(product.get("suggested_price", "")).strip()
+        category = str(product.get("category", "")).strip()
+        seo_title = str(product.get("seo_title", "")).strip()
+        meta_description = str(product.get("meta_description", "")).strip()
+
+        if not title or not description or not suggested_price:
+            raise ValueError
+
+        normalized_products.append({
+            "title": title,
+            "description": description,
+            "suggested_price": suggested_price,
+            "category": category,
+            "seo_title": seo_title,
+            "meta_description": meta_description
+        })
+
+    normalized_collections = []
+
+    for collection in collections:
+        if not isinstance(collection, dict):
+            raise ValueError
+
+        title = str(collection.get("title", "")).strip()
+        description = str(collection.get("description", "")).strip()
+
+        if not title or not description:
+            raise ValueError
+
+        normalized_collections.append({
+            "title": title,
+            "description": description
+        })
+
+    normalized["products"] = normalized_products
+    normalized["product_collections"] = normalized_collections
+
+    return normalized
+
+
+def create_shopify_assets_from_store_package(user_id, store_package):
+    created_assets = {
+        "products": [],
+        "collections": [],
+        "pages": []
+    }
+    failed_actions = []
+
+    for product in store_package["products"]:
+        if usage_limit_reached(user_id, "shopify_product"):
+            failed_actions.append(
+                "Product creation stopped because the Shopify product usage limit was reached."
+            )
+            break
+
+        title = product["title"]
+        description = product["description"]
+        suggested_price = product.get("suggested_price", "")
+        category = product.get("category", "")
+        saved_description = (
+            f"{description}\n\n"
+            f"Suggested price: {suggested_price}\n"
+            f"Collection / category: {category}\n"
+            f"SEO title: {product.get('seo_title', '')}\n"
+            f"Meta description: {product.get('meta_description', '')}"
+        )
+
+        shopify_product_id, status, error = create_shopify_product(
+            user_id,
+            title,
+            description,
+            suggested_price,
+            category
+        )
+
+        if error:
+            failed_actions.append(f"Product '{title}': {error}")
+            continue
+
+        save_shopify_product(
+            user_id,
+            title,
+            saved_description,
+            shopify_product_id,
+            status
+        )
+        log_usage(user_id, "shopify_product")
+        created_assets["products"].append({
+            "title": title,
+            "shopify_id": shopify_product_id,
+            "status": status
+        })
+
+    for collection in store_package["product_collections"]:
+        title = collection["title"]
+        description = collection["description"]
+        shopify_collection_id, status, error = create_shopify_collection(
+            user_id,
+            title,
+            description
+        )
+
+        if error:
+            failed_actions.append(f"Collection '{title}': {error}")
+            continue
+
+        save_shopify_collection(
+            user_id,
+            title,
+            description,
+            shopify_collection_id,
+            status
+        )
+        created_assets["collections"].append({
+            "title": title,
+            "shopify_id": shopify_collection_id,
+            "status": status
+        })
+
+    page_map = [
+        ("About Us", "about", store_package["about_page_copy"]),
+        ("Contact Us", "contact", store_package["contact_page_copy"]),
+        ("FAQ", "faq", store_package["faq_page_copy"]),
+        ("Shipping Policy", "shipping_policy", store_package["shipping_policy_draft"]),
+        ("Refund Policy", "refund_policy", store_package["refund_policy_draft"])
+    ]
+
+    for title, page_type, content in page_map:
+        shopify_page_id, status, error = create_shopify_page(
+            user_id,
+            title,
+            content
+        )
+
+        if error:
+            failed_actions.append(f"Page '{title}': {error}")
+            continue
+
+        save_shopify_page(
+            user_id,
+            title,
+            page_type,
+            content,
+            shopify_page_id,
+            status
+        )
+        created_assets["pages"].append({
+            "title": title,
+            "shopify_id": shopify_page_id,
+            "status": status
+        })
+
+    return created_assets, failed_actions
+
+
+@app.route("/generate_full_store")
+def generate_full_store():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    answers = get_nonempty_workflow_answers(user_id)
+
+    if not answers:
+        return redirect("/store_builder?store_error=no_answers")
+
+    shopify_connection = get_shopify_connection(user_id)
+    shopify_connected = bool(
+        shopify_connection
+        and shopify_connection[3] == "connected"
+    )
+
+    if shopify_connected and not consume_build_approval("ai_store"):
+        return build_approval_redirect("ai_store")
+
+    workflow_text = build_workflow_text(answers)
+    prompt = f"""
+Generate a complete Shopify store build package from the user's saved workflow answers.
+Return JSON only.
+
+Use exactly these top-level keys:
+- store_name
+- store_positioning
+- homepage_hero_headline
+- homepage_subheadline
+- homepage_section_copy
+- product_collections
+- products
+- about_page_copy
+- contact_page_copy
+- faq_page_copy
+- shipping_policy_draft
+- refund_policy_draft
+- navigation_menu_plan
+- canva_logo_brief
+- canva_banner_brief
+- canva_social_media_template_brief
+- launch_checklist
+
+product_collections must be an array of collection objects with title and description.
+products must be an array of 5 to 10 product objects.
+Each product object must include:
+- title
+- description
+- suggested_price
+- category
+- seo_title
+- meta_description
+
+Do not include HTML. Do not claim the store is live or published.
+Use practical customer-facing copy suitable for a new Shopify store.
+
+User workflow answers:
+{workflow_text}
+"""
+
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        )
+        raw_package = json.loads(response.choices[0].message.content)
+        store_package = normalize_store_package(raw_package)
+    except (ExternalServiceError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return redirect("/store_builder?store_error=ai_response")
+
+    created_assets = {
+        "products": [],
+        "collections": [],
+        "pages": []
+    }
+    failed_actions = []
+    notices = []
+
+    if shopify_connected:
+        created_assets, failed_actions = create_shopify_assets_from_store_package(
+            user_id,
+            store_package
+        )
+    else:
+        notices.append("Connect Shopify to create products automatically.")
+
+    status = "generated"
+
+    if failed_actions:
+        status = "partially_created"
+
+    content = json.dumps(
+        {
+            "store_package": store_package,
+            "created_shopify_assets": created_assets,
+            "failed_shopify_actions": failed_actions,
+            "notices": notices
+        },
+        indent=2
+    )
+
+    build_id = save_ai_store_build(
+        user_id,
+        "AI Generated Shopify Store Package",
+        store_package["store_name"],
+        content,
+        status
+    )
+
+    query = ""
+
+    if notices:
+        query = "?store_notice=shopify_not_connected"
+    elif failed_actions:
+        query = "?store_notice=partial_shopify"
+    else:
+        query = "?store_notice=created"
+
+    return redirect(f"/store_build/{build_id}{query}")
+
+
+@app.route("/store_build/<int:build_id>")
+def store_build(build_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    build = get_ai_store_build(user_id, build_id)
+
+    if not build:
+        return redirect("/store_builder")
+
+    build_data = None
+
+    try:
+        build_data = json.loads(build[3])
+    except (TypeError, ValueError, json.JSONDecodeError):
+        build_data = None
+
+    return render_template(
+        "store_build.html",
+        build=build,
+        build_data=build_data
+    )
+
+
+@app.route("/download_store_build/<int:build_id>")
+def download_store_build(build_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if not user_has_paid(user_id):
+        return redirect("/dashboard")
+
+    build = get_ai_store_build(user_id, build_id)
+
+    if not build:
+        return redirect("/store_builder")
+
+    if usage_limit_reached(user_id, "pdf_export"):
+        return usage_limit_redirect("pdf_export", f"/store_build/{build_id}")
+
+    filename = re.sub(r"[_-]+", "-", secure_filename(build[2])).strip("-")
+    filename = filename or "ai-store-build"
+
+    response = send_file(
+        create_business_plan_pdf(build[1], build[3]),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"{filename}-store-build.pdf"
+    )
+
+    log_usage(user_id, "pdf_export")
+
+    return response
 
 
 @app.route("/create_shopify_product")

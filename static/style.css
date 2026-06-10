@@ -1218,6 +1218,70 @@ a {
     line-height: 1.55;
 }
 
+.requirement-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px;
+    margin: 20px 0;
+}
+
+.requirement-item {
+    display: grid;
+    gap: 7px;
+    padding: 18px;
+    border-radius: 18px;
+    background: rgba(2, 6, 23, 0.3);
+    border: 1px solid rgba(148, 163, 184, 0.17);
+}
+
+.requirement-item strong {
+    color: white;
+    font-size: 18px;
+}
+
+.requirement-item span {
+    color: var(--text-soft);
+}
+
+.requirement-item.ready {
+    border-color: rgba(34, 197, 94, 0.38);
+    background: rgba(20, 83, 45, 0.2);
+}
+
+.requirement-item.missing {
+    border-color: rgba(245, 158, 11, 0.35);
+    background: rgba(120, 53, 15, 0.18);
+}
+
+.requirement-item.optional {
+    border-color: rgba(96, 165, 250, 0.28);
+    background: rgba(30, 64, 175, 0.14);
+}
+
+.store-package-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.store-package-grid > div {
+    padding: 18px;
+    border: 1px solid #dbe4ef;
+    border-radius: 16px;
+    background: #ffffff;
+}
+
+.store-package-grid h3 {
+    margin: 0 0 8px;
+    color: #0f172a;
+}
+
+.store-package-grid p {
+    margin: 0;
+    color: #334155;
+    line-height: 1.65;
+}
+
 .workflow-step-card {
     display: flex;
     flex-direction: column;
@@ -1562,7 +1626,8 @@ a {
     .landing-feature-grid,
     .landing-step-grid,
     .landing-confidence,
-    .workflow-tool-grid {
+    .workflow-tool-grid,
+    .store-package-grid {
         grid-template-columns: 1fr;
     }
 

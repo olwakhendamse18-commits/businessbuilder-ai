@@ -24,6 +24,7 @@
         <a href="/">Chat</a>
         <a href="/dashboard">Dashboard</a>
         <a href="/build_center">Build Center</a>
+        <a href="/store_builder">AI Store Builder</a>
         <a href="/business_workflow">Workflow</a>
         <a href="/shopify_settings">Shopify</a>
         <a href="/canva_settings">Canva</a>
@@ -54,13 +55,16 @@
         </section>
 
         <section class="next-action-card">
-            <p class="eyebrow">Next Recommended Action</p>
-            <h2>{{ next_recommended_action["title"] }}</h2>
-            <p>{{ next_recommended_action["description"] }}</p>
+            <p class="eyebrow">Main Recommended Action</p>
+            <h2>Generate My Store</h2>
+            <p>Create a complete AI-generated Shopify store package from your saved business workflow answers.</p>
 
-            <a href="{{ next_recommended_action['url'] }}" class="primary-button">
-                {{ next_recommended_action["action"] }}
-            </a>
+            <div class="generator-actions">
+                <a href="/store_builder" class="primary-button">Generate My Store</a>
+                <a href="{{ next_recommended_action['url'] }}" class="secondary-button">
+                    {{ next_recommended_action["action"] }}
+                </a>
+            </div>
         </section>
 
         <section class="launch-package-cta">

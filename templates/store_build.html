@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ build[2] }} - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Store build package</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/store_builder">AI Store Builder</a>
+        <a href="/business_workflow">Workflow</a>
+        <a href="/shopify_settings">Shopify</a>
+        <a href="/canva_settings">Canva</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/launch_readiness">Launch Readiness</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <p class="eyebrow">Generated Store Package</p>
+            <h1>{{ build[2] }}</h1>
+            <p>Status: {{ build[4]|replace("_", " ")|title }}</p>
+        </div>
+
+        {% if request.args.get("store_notice") == "shopify_not_connected" %}
+            <p class="form-notice">Connect Shopify to create products automatically.</p>
+        {% elif request.args.get("store_notice") == "partial_shopify" %}
+            <p class="form-notice">The store package was saved, but some Shopify actions could not be completed.</p>
+        {% elif request.args.get("store_notice") == "created" %}
+            <p class="success-notice">Store package generated and safe Shopify draft assets created.</p>
+        {% endif %}
+
+        <div class="generator-actions summary-actions">
+            <a href="/store_builder" class="secondary-button">Back to Store Builder</a>
+            <a href="/build_center" class="secondary-button">Back to Build Center</a>
+            <a href="/download_store_build/{{ build[0] }}" class="primary-button">Download Store Build PDF</a>
+        </div>
+
+        {% if build_data %}
+            {% set package = build_data["store_package"] %}
+
+            <section class="quote-summary-grid">
+                <div class="quote-summary-card">
+                    <p>Products</p>
+                    <h3>{{ package["products"]|length }}</h3>
+                </div>
+                <div class="quote-summary-card">
+                    <p>Collections</p>
+                    <h3>{{ package["product_collections"]|length }}</h3>
+                </div>
+                <div class="quote-summary-card">
+                    <p>Shopify Status</p>
+                    <h3>{{ build[4]|replace("_", " ")|title }}</h3>
+                </div>
+            </section>
+
+            <section class="business-plan-document">
+                <div class="business-plan-document-header">
+                    <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+                    <h2>{{ package["store_name"] }}</h2>
+                </div>
+
+                <div class="store-package-grid">
+                    <div>
+                        <h3>Store Positioning</h3>
+                        <p>{{ package["store_positioning"] }}</p>
+                    </div>
+                    <div>
+                        <h3>Homepage Hero Headline</h3>
+                        <p>{{ package["homepage_hero_headline"] }}</p>
+                    </div>
+                    <div>
+                        <h3>Homepage Subheadline</h3>
+                        <p>{{ package["homepage_subheadline"] }}</p>
+                    </div>
+                    <div>
+                        <h3>Homepage Section Copy</h3>
+                        <p>{{ package["homepage_section_copy"] }}</p>
+                    </div>
+                    <div>
+                        <h3>Navigation Menu Plan</h3>
+                        <p>{{ package["navigation_menu_plan"] }}</p>
+                    </div>
+                    <div>
+                        <h3>Launch Checklist</h3>
+                        <p>{{ package["launch_checklist"] }}</p>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h2>Product Collections</h2>
+                <div class="cards">
+                    {% for collection in package["product_collections"] %}
+                        <div class="card">
+                            <h3>{{ collection["title"] }}</h3>
+                            <p>{{ collection["description"] }}</p>
+                        </div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section>
+                <h2>Products</h2>
+                <div class="cards">
+                    {% for product in package["products"] %}
+                        <div class="card">
+                            <h3>{{ product["title"] }}</h3>
+                            <p>{{ product["description"] }}</p>
+                            <p><strong>Suggested price:</strong> {{ product["suggested_price"] }}</p>
+                            <p><strong>Category:</strong> {{ product["category"] }}</p>
+                            <p><strong>SEO title:</strong> {{ product["seo_title"] }}</p>
+                            <p><strong>Meta description:</strong> {{ product["meta_description"] }}</p>
+                        </div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section class="launch-package-grid">
+                <div class="launch-package-section">
+                    <h2>About Page Copy</h2>
+                    <p class="summary-copy">{{ package["about_page_copy"] }}</p>
+                </div>
+                <div class="launch-package-section">
+                    <h2>Contact Page Copy</h2>
+                    <p class="summary-copy">{{ package["contact_page_copy"] }}</p>
+                </div>
+                <div class="launch-package-section">
+                    <h2>FAQ Page Copy</h2>
+                    <p class="summary-copy">{{ package["faq_page_copy"] }}</p>
+                </div>
+                <div class="launch-package-section">
+                    <h2>Shipping Policy Draft</h2>
+                    <p class="summary-copy">{{ package["shipping_policy_draft"] }}</p>
+                </div>
+                <div class="launch-package-section">
+                    <h2>Refund Policy Draft</h2>
+                    <p class="summary-copy">{{ package["refund_policy_draft"] }}</p>
+                </div>
+            </section>
+
+            <section class="launch-package-grid">
+                <div class="launch-package-section">
+                    <h2>Canva Logo Brief</h2>
+                    <p class="summary-copy">{{ package["canva_logo_brief"] }}</p>
+                </div>
+                <div class="launch-package-section">
+                    <h2>Canva Banner Brief</h2>
+                    <p class="summary-copy">{{ package["canva_banner_brief"] }}</p>
+                </div>
+                <div class="launch-package-section">
+                    <h2>Canva Social Template Brief</h2>
+                    <p class="summary-copy">{{ package["canva_social_media_template_brief"] }}</p>
+                </div>
+            </section>
+
+            <section>
+                <h2>Created Shopify Assets</h2>
+                <div class="cards">
+                    {% for asset_type, assets in build_data["created_shopify_assets"].items() %}
+                        <div class="card">
+                            <h3>{{ asset_type|title }}</h3>
+                            {% if assets %}
+                                {% for asset in assets %}
+                                    <p>
+                                        <strong>{{ asset["title"] }}:</strong>
+                                        {{ asset["shopify_id"] }} ({{ asset["status"] }})
+                                    </p>
+                                {% endfor %}
+                            {% else %}
+                                <p>No {{ asset_type }} created for this build.</p>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            {% if build_data["failed_shopify_actions"] %}
+                <section class="approval-warning">
+                    <h2>Shopify Actions That Failed</h2>
+                    {% for failure in build_data["failed_shopify_actions"] %}
+                        <p>{{ failure }}</p>
+                    {% endfor %}
+                </section>
+            {% endif %}
+
+            <section class="project-form">
+                <h2>Next Steps</h2>
+                <ol class="production-checklist">
+                    <li>Review every draft product, collection, and page inside Shopify.</li>
+                    <li>Edit prices, inventory, taxes, shipping, legal terms, and payment settings manually.</li>
+                    <li>Create the Canva logo, banner, and social templates from the briefs.</li>
+                    <li>Connect your domain and run launch readiness checks before publishing anything.</li>
+                </ol>
+            </section>
+        {% else %}
+            <section class="business-plan-document">
+                <pre class="business-plan-output">{{ build[3] }}</pre>
+            </section>
+        {% endif %}
+
+    </main>
+
+</div>
+
+</body>
+</html>

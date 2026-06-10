@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Store Builder - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>AI store builder</p>
+            </div>
+        </div>
+
+        <a href="/">Chat</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/store_builder">AI Store Builder</a>
+        <a href="/business_workflow">Workflow</a>
+        <a href="/shopify_settings">Shopify</a>
+        <a href="/canva_settings">Canva</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/launch_readiness">Launch Readiness</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main">
+
+        <div class="dashboard-header">
+            <p class="eyebrow">Generate My Store</p>
+            <h1>AI Store Builder</h1>
+            <p>Generate a complete Shopify store package from your business details.</p>
+        </div>
+
+        {% if request.args.get("store_error") == "no_answers" %}
+            <p class="form-notice">Complete at least one workflow answer before generating your store.</p>
+        {% elif request.args.get("store_error") == "ai_response" %}
+            <p class="form-notice">The AI store package could not be generated. Please try again.</p>
+        {% endif %}
+
+        <section class="next-action-card">
+            <p class="eyebrow">Main Builder</p>
+            <h2>Generate My Store</h2>
+            <p>
+                BusinessBuilder AI will create your full store package first. If Shopify is connected,
+                you will approve draft product, collection, and page creation before anything is sent to Shopify.
+            </p>
+
+            <div class="generator-actions">
+                {% if has_workflow_answers %}
+                    <a href="{{ generate_url }}" class="primary-button">Generate My Store</a>
+                {% else %}
+                    <button type="button" disabled>Generate My Store</button>
+                    <a href="/business_workflow" class="secondary-button">Complete Workflow</a>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="project-form">
+            <h2>Requirements Checklist</h2>
+
+            <div class="requirement-grid">
+                <div class="requirement-item {{ 'ready' if workflow_completed else 'missing' }}">
+                    <strong>{{ "Ready" if workflow_completed else "Needed" }}</strong>
+                    <span>Workflow completed</span>
+                </div>
+
+                <div class="requirement-item {{ 'ready' if shopify_connected else 'missing' }}">
+                    <strong>{{ "Connected" if shopify_connected else "Not connected" }}</strong>
+                    <span>Shopify connected</span>
+                </div>
+
+                <div class="requirement-item {{ 'ready' if canva_connected else 'optional' }}">
+                    <strong>{{ "Connected" if canva_connected else "Optional" }}</strong>
+                    <span>Canva connected optional</span>
+                </div>
+
+                <div class="requirement-item ready">
+                    <strong>Active</strong>
+                    <span>Paid plan active</span>
+                </div>
+            </div>
+
+            {% if not shopify_connected %}
+                <p class="form-help">
+                    Shopify is not connected. The store package will still be generated and saved;
+                    connect Shopify later to create draft products automatically.
+                </p>
+            {% endif %}
+        </section>
+
+        <section>
+            <h2>Previous Store Builds</h2>
+            <p>Open a saved build package to review the generated copy, Shopify assets, and launch steps.</p>
+
+            <div class="cards">
+                {% for build in store_builds %}
+                    <div class="card plan-card">
+                        <p class="build-count">{{ build[4]|replace("_", " ")|title }}</p>
+                        <h3>{{ build[2] }}</h3>
+                        <p>{{ build[1] }}</p>
+                        {% if build[5] %}
+                            <p><strong>Created:</strong> {{ build[5] }}</p>
+                        {% endif %}
+                        <div class="card-actions">
+                            <a href="/store_build/{{ build[0] }}" class="primary-button">View Store Build</a>
+                            <a href="/download_store_build/{{ build[0] }}" class="secondary-button">Download PDF</a>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="card empty-card">
+                        <h3>No store builds yet</h3>
+                        <p>Generate your first AI Shopify store package from your saved workflow answers.</p>
+                    </div>
+                {% endfor %}
+            </div>
+        </section>
+
+    </main>
+
+</div>
+
+</body>
+</html>

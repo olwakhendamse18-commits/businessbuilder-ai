@@ -20,9 +20,10 @@
     </div>
 </div>
 
-        <a href="/">Chat</a>
+<a href="/">Chat</a>
 <a href="/dashboard">Dashboard</a>
 <a href="/build_center">Build Center</a>
+<a href="/store_builder">AI Store Builder</a>
 <a href="/business_workflow">Workflow</a>
 <a href="/shopify_settings">Shopify</a>
 <a href="/canva_settings">Canva</a>
@@ -137,6 +138,7 @@
             <a href="/build_center">
                 <button type="button">Continue Building Your Business</button>
             </a>
+            <a href="/store_builder" class="primary-button">AI Store Builder</a>
         </div>
 
     {% else %}
@@ -178,6 +180,15 @@
     {% endif %}
 
     {% if paid %}
+
+<section class="project-form">
+    <h2>AI Store Builder</h2>
+    <p>Generate a complete Shopify store package from your saved workflow answers, then create safe draft products, collections, and pages when Shopify is connected.</p>
+
+    <div class="generator-actions">
+        <a href="/store_builder" class="primary-button">Generate My Store</a>
+    </div>
+</section>
 
 <section class="project-form">
     <h2>Guided Business Setup Workflow</h2>
@@ -360,6 +371,40 @@
 
             </div>
         </section>
+
+<section>
+    <h2>AI Store Builds</h2>
+    <p>Open your generated Shopify store packages and review created draft assets.</p>
+
+    <div class="cards">
+
+        {% for build in ai_store_builds %}
+
+            <div class="card plan-card">
+                <p class="build-count">{{ build[4]|replace("_", " ")|title }}</p>
+                <h3>{{ build[2] }}</h3>
+                <p>{{ build[1] }}</p>
+
+                <div class="card-actions">
+                    <a href="/store_build/{{ build[0] }}" class="primary-button">View Store Build</a>
+                    <a href="/download_store_build/{{ build[0] }}" class="secondary-button">Download PDF</a>
+                </div>
+            </div>
+
+        {% else %}
+
+            <div class="card empty-card">
+                <h3>No AI store builds yet</h3>
+                <p>Complete your workflow, then generate your first complete Shopify store package.</p>
+                {% if paid %}
+                    <a href="/store_builder" class="primary-button">Generate My Store</a>
+                {% endif %}
+            </div>
+
+        {% endfor %}
+
+    </div>
+</section>
 
 <section>
     <h2>Saved Business Plans</h2>

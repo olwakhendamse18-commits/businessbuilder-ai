@@ -23,6 +23,7 @@
         <a href="/">Chat</a>
         <a href="/dashboard">Dashboard</a>
         <a href="/build_center">Build Center</a>
+        <a href="/store_builder">AI Store Builder</a>
         <a href="/business_workflow">Business Workflow</a>
         <a href="/shopify_settings">Shopify</a>
         <a href="/canva_settings">Canva</a>
@@ -62,6 +63,16 @@
                 <h2>Draft Store Assets</h2>
                 <ul>
                     {% for item in shopify_store_preview %}
+                        <li>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </article>
+
+            <article class="approval-card">
+                <p class="eyebrow">AI Store Builder</p>
+                <h2>Full Store Package</h2>
+                <ul>
+                    {% for item in ai_store_preview %}
                         <li>{{ item }}</li>
                     {% endfor %}
                 </ul>
@@ -142,6 +153,11 @@
                 <form method="POST" action="/build_approval">
                     <input type="hidden" name="action" value="canva_designs">
                     <button type="submit">Approve Canva Build</button>
+                </form>
+
+                <form method="POST" action="/build_approval">
+                    <input type="hidden" name="action" value="ai_store">
+                    <button type="submit">Approve Store Build</button>
                 </form>
 
                 <form method="POST" action="/build_approval">
