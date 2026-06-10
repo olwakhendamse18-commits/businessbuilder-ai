@@ -1,5 +1,23 @@
 <script>
     (function() {
+        const sidebar = document.querySelector(".sidebar");
+
+        if (sidebar) {
+            document.documentElement.classList.add("mobile-nav-ready");
+
+            const navButton = document.createElement("button");
+            navButton.type = "button";
+            navButton.className = "mobile-nav-toggle";
+            navButton.setAttribute("aria-expanded", "false");
+            navButton.textContent = "Menu";
+            sidebar.insertBefore(navButton, sidebar.firstChild);
+
+            navButton.addEventListener("click", function() {
+                const isOpen = sidebar.classList.toggle("mobile-nav-open");
+                navButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+            });
+        }
+
         const toggle = document.getElementById("settingsMenuToggle");
         const menu = document.getElementById("settingsMenu");
 

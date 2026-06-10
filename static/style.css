@@ -1818,6 +1818,15 @@ a {
         border-bottom: 1px solid var(--border-soft);
     }
 
+    .mobile-nav-ready .mobile-nav-toggle {
+        display: block;
+    }
+
+    .mobile-nav-ready .sidebar:not(.mobile-nav-open) > a,
+    .mobile-nav-ready .sidebar:not(.mobile-nav-open) > .tool-box {
+        display: none;
+    }
+
     .sidebar > a {
         display: inline-flex;
         margin: 4px 4px 4px 0;
@@ -2396,6 +2405,19 @@ html[data-theme="light"] .auth-body {
 
 .install-app-button[hidden] {
     display: none;
+}
+
+.mobile-nav-toggle {
+    display: none;
+    width: 100%;
+    min-height: 46px;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    color: var(--text);
+    background: var(--surface);
+    font-weight: 900;
+    cursor: pointer;
 }
 
 html[data-theme="light"] .business-plan-document {
