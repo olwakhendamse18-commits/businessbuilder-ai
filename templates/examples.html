@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Examples - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "_pwa_head.html" %}
+</head>
+<body class="landing-body">
+<header class="landing-nav">
+    <a href="/landing" class="landing-brand">
+        <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+        <span>BusinessBuilder AI</span>
+    </a>
+    <nav class="landing-nav-links">
+        <a href="/landing">Home</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/support">Support</a>
+        <a href="/signup" class="primary-button">Start Building</a>
+    </nav>
+</header>
+
+<main class="pricing-main">
+    <section class="pricing-intro">
+        <p class="eyebrow">Sample Outputs</p>
+        <h1>See what BusinessBuilder AI can generate.</h1>
+        <p>These examples show the type of draft work paid users can create, review, edit, approve, download, and use as launch preparation.</p>
+    </section>
+
+    <section class="cards sample-output-grid">
+        {% set samples = [
+            ("Sample business plan", "Executive summary, target customer, offer, pricing, marketing, Shopify setup, Canva branding, and 30-day launch plan."),
+            ("Sample product research report", "Product ideas, sourcing suggestions, competitor research prompts, pricing ideas, difficulty notes, and next steps."),
+            ("Sample Shopify product draft", "Product title, description, suggested price, category, SEO title, and meta description for draft product creation."),
+            ("Sample Canva branding brief", "Logo direction, colors, fonts, brand kit notes, homepage banner brief, and social asset prompts."),
+            ("Sample launch package", "Combined checklist, saved outputs, launch readiness notes, and next 30-day execution plan."),
+            ("Sample AI Store Agent task", "A reviewable draft for theme, homepage, shipping, payment, domain, Canva, or launch checklist work.")
+        ] %}
+        {% for title, copy in samples %}
+            <article class="card">
+                <p class="eyebrow">Preview</p>
+                <h3>{{ title }}</h3>
+                <p>{{ copy }}</p>
+                <p class="form-help">Paid users can generate personalized versions from their own workflow and project answers.</p>
+            </article>
+        {% endfor %}
+    </section>
+
+    <section class="landing-pricing-cta">
+        <div>
+            <p class="eyebrow">Ready To Build</p>
+            <h2>Create outputs for your own business idea.</h2>
+            <p>Start with onboarding, then move through the workflow, product research, store assets, branding, and launch readiness.</p>
+        </div>
+        <div class="landing-actions">
+            <a href="/signup" class="primary-button">Get Started</a>
+            <a href="/pricing" class="secondary-button">View Pricing</a>
+        </div>
+    </section>
+</main>
+
+<footer class="landing-footer">
+    <p>BusinessBuilder AI</p>
+    <div>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/refund">Refund Policy</a>
+        <a href="/support">Support</a>
+    </div>
+</footer>
+{% include "_app_scripts.html" %}
+</body>
+</html>

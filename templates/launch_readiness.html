@@ -1,16 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Launch Readiness - BusinessBuilder AI</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "_pwa_head.html" %}
 </head>
-
 <body>
-
 <div class="dashboard">
-
     <aside class="sidebar">
         <div class="brand">
             <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
@@ -19,95 +17,47 @@
                 <p>Launch readiness</p>
             </div>
         </div>
-
-        <a href="/">Chat</a>
         <a href="/dashboard">Dashboard</a>
         <a href="/build_center">Build Center</a>
-        <a href="/launch_package">Launch Package</a>
+        <a href="/ai_store_agent">AI Store Agent</a>
+        <a href="/product_finder">Product Finder</a>
         <a href="/launch_readiness">Launch Readiness</a>
-        <a href="/business_workflow">Workflow</a>
-        <a href="/shopify_settings">Shopify</a>
-        <a href="/canva_settings">Canva</a>
-        <a href="/pricing">Pricing</a>
-        <a href="/logout">Logout</a>
+        <a href="/projects">Projects</a>
+        <a href="/support">Support</a>
+        <a href="/settings">Settings</a>
     </aside>
 
     <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
         <div class="dashboard-header">
-            <p class="eyebrow">Final Platform Checks</p>
-            <h1>Launch Readiness</h1>
-            <p>Review your platform configuration and connected business tools before going live.</p>
+            <p class="eyebrow">Launch Checklist</p>
+            <h1>{{ readiness["score"] }}% Launch Ready</h1>
+            <p>{{ readiness["completed"] }} of {{ readiness["total"] }} launch readiness items are complete{% if active_project %} for {{ active_project[1] }}{% endif %}.</p>
         </div>
 
-        <section class="readiness-mode-card {{ 'live' if payment_mode == 'live' else 'warning' }}">
-            <p class="eyebrow">Payment Environment</p>
-            <h2>{{ "Live mode ready" if payment_mode == "live" else "Production payment action required" }}</h2>
-            <p>{{ payment_mode_message }}</p>
+        <section class="next-action-card">
+            <p class="eyebrow">Next Recommended Action</p>
+            <h2>{{ readiness["next_action"]["title"] }}</h2>
+            <p>{{ readiness["next_action"]["description"] }}</p>
+            <a href="{{ readiness['next_action']['url'] }}" class="primary-button">{{ readiness["next_action"]["action"] }}</a>
         </section>
 
         <section class="cards readiness-grid">
-            {% for check in checks %}
+            {% for check in readiness["checks"] %}
                 <article class="card readiness-card">
-                    <p class="connection-status {{ 'connected' if check['ready'] else 'not-connected' }}">
-                        {% if check.get("optional") and not check["ready"] %}
-                            Optional
-                        {% else %}
-                            {{ 'Ready' if check['ready'] else 'Needs Attention' }}
-                        {% endif %}
+                    <p class="build-status {{ 'completed' if check['complete'] else 'not-started' }}">
+                        {{ "Completed" if check["complete"] else "Missing" }}
                     </p>
                     <h3>{{ check["title"] }}</h3>
                     <p>{{ check["description"] }}</p>
+                    {% if not check["complete"] %}
+                        <a href="{{ check['url'] }}" class="secondary-button">{{ check["action"] }}</a>
+                    {% endif %}
                 </article>
             {% endfor %}
         </section>
-
-        <section class="launch-package-section">
-            <p class="eyebrow">Deployment Notes</p>
-            <h2>Before You Go Live</h2>
-
-            <div class="readiness-reminders">
-                <div>
-                    <h3>Database</h3>
-                    <p>Current database type: <strong>{{ database_type }}</strong>. Confirm your Render production service uses PostgreSQL.</p>
-                </div>
-                <div>
-                    <h3>Custom Domain</h3>
-                    <p>Connect your production domain in Render, confirm HTTPS is active, and update external callback URLs where required.</p>
-                </div>
-                <div>
-                    <h3>Live Paystack</h3>
-                    <p>Before accepting real payments, confirm Render uses your live Paystack secret key and webhook URL.</p>
-                </div>
-                <div>
-                    <h3>Final Test Payment</h3>
-                    <p>Run one final live checkout test and confirm the payment persists even if the customer does not return to the success page.</p>
-                </div>
-                <div>
-                    <h3>Policy Pages</h3>
-                    <p>Review your <a href="/terms">Terms</a>, <a href="/privacy">Privacy Policy</a>, and <a href="/refund">Refund Policy</a> before launch.</p>
-                </div>
-            </div>
-        </section>
-
-        <section class="launch-package-section">
-            <p class="eyebrow">Production Checklist</p>
-            <h2>Complete These Checks Before Launch</h2>
-            <p>Work through each item on your production deployment before inviting real users.</p>
-
-            <ol class="production-checklist">
-                {% for item in production_checklist %}
-                    <li>{{ item }}</li>
-                {% endfor %}
-            </ol>
-        </section>
-
-        <div class="plan-actions">
-            <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
-            <a href="/launch_package" class="primary-button">Open Launch Package</a>
-        </div>
     </main>
-
 </div>
-
+{% include "_app_scripts.html" %}
 </body>
 </html>

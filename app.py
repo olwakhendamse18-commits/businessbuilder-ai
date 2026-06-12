@@ -209,6 +209,13 @@ def send_email(to, subject, body):
     return True
 
 
+def send_email_notification(to_email, subject, body):
+    if not to_email:
+        return False
+
+    return send_email(to_email, subject, body)
+
+
 @app.errorhandler(ExternalServiceError)
 def handle_external_service_error(error):
     if request.path == "/chat":
@@ -418,9 +425,72 @@ def init_db():
         )
     """)
 
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS user_onboarding (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            business_idea TEXT,
+            country TEXT,
+            budget TEXT,
+            has_shopify TEXT,
+            has_canva TEXT,
+            product_type TEXT,
+            target_customer TEXT,
+            business_goal TEXT,
+            completed INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS support_tickets (
+            id {id_type},
+            user_id INTEGER,
+            email TEXT NOT NULL,
+            category TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            message TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS business_projects (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            business_idea TEXT,
+            target_customer TEXT,
+            country TEXT,
+            budget TEXT,
+            notes TEXT,
+            active INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     cur.execute(sql("""
         CREATE INDEX IF NOT EXISTS idx_user_settings_user
         ON user_settings (user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_user_onboarding_user
+        ON user_onboarding (user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_support_tickets_created
+        ON support_tickets (created_at)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_business_projects_user_active
+        ON business_projects (user_id, active)
     """))
 
     cur.execute(sql("""
@@ -1356,6 +1426,409 @@ def save_user_settings(user_id, theme):
     return theme
 
 
+def get_user_onboarding(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("""
+            SELECT id, business_idea, country, budget, has_shopify,
+                   has_canva, product_type, target_customer, business_goal,
+                   completed
+            FROM user_onboarding
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+        """),
+        (user_id,)
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def save_user_onboarding(user_id, data):
+    existing = get_user_onboarding(user_id)
+    conn = db()
+    cur = conn.cursor()
+    values = (
+        data.get("business_idea", ""),
+        data.get("country", ""),
+        data.get("budget", ""),
+        data.get("has_shopify", ""),
+        data.get("has_canva", ""),
+        data.get("product_type", ""),
+        data.get("target_customer", ""),
+        data.get("business_goal", ""),
+        1,
+    )
+
+    if existing:
+        cur.execute(
+            sql("""
+                UPDATE user_onboarding
+                SET business_idea = ?,
+                    country = ?,
+                    budget = ?,
+                    has_shopify = ?,
+                    has_canva = ?,
+                    product_type = ?,
+                    target_customer = ?,
+                    business_goal = ?,
+                    completed = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                AND user_id = ?
+            """),
+            values + (existing[0], user_id)
+        )
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO user_onboarding (
+                    user_id, business_idea, country, budget, has_shopify,
+                    has_canva, product_type, target_customer, business_goal,
+                    completed
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """),
+            (user_id,) + values
+        )
+
+    conn.commit()
+    conn.close()
+
+
+def create_business_project_record(
+    user_id,
+    name,
+    business_idea="",
+    target_customer="",
+    country="",
+    budget="",
+    notes="",
+    make_active=True
+):
+    conn = db()
+    cur = conn.cursor()
+
+    if make_active:
+        cur.execute(
+            sql("UPDATE business_projects SET active = 0 WHERE user_id = ?"),
+            (user_id,)
+        )
+
+    if using_postgres():
+        cur.execute(
+            sql("""
+                INSERT INTO business_projects (
+                    user_id, name, business_idea, target_customer,
+                    country, budget, notes, active
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """),
+            (
+                user_id, name, business_idea, target_customer,
+                country, budget, notes, 1 if make_active else 0
+            )
+        )
+        project_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO business_projects (
+                    user_id, name, business_idea, target_customer,
+                    country, budget, notes, active
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """),
+            (
+                user_id, name, business_idea, target_customer,
+                country, budget, notes, 1 if make_active else 0
+            )
+        )
+        project_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+    return project_id
+
+
+def get_business_projects(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("""
+            SELECT id, name, business_idea, target_customer, country,
+                   budget, notes, active, created_at
+            FROM business_projects
+            WHERE user_id = ?
+            ORDER BY active DESC, id DESC
+        """),
+        (user_id,)
+    )
+    projects = cur.fetchall()
+    conn.close()
+    return projects
+
+
+def get_active_business_project(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("""
+            SELECT id, name, business_idea, target_customer, country,
+                   budget, notes, active, created_at
+            FROM business_projects
+            WHERE user_id = ?
+            AND active = 1
+            ORDER BY id DESC
+            LIMIT 1
+        """),
+        (user_id,)
+    )
+    project = cur.fetchone()
+    conn.close()
+    return project
+
+
+def get_business_project(user_id, project_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("""
+            SELECT id, name, business_idea, target_customer, country,
+                   budget, notes, active, created_at
+            FROM business_projects
+            WHERE user_id = ?
+            AND id = ?
+            LIMIT 1
+        """),
+        (user_id, project_id)
+    )
+    project = cur.fetchone()
+    conn.close()
+    return project
+
+
+def set_active_business_project(user_id, project_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("UPDATE business_projects SET active = 0 WHERE user_id = ?"),
+        (user_id,)
+    )
+    cur.execute(
+        sql("""
+            UPDATE business_projects
+            SET active = 1,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+            AND id = ?
+        """),
+        (user_id, project_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_support_ticket(user_id, email, category, subject, message):
+    conn = db()
+    cur = conn.cursor()
+
+    if using_postgres():
+        cur.execute(
+            sql("""
+                INSERT INTO support_tickets (
+                    user_id, email, category, subject, message, status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """),
+            (user_id, email, category, subject, message, "open")
+        )
+        ticket_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO support_tickets (
+                    user_id, email, category, subject, message, status
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+            """),
+            (user_id, email, category, subject, message, "open")
+        )
+        ticket_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+    return ticket_id
+
+
+def get_recent_support_tickets(limit=10):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("""
+            SELECT id, email, category, subject, status, created_at
+            FROM support_tickets
+            ORDER BY id DESC
+            LIMIT ?
+        """),
+        (limit,)
+    )
+    tickets = cur.fetchall()
+    conn.close()
+    return tickets
+
+
+def build_project_context(user_id):
+    project = get_active_business_project(user_id)
+
+    if not project:
+        return ""
+
+    return (
+        "Active business project context:\n"
+        f"Project name: {project[1]}\n"
+        f"Business idea: {project[2] or 'Not provided'}\n"
+        f"Target customer: {project[3] or 'Not provided'}\n"
+        f"Country: {project[4] or 'Not provided'}\n"
+        f"Budget: {project[5] or 'Not provided'}\n"
+        f"Notes: {project[6] or 'Not provided'}"
+    )
+
+
+def get_launch_readiness(user_id):
+    completed_steps = get_completed_steps(user_id)
+    business_plans = get_business_plans(user_id)
+    product_research_list = get_product_research_list(user_id)
+    store_agent_tasks = get_store_agent_tasks(user_id)
+    latest_tasks = get_latest_store_agent_tasks_by_type(user_id)
+    shopify_connection = get_shopify_connection(user_id)
+    canva_connection = get_canva_connection(user_id)
+    shopify_products = get_shopify_products(user_id)
+    canva_branding = get_canva_branding_packages(user_id)
+    canva_briefs = get_canva_design_briefs(user_id)
+    ai_store_builds = get_ai_store_builds(user_id)
+
+    checks = [
+        {
+            "title": "Business workflow completed",
+            "complete": len(completed_steps) >= len(WORKFLOW_STEPS),
+            "description": "Complete all guided setup steps.",
+            "url": "/business_workflow",
+            "action": "Open Workflow"
+        },
+        {
+            "title": "Product research completed",
+            "complete": bool(product_research_list),
+            "description": "Generate product ideas, sourcing notes, and competitor research.",
+            "url": "/product_finder",
+            "action": "Find Products"
+        },
+        {
+            "title": "Business plan generated",
+            "complete": bool(business_plans),
+            "description": "Create a saved business plan from workflow answers.",
+            "url": "/generate_business_plan",
+            "action": "Generate Plan"
+        },
+        {
+            "title": "AI Store Agent task created",
+            "complete": bool(store_agent_tasks),
+            "description": "Create at least one store agent draft.",
+            "url": "/ai_store_agent",
+            "action": "Open Agent"
+        },
+        {
+            "title": "Shopify connected",
+            "complete": bool(shopify_connection and shopify_connection[3] == "connected"),
+            "description": "Connect Shopify for approved draft store actions.",
+            "url": "/shopify_settings",
+            "action": "Connect Shopify"
+        },
+        {
+            "title": "Canva connected",
+            "complete": bool(canva_connection and canva_connection[2] == "connected"),
+            "description": "Connect Canva for editable design drafts.",
+            "url": "/canva_settings",
+            "action": "Connect Canva"
+        },
+        {
+            "title": "Shopify draft products created",
+            "complete": bool(shopify_products),
+            "description": "Create draft Shopify products for review.",
+            "url": "/build_approval?action=shopify_products",
+            "action": "Create Products"
+        },
+        {
+            "title": "Canva branding or brief created",
+            "complete": bool(canva_branding or canva_briefs or latest_tasks.get("canva_branding")),
+            "description": "Generate branding direction or Canva design briefs.",
+            "url": "/ai_store_agent",
+            "action": "Create Branding"
+        },
+        {
+            "title": "Homepage/store draft approved",
+            "complete": bool(
+                latest_tasks.get("homepage_design")
+                and latest_tasks["homepage_design"][6]
+            ),
+            "description": "Approve a homepage or store draft before applying safe changes.",
+            "url": "/ai_store_agent",
+            "action": "Review Store Drafts"
+        },
+        {
+            "title": "Shipping plan created",
+            "complete": bool(latest_tasks.get("shipping_zones")),
+            "description": "Create shipping zone guidance.",
+            "url": "/generate_store_agent_task/shipping_zones",
+            "action": "Create Shipping Plan"
+        },
+        {
+            "title": "Payment setup checklist created",
+            "complete": bool(latest_tasks.get("payments_setup")),
+            "description": "Create a payment setup checklist.",
+            "url": "/generate_store_agent_task/payments_setup",
+            "action": "Create Payment Checklist"
+        },
+        {
+            "title": "Domain setup guidance created",
+            "complete": bool(latest_tasks.get("domain_setup")),
+            "description": "Create domain guidance without buying anything automatically.",
+            "url": "/generate_store_agent_task/domain_setup",
+            "action": "Create Domain Guide"
+        },
+        {
+            "title": "Launch package generated/downloaded",
+            "complete": bool(ai_store_builds and latest_tasks.get("launch_checklist")),
+            "description": "Generate your launch checklist and package.",
+            "url": "/launch_package",
+            "action": "Open Launch Package"
+        }
+    ]
+    completed = sum(1 for check in checks if check["complete"])
+    score = int(round((completed / len(checks)) * 100)) if checks else 0
+    next_action = next(
+        (check for check in checks if not check["complete"]),
+        {
+            "title": "Review your final launch package",
+            "description": "Your core checklist is complete. Review and launch manually when ready.",
+            "url": "/launch_package",
+            "action": "View Launch Package"
+        }
+    )
+
+    return {
+        "score": score,
+        "completed": completed,
+        "total": len(checks),
+        "checks": checks,
+        "next_action": next_action
+    }
+
+
 @app.context_processor
 def inject_global_template_context():
     user_id = session.get("user_id")
@@ -1618,6 +2091,10 @@ def get_admin_dashboard_data():
         "canva_connections": count("SELECT COUNT(*) FROM canva_connections"),
         "shopify_products": count("SELECT COUNT(*) FROM shopify_products"),
         "canva_designs": count("SELECT COUNT(*) FROM canva_designs"),
+        "product_research_reports": count("SELECT COUNT(*) FROM product_research"),
+        "store_builds": count("SELECT COUNT(*) FROM ai_store_builds"),
+        "store_agent_tasks": count("SELECT COUNT(*) FROM store_agent_tasks"),
+        "support_tickets": count("SELECT COUNT(*) FROM support_tickets"),
         "total_usage_logs": count("SELECT COUNT(*) FROM usage_logs")
     }
 
@@ -1647,6 +2124,7 @@ def get_admin_dashboard_data():
     metrics["starter_users"] = package_counts.get("Starter", 0) + legacy_starter_users
     metrics["pro_users"] = package_counts.get("Pro", 0)
     metrics["premium_build_users"] = package_counts.get("Premium Build", 0)
+    metrics["free_users"] = max(metrics["total_users"] - metrics["paid_users"], 0)
 
     cur.execute(sql("""
         SELECT id, email
@@ -1680,13 +2158,22 @@ def get_admin_dashboard_data():
     """))
     most_used_actions = cur.fetchall()
 
+    cur.execute(sql("""
+        SELECT id, email, category, subject, status, created_at
+        FROM support_tickets
+        ORDER BY id DESC
+        LIMIT 10
+    """))
+    recent_support_tickets = cur.fetchall()
+
     conn.close()
 
     return {
         "metrics": metrics,
         "recent_users": recent_users,
         "recent_payments": recent_payments,
-        "most_used_actions": most_used_actions
+        "most_used_actions": most_used_actions,
+        "recent_support_tickets": recent_support_tickets
     }
 
 
@@ -4096,6 +4583,9 @@ def dashboard():
     shopify_collections = get_shopify_collections(user_id)
     shopify_pages = get_shopify_pages(user_id)
     workflow_answers = get_nonempty_workflow_answers(user_id)
+    onboarding = get_user_onboarding(user_id)
+    active_project = get_active_business_project(user_id)
+    launch_readiness = get_launch_readiness(user_id)
 
     if not paid:
         next_action = {
@@ -4110,6 +4600,13 @@ def dashboard():
             "description": "Save your business details once, then reuse them for plans, research, store assets, and launch packages.",
             "url": "/business_workflow",
             "label": "Open Workflow"
+        }
+    elif onboarding and onboarding[8] == "find products" and not product_research_list:
+        next_action = {
+            "title": "Find products for your idea",
+            "description": "Your onboarding goal points to product discovery. Start with product research before building store drafts.",
+            "url": "/product_finder",
+            "label": "Find Products"
         }
     elif not product_research_list:
         next_action = {
@@ -4169,6 +4666,9 @@ def dashboard():
         shopify_pages=shopify_pages,
         usage_summary=get_usage_summary(user_id),
         next_action=next_action,
+        onboarding=onboarding,
+        active_project=active_project,
+        launch_readiness=launch_readiness,
         usage_limit_message=get_usage_limit_message(
             request.args.get("usage_limit"),
             user_id
@@ -4252,6 +4752,8 @@ def build_center():
     if canva_designs:
         latest_canva_design_url = canva_designs[0][2] or canva_designs[0][3]
 
+    launch_readiness = get_launch_readiness(user_id)
+
     build_items = [
         {
             "title": f"{current_package} Package",
@@ -4268,6 +4770,14 @@ def build_center():
             "url": "/business_workflow",
             "action": "Open Workflow",
             "count": f"{completed_count} / {total_steps} steps"
+        },
+        {
+            "title": "Launch Readiness",
+            "status": status_for(launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
+            "description": "Track the checklist that shows how close this business is to launch.",
+            "url": "/launch_readiness",
+            "action": "View Launch Checklist",
+            "count": f"{launch_readiness['score']}% ready"
         },
         {
             "title": "AI Store Agent",
@@ -6014,237 +6524,207 @@ def launch_readiness():
         return redirect("/login")
 
     user_id = session["user_id"]
-    database_connected = False
-    conn = None
-
-    try:
-        conn = db()
-        cur = conn.cursor()
-        cur.execute(sql("SELECT 1"))
-        database_connected = cur.fetchone() is not None
-    except (sqlite3.Error, psycopg2.Error):
-        database_connected = False
-    finally:
-        if conn:
-            conn.close()
-
-    shopify_connection = get_shopify_connection(user_id)
-    canva_connection = get_canva_connection(user_id)
-    shopify_connected = bool(
-        shopify_connection
-        and shopify_connection[3] == "connected"
-    )
-    canva_connected = bool(
-        canva_connection
-        and canva_connection[2] == "connected"
-    )
-    database_url_configured = bool(os.getenv("DATABASE_URL"))
-    openai_configured = bool(os.getenv("OPENAI_API_KEY"))
-    paystack_secret = os.getenv("PAYSTACK_SECRET_KEY", "").strip()
-    paystack_configured = bool(paystack_secret)
-    secret_key_configured = bool(os.getenv("SECRET_KEY"))
-    encryption_key_configured = bool(os.getenv("ENCRYPTION_KEY"))
-    admin_email_configured = bool(os.getenv("ADMIN_EMAIL"))
-    canva_client_id_configured = bool(os.getenv("CANVA_CLIENT_ID"))
-    email_configured = bool(
-        os.getenv("EMAIL_PROVIDER", "").strip().lower() == "resend"
-        and os.getenv("EMAIL_API_KEY")
-        and os.getenv("FROM_EMAIL")
-    )
-
-    if paystack_secret.startswith("sk_live"):
-        payment_mode = "live"
-        payment_mode_ready = True
-        payment_mode_message = "Live mode ready. Paystack appears to use a live secret key."
-    elif paystack_secret.startswith("sk_test"):
-        payment_mode = "test"
-        payment_mode_ready = False
-        payment_mode_message = "Test mode detected. Switch to a live Paystack secret key before launch."
-    elif paystack_secret:
-        payment_mode = "unknown"
-        payment_mode_ready = False
-        payment_mode_message = "Paystack is configured, but the key mode could not be identified."
-    else:
-        payment_mode = "not configured"
-        payment_mode_ready = False
-        payment_mode_message = "Paystack is not configured yet."
-
-    registered_routes = {
-        rule.rule
-        for rule in app.url_map.iter_rules()
-    }
-
-    def route_exists(route):
-        return route in registered_routes
-
-    checks = [
-        {
-            "title": "DATABASE_URL",
-            "ready": database_url_configured,
-            "description": (
-                "Production database environment variable is configured."
-                if database_url_configured
-                else "Configure DATABASE_URL with your Render PostgreSQL connection string."
-            )
-        },
-        {
-            "title": "Database Connection",
-            "ready": database_connected,
-            "description": (
-                "Database connection is available."
-                if database_connected
-                else "Database connection needs attention."
-            )
-        },
-        {
-            "title": "OPENAI_API_KEY",
-            "ready": openai_configured,
-            "description": (
-                "AI generation environment variable is configured."
-                if openai_configured
-                else "Configure OPENAI_API_KEY before using AI generation tools."
-            )
-        },
-        {
-            "title": "PAYSTACK_SECRET_KEY",
-            "ready": paystack_configured,
-            "description": (
-                "Payment verification environment variable is configured."
-                if paystack_configured
-                else "Configure PAYSTACK_SECRET_KEY before accepting payments."
-            )
-        },
-        {
-            "title": "SECRET_KEY",
-            "ready": secret_key_configured,
-            "description": (
-                "Flask session signing is configured for production."
-                if secret_key_configured
-                else "Configure SECRET_KEY before deploying to production."
-            )
-        },
-        {
-            "title": "ENCRYPTION_KEY",
-            "ready": encryption_key_configured,
-            "description": (
-                "Integration token encryption is configured for production."
-                if encryption_key_configured
-                else "Configure ENCRYPTION_KEY before connecting production integrations."
-            )
-        },
-        {
-            "title": "ADMIN_EMAIL",
-            "ready": admin_email_configured,
-            "description": (
-                "Platform owner access is configured."
-                if admin_email_configured
-                else "Configure ADMIN_EMAIL to enable protected platform administration."
-            )
-        },
-        {
-            "title": "CANVA_CLIENT_ID",
-            "ready": canva_client_id_configured,
-            "description": (
-                "Canva OAuth client configuration is available."
-                if canva_client_id_configured
-                else "Configure CANVA_CLIENT_ID before testing Canva OAuth."
-            )
-        },
-        {
-            "title": "Email Settings",
-            "ready": email_configured,
-            "optional": True,
-            "description": (
-                "Optional email notifications are configured."
-                if email_configured
-                else "Optional email notifications are not configured. The app can still launch."
-            )
-        },
-        {
-            "title": "Paystack Mode",
-            "ready": payment_mode_ready,
-            "description": payment_mode_message
-        },
-        {
-            "title": "Pricing Page",
-            "ready": route_exists("/pricing"),
-            "description": "Package pricing and Paystack checkout options are available."
-        },
-        {
-            "title": "Terms Page",
-            "ready": route_exists("/terms"),
-            "description": "Terms page is available for review before launch."
-        },
-        {
-            "title": "Privacy Page",
-            "ready": route_exists("/privacy"),
-            "description": "Privacy Policy page is available for review before launch."
-        },
-        {
-            "title": "Refund Page",
-            "ready": route_exists("/refund"),
-            "description": "Refund Policy page is available for review before launch."
-        },
-        {
-            "title": "Shopify Connection Feature",
-            "ready": route_exists("/shopify_settings"),
-            "description": "Shopify connection settings route is available."
-        },
-        {
-            "title": "Canva Connection Feature",
-            "ready": route_exists("/canva_settings"),
-            "description": "Canva OAuth settings route is available."
-        },
-        {
-            "title": "Paystack Webhook",
-            "ready": route_exists("/paystack_webhook"),
-            "description": "Paystack webhook route is available for persistent payment updates."
-        },
-        {
-            "title": "Admin Dashboard",
-            "ready": route_exists("/admin"),
-            "description": "Protected platform administration route is available."
-        },
-        {
-            "title": "Shopify Store Connection",
-            "ready": shopify_connected,
-            "description": (
-                "Your Shopify store connection is ready."
-                if shopify_connected
-                else "Connect and test Shopify before building store drafts."
-            )
-        },
-        {
-            "title": "Canva Account Connection",
-            "ready": canva_connected,
-            "description": (
-                "Your Canva connection is ready."
-                if canva_connected
-                else "Connect Canva before creating editable design drafts."
-            )
-        }
-    ]
-    production_checklist = [
-        "Connect your custom domain and confirm HTTPS is active.",
-        "Update the Paystack webhook URL to use your production domain.",
-        "Switch the Paystack test key to a live key before accepting payments.",
-        "Make one real test payment through the production checkout.",
-        "Verify the payment appears in the admin dashboard.",
-        "Redeploy the app and confirm the paid user package remains active.",
-        "Test signup, login, and logout from a clean browser session.",
-        "Complete the business workflow and generate a saved business plan.",
-        "Test the Shopify connection with the production store.",
-        "Test the Canva OAuth connection with the production callback URL.",
-        "Download a business plan PDF and a launch package PDF."
-    ]
+    readiness = get_launch_readiness(user_id)
 
     return render_template(
         "launch_readiness.html",
-        checks=checks,
-        database_type="postgres" if using_postgres() else "sqlite",
-        payment_mode=payment_mode,
-        payment_mode_message=payment_mode_message,
-        production_checklist=production_checklist
+        readiness=readiness,
+        active_project=get_active_business_project(user_id),
+        current_package=get_user_package(user_id),
+        premium_build=user_package_at_least(user_id, "Premium Build")
+    )
+
+
+@app.route("/examples")
+def examples():
+    return render_template("examples.html")
+
+
+@app.route("/onboarding")
+def onboarding():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    return render_template(
+        "onboarding.html",
+        onboarding=get_user_onboarding(user_id),
+        active_project=get_active_business_project(user_id)
+    )
+
+
+@app.route("/save_onboarding", methods=["POST"])
+def save_onboarding():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    data = {
+        "business_idea": request.form.get("business_idea", "").strip(),
+        "country": request.form.get("country", "").strip(),
+        "budget": request.form.get("budget", "").strip(),
+        "has_shopify": request.form.get("has_shopify", "").strip(),
+        "has_canva": request.form.get("has_canva", "").strip(),
+        "product_type": request.form.get("product_type", "").strip(),
+        "target_customer": request.form.get("target_customer", "").strip(),
+        "business_goal": request.form.get("business_goal", "").strip()
+    }
+
+    if not data["business_idea"]:
+        return redirect("/onboarding?onboarding_error=business_idea")
+
+    save_user_onboarding(user_id, data)
+
+    if not get_active_business_project(user_id):
+        create_business_project_record(
+            user_id,
+            data["business_idea"][:80] or "My Business",
+            data["business_idea"],
+            data["target_customer"],
+            data["country"],
+            data["budget"],
+            f"Goal: {data['business_goal']}. Product type: {data['product_type']}.",
+            True
+        )
+
+    email = get_user_email(user_id)
+    if email:
+        send_email_notification(
+            email,
+            "Your BusinessBuilder AI onboarding is complete",
+            "Your onboarding answers were saved. Open your dashboard to continue the recommended next step."
+        )
+
+    return redirect("/dashboard?onboarding=complete")
+
+
+@app.route("/support")
+def support():
+    email = ""
+
+    if "user_id" in session:
+        email = get_user_email(session["user_id"]) or ""
+
+    return render_template(
+        "support.html",
+        email=email,
+        submitted=request.args.get("submitted") == "1"
+    )
+
+
+@app.route("/submit_support", methods=["POST"])
+def submit_support():
+    user_id = session.get("user_id")
+    email = request.form.get("email", "").strip().lower()
+    category = request.form.get("category", "").strip()
+    subject = request.form.get("subject", "").strip()
+    message = request.form.get("message", "").strip()
+
+    if not is_valid_email(email) or not category or not subject or not message:
+        return redirect("/support?support_error=missing")
+
+    ticket_id = save_support_ticket(user_id, email, category, subject, message)
+    admin_email = os.getenv("ADMIN_EMAIL", "").strip()
+
+    if admin_email:
+        send_email_notification(
+            admin_email,
+            f"BusinessBuilder AI support request #{ticket_id}",
+            (
+                f"Category: {category}\n"
+                f"From: {email}\n"
+                f"Subject: {subject}\n\n"
+                f"{message}"
+            )
+        )
+
+    send_email_notification(
+        email,
+        "BusinessBuilder AI support request received",
+        "Your support request was received. The team will review it and respond as soon as possible."
+    )
+
+    return redirect("/support?submitted=1")
+
+
+@app.route("/projects")
+def projects_page():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    return render_template(
+        "projects.html",
+        projects=get_business_projects(user_id),
+        active_project=get_active_business_project(user_id)
+    )
+
+
+@app.route("/create_business_project", methods=["POST"])
+def create_business_project():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    name = request.form.get("name", "").strip()
+    business_idea = request.form.get("business_idea", "").strip()
+    target_customer = request.form.get("target_customer", "").strip()
+    country = request.form.get("country", "").strip()
+    budget = request.form.get("budget", "").strip()
+    notes = request.form.get("notes", "").strip()
+
+    if not name:
+        return redirect("/projects?project_error=name")
+
+    project_id = create_business_project_record(
+        user_id,
+        name,
+        business_idea,
+        target_customer,
+        country,
+        budget,
+        notes,
+        True
+    )
+
+    return redirect(f"/project/{project_id}")
+
+
+@app.route("/switch_business_project/<int:project_id>")
+def switch_business_project(project_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    if get_business_project(user_id, project_id):
+        set_active_business_project(user_id, project_id)
+
+    return redirect("/dashboard")
+
+
+@app.route("/project/<int:project_id>")
+def project_detail(project_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    project = get_business_project(user_id, project_id)
+
+    if not project:
+        return redirect("/projects")
+
+    return render_template(
+        "project_detail.html",
+        project=project,
+        business_plans=get_business_plans(user_id),
+        product_research_list=get_product_research_list(user_id),
+        ai_store_builds=get_ai_store_builds(user_id),
+        store_agent_tasks=get_store_agent_tasks(user_id),
+        launch_readiness=get_launch_readiness(user_id),
+        premium_build=user_package_at_least(user_id, "Premium Build")
     )
 
 
@@ -7731,6 +8211,14 @@ User workflow answers:
         status
     )
 
+    email = get_user_email(user_id)
+    if email:
+        send_email_notification(
+            email,
+            "Your BusinessBuilder AI store package is ready",
+            "Your AI-generated store package has been saved. Open your dashboard or Build Center to review it."
+        )
+
     query = ""
 
     if notices:
@@ -8374,6 +8862,14 @@ def chat():
             "content": SYSTEM_PROMPT
         }
     ]
+
+    project_context = build_project_context(user_id)
+
+    if project_context:
+        messages.append({
+            "role": "system",
+            "content": project_context
+        })
 
     if file_context:
         messages.append({

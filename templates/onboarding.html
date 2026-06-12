@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Start My Business - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+<body>
+<div class="dashboard">
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Start my business</p>
+            </div>
+        </div>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/projects">Projects</a>
+        <a href="/support">Support</a>
+        <a href="/settings">Settings</a>
+    </aside>
+
+    <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
+        <div class="dashboard-header">
+            <p class="eyebrow">Onboarding</p>
+            <h1>Start My Business</h1>
+            <p>Answer a few setup questions so BusinessBuilder AI can recommend the right next step.</p>
+        </div>
+
+        {% if request.args.get("onboarding_error") %}
+            <p class="form-notice">Enter your business idea before saving onboarding.</p>
+        {% endif %}
+
+        <section class="project-form">
+            <form method="POST" action="/save_onboarding">
+                <label>What business do you want to start?</label>
+                <input name="business_idea" required placeholder="Example: A skincare store for students" value="{{ onboarding[1] if onboarding else '' }}">
+
+                <label>What country are you selling in?</label>
+                <input name="country" placeholder="Example: South Africa" value="{{ onboarding[2] if onboarding else '' }}">
+
+                <label>What is your budget?</label>
+                <input name="budget" placeholder="Example: R2,000" value="{{ onboarding[3] if onboarding else '' }}">
+
+                <label>Do you already have a Shopify store?</label>
+                <select name="has_shopify">
+                    <option value="No">No</option>
+                    <option value="Yes">Yes</option>
+                    <option value="Not sure">Not sure</option>
+                </select>
+
+                <label>Do you already use Canva?</label>
+                <select name="has_canva">
+                    <option value="No">No</option>
+                    <option value="Yes">Yes</option>
+                    <option value="Not sure">Not sure</option>
+                </select>
+
+                <label>What do you want to sell?</label>
+                <select name="product_type">
+                    <option value="not sure">Not sure</option>
+                    <option value="physical products">Physical products</option>
+                    <option value="digital products">Digital products</option>
+                    <option value="services">Services</option>
+                    <option value="affiliate products">Affiliate products</option>
+                    <option value="print-on-demand">Print-on-demand</option>
+                </select>
+
+                <label>Who is your target customer?</label>
+                <input name="target_customer" placeholder="Example: Students aged 18-25" value="{{ onboarding[7] if onboarding else '' }}">
+
+                <label>What is your main goal?</label>
+                <select name="business_goal">
+                    <option value="start">Start</option>
+                    <option value="grow">Grow</option>
+                    <option value="launch store">Launch store</option>
+                    <option value="find products">Find products</option>
+                    <option value="create brand">Create brand</option>
+                </select>
+
+                <button type="submit">Save and Continue</button>
+            </form>
+        </section>
+    </main>
+</div>
+{% include "_app_scripts.html" %}
+</body>
+</html>

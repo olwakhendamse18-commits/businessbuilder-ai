@@ -25,6 +25,10 @@
         <a href="/build_center">Build Center</a>
         <a href="/ai_store_agent">AI Store Agent</a>
         <a href="/product_finder">Product Finder</a>
+        <a href="/launch_readiness">Launch Readiness</a>
+        <a href="/projects">Projects</a>
+        <a href="/examples">Examples</a>
+        <a href="/support">Support</a>
         <a href="/business_workflow">Business Workflow</a>
         <a href="/business_workflow">Business Plans</a>
         {% if premium_build %}
@@ -42,8 +46,20 @@
         <div class="dashboard-header">
             <p class="eyebrow">Continue Building</p>
             <h1>Welcome back to your business build</h1>
-            <p>Pick up from your next recommended action, generate store drafts, or open the Build Center to review progress.</p>
+            <p>
+                {% if active_project %}
+                    Continue building {{ active_project[1] }}.
+                {% elif onboarding and onboarding[1] %}
+                    Continue building {{ onboarding[1] }}.
+                {% else %}
+                    Pick up from your next recommended action, generate store drafts, or open the Build Center to review progress.
+                {% endif %}
+            </p>
         </div>
+
+        {% if request.args.get("onboarding") == "complete" %}
+            <p class="success-notice">Onboarding saved. Your dashboard now uses your answers to recommend the next step.</p>
+        {% endif %}
 
         {% if usage_limit_message %}
             <p class="form-notice">{{ usage_limit_message }}</p>
@@ -84,6 +100,19 @@
 
         <section class="dashboard-summary-grid">
             <article class="card dashboard-summary-card">
+                <p class="eyebrow">Active Project</p>
+                {% if active_project %}
+                    <h3>{{ active_project[1] }}</h3>
+                    <p>{{ active_project[2] or "Project context is saved and available to your AI workspace." }}</p>
+                    <a href="/project/{{ active_project[0] }}" class="secondary-button">View Project</a>
+                {% else %}
+                    <h3>No active project yet</h3>
+                    <p>Create your first project so BusinessBuilder AI can keep business context organized.</p>
+                    <a href="/onboarding" class="secondary-button">Start My Business</a>
+                {% endif %}
+            </article>
+
+            <article class="card dashboard-summary-card">
                 <p class="eyebrow">Current Package</p>
                 <h3>{{ current_package }}</h3>
                 <p>
@@ -102,7 +131,23 @@
                 <p>{{ business_plans|length }} saved plan{{ "" if business_plans|length == 1 else "s" }} and {{ product_research_list|length }} product research report{{ "" if product_research_list|length == 1 else "s" }}.</p>
                 <a href="/business_workflow" class="secondary-button">Open Workflow</a>
             </article>
+
+            <article class="card dashboard-summary-card">
+                <p class="eyebrow">Launch Readiness Score</p>
+                <h3>{{ launch_readiness["score"] }}% ready</h3>
+                <p>{{ launch_readiness["completed"] }} of {{ launch_readiness["total"] }} launch checklist items are complete.</p>
+                <a href="/launch_readiness" class="secondary-button">View Launch Checklist</a>
+            </article>
         </section>
+
+        {% if not onboarding or not onboarding[9] %}
+            <section class="project-form dashboard-onboarding">
+                <p class="eyebrow">Start My Business</p>
+                <h2>Answer a few setup questions</h2>
+                <p>Save your business idea, country, budget, products, and target customer so the dashboard can recommend the right next step.</p>
+                <a href="/onboarding" class="primary-button">Start Onboarding</a>
+            </section>
+        {% endif %}
 
         <section class="next-action-card">
             <p class="eyebrow">Next Recommended Action</p>
@@ -162,6 +207,13 @@
                     <h3>Business Workflow</h3>
                     <p>Complete the guided answers that power business plans, store drafts, branding briefs, and launch packages.</p>
                     <a href="/business_workflow" class="primary-button">Continue Workflow</a>
+                </article>
+
+                <article class="card">
+                    <p class="eyebrow">Help</p>
+                    <h3>Support</h3>
+                    <p>Ask for help with billing, Shopify, Canva, AI output quality, account issues, or general questions.</p>
+                    <a href="/support" class="primary-button">Contact Support</a>
                 </article>
             </section>
 

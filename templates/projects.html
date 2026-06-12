@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Projects - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+<body>
+<div class="dashboard">
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Projects</p>
+            </div>
+        </div>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/launch_readiness">Launch Readiness</a>
+        <a href="/projects">Projects</a>
+        <a href="/support">Support</a>
+        <a href="/settings">Settings</a>
+    </aside>
+
+    <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
+        <div class="dashboard-header">
+            <p class="eyebrow">Project Memory</p>
+            <h1>Business Projects</h1>
+            <p>Create and switch between different business ideas. The active project is added to AI chat context where possible.</p>
+        </div>
+
+        {% if request.args.get("project_error") %}
+            <p class="form-notice">Enter a project name.</p>
+        {% endif %}
+
+        <section class="project-form">
+            <h2>Create Business Project</h2>
+            <form method="POST" action="/create_business_project">
+                <label>Project name</label>
+                <input name="name" required placeholder="Example: Student Skincare Store">
+                <label>Business idea</label>
+                <textarea name="business_idea" placeholder="Describe the business idea."></textarea>
+                <label>Target customer</label>
+                <input name="target_customer" placeholder="Example: Students aged 18-25">
+                <label>Country</label>
+                <input name="country" placeholder="Example: South Africa">
+                <label>Budget</label>
+                <input name="budget" placeholder="Example: R2,000">
+                <label>Notes</label>
+                <textarea name="notes" placeholder="Important context for the AI."></textarea>
+                <button type="submit">Create Project</button>
+            </form>
+        </section>
+
+        <section class="cards">
+            {% for project in projects %}
+                <article class="card">
+                    <p class="build-status {{ 'completed' if project[7] else 'in-progress' }}">{{ "Active" if project[7] else "Saved" }}</p>
+                    <h3>{{ project[1] }}</h3>
+                    <p>{{ project[2] or "No business idea notes saved yet." }}</p>
+                    <div class="card-actions">
+                        <a href="/project/{{ project[0] }}" class="primary-button">View Project</a>
+                        <a href="/switch_business_project/{{ project[0] }}" class="secondary-button">Make Active</a>
+                    </div>
+                </article>
+            {% else %}
+                <article class="card empty-card">
+                    <h3>No projects yet</h3>
+                    <p>Create your first project or complete onboarding to create one automatically.</p>
+                    <a href="/onboarding" class="primary-button">Start My Business</a>
+                </article>
+            {% endfor %}
+        </section>
+    </main>
+</div>
+{% include "_app_scripts.html" %}
+</body>
+</html>

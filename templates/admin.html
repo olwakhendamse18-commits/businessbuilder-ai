@@ -26,6 +26,8 @@
         <a href="/build_center">Build Center</a>
         <a href="/ai_store_agent">AI Store Agent</a>
         <a href="/product_finder">Product Finder</a>
+        <a href="/projects">Projects</a>
+        <a href="/support">Support</a>
         <a href="/pricing">Pricing</a>
         <a href="/admin">Admin</a>
         <a href="/launch_readiness">Launch Readiness</a>
@@ -67,6 +69,11 @@
             </div>
 
             <div class="quote-summary-card">
+                <p>Free Users</p>
+                <h3>{{ metrics["free_users"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
                 <p>Total Payments</p>
                 <h3>{{ metrics["total_payments"] }}</h3>
             </div>
@@ -74,6 +81,26 @@
             <div class="quote-summary-card">
                 <p>Business Plans</p>
                 <h3>{{ metrics["business_plans"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Product Research</p>
+                <h3>{{ metrics["product_research_reports"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Store Builds</p>
+                <h3>{{ metrics["store_builds"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Store Agent Tasks</p>
+                <h3>{{ metrics["store_agent_tasks"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
+                <p>Support Tickets</p>
+                <h3>{{ metrics["support_tickets"] }}</h3>
             </div>
 
             <div class="quote-summary-card">
@@ -114,6 +141,44 @@
             <div class="quote-summary-card">
                 <p>Premium Build Users</p>
                 <h3>{{ metrics["premium_build_users"] }}</h3>
+            </div>
+        </section>
+
+        <section class="admin-panel">
+            <div>
+                <p class="eyebrow">Support</p>
+                <h2>Recent Support Tickets</h2>
+            </div>
+
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Email</th>
+                            <th>Category</th>
+                            <th>Subject</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ticket in recent_support_tickets %}
+                            <tr>
+                                <td>{{ ticket[0] }}</td>
+                                <td>{{ ticket[1] }}</td>
+                                <td>{{ ticket[2] }}</td>
+                                <td>{{ ticket[3] }}</td>
+                                <td>{{ ticket[4] }}</td>
+                                <td>{{ ticket[5] }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="6">No support tickets yet.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </section>
 

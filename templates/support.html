@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Support - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+<body class="landing-body">
+<header class="landing-nav">
+    <a href="/landing" class="landing-brand">
+        <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+        <span>BusinessBuilder AI</span>
+    </a>
+    <nav class="landing-nav-links">
+        <a href="/dashboard">Dashboard</a>
+        <a href="/examples">Examples</a>
+        <a href="/pricing">Pricing</a>
+    </nav>
+</header>
+
+<main class="pricing-main">
+    <section class="pricing-intro">
+        <p class="eyebrow">Support</p>
+        <h1>Contact BusinessBuilder AI support.</h1>
+        <p>Send a billing, Shopify, Canva, AI output, account, or general support request.</p>
+    </section>
+
+    {% if submitted %}
+        <p class="success-notice">Support request received.</p>
+    {% endif %}
+    {% if request.args.get("support_error") %}
+        <p class="form-notice">Complete all support fields with a valid email.</p>
+    {% endif %}
+
+    <section class="project-form settings-panel">
+        <form method="POST" action="/submit_support">
+            <label>Email</label>
+            <input name="email" type="email" required value="{{ email }}">
+
+            <label>Category</label>
+            <select name="category" required>
+                <option>Billing problem</option>
+                <option>Shopify help</option>
+                <option>Canva help</option>
+                <option>AI output problem</option>
+                <option>Account problem</option>
+                <option>General question</option>
+            </select>
+
+            <label>Subject</label>
+            <input name="subject" required placeholder="Short summary">
+
+            <label>Message</label>
+            <textarea name="message" required placeholder="Tell us what you need help with."></textarea>
+
+            <button type="submit">Submit Support Request</button>
+        </form>
+    </section>
+</main>
+{% include "_app_scripts.html" %}
+</body>
+</html>

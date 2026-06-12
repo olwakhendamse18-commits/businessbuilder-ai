@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project[1] }} - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+<body>
+<div class="dashboard">
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Project detail</p>
+            </div>
+        </div>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/projects">Projects</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/launch_readiness">Launch Readiness</a>
+        <a href="/settings">Settings</a>
+    </aside>
+
+    <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
+        <div class="dashboard-header">
+            <p class="eyebrow">{{ "Active Project" if project[7] else "Saved Project" }}</p>
+            <h1>{{ project[1] }}</h1>
+            <p>{{ project[2] or "No project idea saved yet." }}</p>
+        </div>
+
+        <section class="dashboard-summary-grid">
+            <article class="card"><p class="eyebrow">Target Customer</p><h3>{{ project[3] or "Not set" }}</h3></article>
+            <article class="card"><p class="eyebrow">Country</p><h3>{{ project[4] or "Not set" }}</h3></article>
+            <article class="card"><p class="eyebrow">Budget</p><h3>{{ project[5] or "Not set" }}</h3></article>
+            <article class="card"><p class="eyebrow">Launch Readiness</p><h3>{{ launch_readiness["score"] }}%</h3><a href="/launch_readiness" class="secondary-button">View Checklist</a></article>
+        </section>
+
+        <section class="next-action-card">
+            <p class="eyebrow">Project Actions</p>
+            <h2>Continue this business build</h2>
+            <p>Use this project as active context for chat and business tools.</p>
+            <div class="generator-actions">
+                <a href="/switch_business_project/{{ project[0] }}" class="primary-button">Make Active</a>
+                <a href="/business_workflow" class="secondary-button">Open Workflow</a>
+                <a href="/product_finder" class="secondary-button">Find Products</a>
+                <a href="/ai_store_agent" class="secondary-button">AI Store Agent</a>
+            </div>
+        </section>
+
+        <section class="cards">
+            <article class="card"><h3>Business Plans</h3><p>{{ business_plans|length }} saved plans in your workspace.</p></article>
+            <article class="card"><h3>Product Research</h3><p>{{ product_research_list|length }} saved research reports.</p></article>
+            <article class="card"><h3>Store Builds</h3><p>{{ ai_store_builds|length }} generated store packages.</p></article>
+            <article class="card"><h3>AI Store Agent Tasks</h3><p>{{ store_agent_tasks|length }} saved agent tasks.</p></article>
+        </section>
+    </main>
+</div>
+{% include "_app_scripts.html" %}
+</body>
+</html>
