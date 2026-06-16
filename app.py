@@ -4982,9 +4982,77 @@ def build_center():
         "action": "Review Build Center"
     }
 
+    roadmap_steps = [
+        {
+            "number": "01",
+            "title": "Start",
+            "status": "Completed",
+            "description": "Your account and package workspace are ready.",
+            "url": "/dashboard",
+            "action": "Dashboard"
+        },
+        {
+            "number": "02",
+            "title": "Business Details",
+            "status": status_for(completed_count == total_steps, workflow_started),
+            "description": "Complete the guided answers that power plans, store copy, branding, and launch tasks.",
+            "url": "/business_workflow",
+            "action": "Open Workflow"
+        },
+        {
+            "number": "03",
+            "title": "Product Finder",
+            "status": status_for(product_research_list, workflow_started),
+            "description": "Research product ideas, sourcing paths, competitor examples, and price angles.",
+            "url": "/product_finder",
+            "action": "Find Products"
+        },
+        {
+            "number": "04",
+            "title": "Store Draft",
+            "status": status_for(ai_store_builds or store_agent_tasks, product_research_list),
+            "description": "Generate reviewable store drafts and AI Store Agent tasks before applying anything.",
+            "url": "/ai_store_agent",
+            "action": "Open Agent"
+        },
+        {
+            "number": "05",
+            "title": "Shopify Assets",
+            "status": status_for(shopify_products or shopify_collections or shopify_pages, shopify_connected),
+            "description": "Create supported draft products, collections, pages, and setup guidance after approval.",
+            "url": "/shopify_settings" if not shopify_connected else "/shopify_build_summary",
+            "action": "Manage Shopify" if not shopify_connected else "View Assets"
+        },
+        {
+            "number": "06",
+            "title": "Canva Branding",
+            "status": status_for(canva_branding_packages or canva_design_briefs or canva_designs, canva_connected),
+            "description": "Create brand direction, logo briefs, social ideas, and marketing asset briefs.",
+            "url": "/canva_settings" if not canva_connected else "/generate_canva_branding",
+            "action": "Manage Canva" if not canva_connected else "Create Branding"
+        },
+        {
+            "number": "07",
+            "title": "Launch Readiness",
+            "status": status_for(launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
+            "description": "Check completed and missing launch items before you go live.",
+            "url": "/launch_readiness",
+            "action": "Check Score"
+        },
+        {
+            "number": "08",
+            "title": "Launch Package",
+            "status": status_for(user_package_at_least(user_id, "Premium Build") and launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
+            "description": "Bundle strategy, research, store assets, branding, and next steps into one package.",
+            "url": "/launch_package" if user_package_at_least(user_id, "Premium Build") else "/pricing",
+            "action": "Open Package" if user_package_at_least(user_id, "Premium Build") else "Unlock Premium"
+        }
+    ]
+
     return render_template(
         "build_center.html",
         build_items=build_items,
+        roadmap_steps=roadmap_steps,
         completed_count=completed_count,
         total_steps=total_steps,
         next_recommended_action=next_recommended_action,

@@ -96,6 +96,28 @@
             </div>
         </section>
 
+        <section class="project-form roadmap-panel">
+            <div class="section-heading-row">
+                <div>
+                    <p class="eyebrow">Visual Roadmap</p>
+                    <h2>From idea to launch package</h2>
+                </div>
+                <a href="/launch_readiness" class="secondary-button">View Launch Readiness</a>
+            </div>
+
+            <div class="roadmap-grid">
+                {% for step in roadmap_steps %}
+                    <article class="roadmap-step">
+                        <div class="roadmap-icon">{{ step["number"] }}</div>
+                        <p class="build-status {{ step['status']|lower|replace(' ', '-') }}">{{ step["status"] }}</p>
+                        <h3>{{ step["title"] }}</h3>
+                        <p>{{ step["description"] }}</p>
+                        <a href="{{ step['url'] }}" class="secondary-button">{{ step["action"] }}</a>
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+
         <section class="launch-package-cta">
             <div>
                 <p class="eyebrow">Final Summary</p>

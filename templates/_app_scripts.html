@@ -62,6 +62,88 @@
             });
         });
 
+        document.querySelectorAll("[data-slider]").forEach(function(slider) {
+            if (slider.dataset.sliderReady === "true") {
+                return;
+            }
+
+            slider.dataset.sliderReady = "true";
+            const slides = Array.from(slider.querySelectorAll(".bbai-slide"));
+            const prev = slider.querySelector("[data-slider-prev]");
+            const next = slider.querySelector("[data-slider-next]");
+            const dotsWrap = slider.querySelector("[data-slider-dots]");
+            let activeIndex = Math.max(0, slides.findIndex(function(slide) {
+                return slide.classList.contains("active");
+            }));
+            let intervalId = null;
+
+            if (!slides.length) {
+                return;
+            }
+
+            function showSlide(index) {
+                activeIndex = (index + slides.length) % slides.length;
+                slides.forEach(function(slide, slideIndex) {
+                    slide.classList.toggle("active", slideIndex === activeIndex);
+                });
+
+                if (dotsWrap) {
+                    Array.from(dotsWrap.children).forEach(function(dot, dotIndex) {
+                        dot.classList.toggle("active", dotIndex === activeIndex);
+                        dot.setAttribute("aria-current", dotIndex === activeIndex ? "true" : "false");
+                    });
+                }
+            }
+
+            if (dotsWrap) {
+                dotsWrap.innerHTML = "";
+                slides.forEach(function(_, index) {
+                    const dot = document.createElement("button");
+                    dot.type = "button";
+                    dot.className = "slider-dot";
+                    dot.setAttribute("aria-label", "Show slide " + (index + 1));
+                    dot.addEventListener("click", function() {
+                        showSlide(index);
+                    });
+                    dotsWrap.appendChild(dot);
+                });
+            }
+
+            if (prev) {
+                prev.addEventListener("click", function() {
+                    showSlide(activeIndex - 1);
+                });
+            }
+
+            if (next) {
+                next.addEventListener("click", function() {
+                    showSlide(activeIndex + 1);
+                });
+            }
+
+            function startAutoplay() {
+                if (slider.dataset.autoplay !== "true" || intervalId) {
+                    return;
+                }
+
+                intervalId = window.setInterval(function() {
+                    showSlide(activeIndex + 1);
+                }, 5200);
+            }
+
+            function stopAutoplay() {
+                if (intervalId) {
+                    window.clearInterval(intervalId);
+                    intervalId = null;
+                }
+            }
+
+            slider.addEventListener("mouseenter", stopAutoplay);
+            slider.addEventListener("mouseleave", startAutoplay);
+            showSlide(activeIndex);
+            startAutoplay();
+        });
+
         if ("serviceWorker" in navigator) {
             window.addEventListener("load", function() {
                 navigator.serviceWorker.register("/service-worker.js").catch(function() {});

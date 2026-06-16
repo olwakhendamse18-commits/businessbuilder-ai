@@ -55,6 +55,10 @@
                     Pick up from your next recommended action, generate store drafts, or open the Build Center to review progress.
                 {% endif %}
             </p>
+            <div class="generator-actions dashboard-hero-actions">
+                <a href="{{ '/onboarding' if not onboarding or not onboarding[9] else next_action['url'] }}" class="primary-button">Continue Building</a>
+                <a href="/build_center" class="secondary-button">Open Build Center</a>
+            </div>
         </div>
 
         {% if request.args.get("onboarding") == "complete" %}
@@ -148,6 +152,56 @@
                 <a href="/onboarding" class="primary-button">Start Onboarding</a>
             </section>
         {% endif %}
+
+        <section class="project-form dashboard-guide-card">
+            <div class="section-heading-row">
+                <div>
+                    <p class="eyebrow">Guided Path</p>
+                    <h2>Your launch journey</h2>
+                </div>
+                <a href="/launch_readiness" class="secondary-button">Check Readiness</a>
+            </div>
+
+            <div class="bbai-slider compact-slider" data-slider aria-label="Your launch journey">
+                <div class="bbai-slider-track">
+                    <article class="bbai-slide active">
+                        <p class="feature-number">01</p>
+                        <h3>Complete your business workflow</h3>
+                        <p>Give the AI enough context to generate useful plans, store assets, and launch recommendations.</p>
+                    </article>
+                    <article class="bbai-slide">
+                        <p class="feature-number">02</p>
+                        <h3>Find products</h3>
+                        <p>Research product ideas, sourcing paths, competitor examples, price angles, risks, and next steps.</p>
+                    </article>
+                    <article class="bbai-slide">
+                        <p class="feature-number">03</p>
+                        <h3>Generate your store draft</h3>
+                        <p>Create draft store content, Shopify assets, page copy, policies, and product candidates.</p>
+                    </article>
+                    <article class="bbai-slide">
+                        <p class="feature-number">04</p>
+                        <h3>Review and approve AI tasks</h3>
+                        <p>Edit or approve generated drafts before any supported safe changes are applied.</p>
+                    </article>
+                    <article class="bbai-slide">
+                        <p class="feature-number">05</p>
+                        <h3>Connect Shopify and Canva</h3>
+                        <p>Use integrations when you are ready for draft products, editable design briefs, and store setup assets.</p>
+                    </article>
+                    <article class="bbai-slide">
+                        <p class="feature-number">06</p>
+                        <h3>Download your launch package</h3>
+                        <p>Bring your strategy, product research, store drafts, branding, and launch checklist into one package.</p>
+                    </article>
+                </div>
+                <div class="bbai-slider-controls">
+                    <button type="button" class="slider-control" data-slider-prev>Previous</button>
+                    <div class="slider-dots" data-slider-dots></div>
+                    <button type="button" class="slider-control" data-slider-next>Next</button>
+                </div>
+            </div>
+        </section>
 
         <section class="next-action-card">
             <p class="eyebrow">Next Recommended Action</p>
