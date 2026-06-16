@@ -3295,6 +3295,39 @@ a {
     display: none;
 }
 
+.checkbox-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    margin: 10px 0 18px;
+}
+
+.checkbox-grid label {
+    align-items: center;
+    background: color-mix(in srgb, var(--surface-soft) 70%, var(--surface));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    display: flex;
+    gap: 10px;
+    min-height: 46px;
+    padding: 10px 12px;
+}
+
+.checkbox-grid input {
+    min-height: auto;
+    width: auto;
+}
+
+.advisor-output-card {
+    align-content: start;
+}
+
+.advisor-output-card .business-plan-output {
+    max-height: 420px;
+    overflow: auto;
+    white-space: pre-wrap;
+}
+
 .success-notice,
 .form-notice {
     border-radius: 18px;

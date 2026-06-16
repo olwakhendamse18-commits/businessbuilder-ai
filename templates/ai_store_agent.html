@@ -25,6 +25,9 @@
         <a href="/build_center">Build Center</a>
         <a href="/ai_store_agent">AI Store Agent</a>
         <a href="/product_finder">Product Finder</a>
+        <a href="/supplier_finder">Supplier Finder</a>
+        <a href="/pricing_advisor">Pricing Advisor</a>
+        <a href="/payment_guide">Payment Guide</a>
         <a href="/launch_readiness">Launch Readiness</a>
         <a href="/projects">Projects</a>
         <a href="/examples">Examples</a>
@@ -68,6 +71,9 @@
             <p>The AI Store Agent helps generate theme recommendations, homepage copy, Shopify products, store pages, shipping guidance, payment checklists, domain guidance, Canva branding, Canva marketing assets, and launch checklists. You review, edit, approve, or delete drafts before supported safe changes are applied.</p>
             <div class="generator-actions">
                 <a href="/product_finder" class="secondary-button">Research Products First</a>
+                <a href="/supplier_finder" class="secondary-button">Compare Suppliers</a>
+                <a href="/pricing_advisor" class="secondary-button">Get Pricing Advice</a>
+                <a href="/payment_guide" class="secondary-button">Plan Payments</a>
                 <a href="/launch_readiness" class="secondary-button">View Launch Checklist</a>
             </div>
         </section>
@@ -127,7 +133,17 @@
 
                         {% if section["url"] %}
                             <div class="card-actions">
-                                <a href="{{ section['url'] }}" class="primary-button">Open Product Finder</a>
+                                <a href="{{ section['url'] }}" class="primary-button">
+                                    {% if section["task_type"] == "supplier_finder" %}
+                                        Open Supplier Finder
+                                    {% elif section["task_type"] == "pricing_advisor" %}
+                                        Open Pricing Advisor
+                                    {% elif section["task_type"] == "payments_setup" %}
+                                        Open Payment Guide
+                                    {% else %}
+                                        Open Product Finder
+                                    {% endif %}
+                                </a>
                             </div>
                         {% elif section["task_type"] == "theme_recommendation" and not section["task"] %}
                             <form method="POST" action="/generate_store_agent_task/theme_recommendation" class="agent-mini-form">

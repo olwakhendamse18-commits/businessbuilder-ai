@@ -25,6 +25,9 @@
         <a href="/build_center">Build Center</a>
         <a href="/ai_store_agent">AI Store Agent</a>
         <a href="/product_finder">Product Finder</a>
+        <a href="/supplier_finder">Supplier Finder</a>
+        <a href="/pricing_advisor">Pricing Advisor</a>
+        <a href="/payment_guide">Payment Guide</a>
         <a href="/launch_readiness">Launch Readiness</a>
         <a href="/projects">Projects</a>
         <a href="/examples">Examples</a>
@@ -108,7 +111,13 @@
                 {% if active_project %}
                     <h3>{{ active_project[1] }}</h3>
                     <p>{{ active_project[2] or "Project context is saved and available to your AI workspace." }}</p>
+                    <p><strong>Market:</strong> {{ active_project[4] or "Not set" }} | <strong>Budget:</strong> {{ active_project[5] or "Not set" }}</p>
                     <a href="/project/{{ active_project[0] }}" class="secondary-button">View Project</a>
+                {% elif onboarding and onboarding[1] %}
+                    <h3>{{ onboarding[1] }}</h3>
+                    <p><strong>Market:</strong> {{ onboarding[2] or "Not set" }} | <strong>Budget:</strong> {{ onboarding[3] or "Not set" }}</p>
+                    <p><strong>Target:</strong> {{ onboarding[7] or "Not set" }}</p>
+                    <a href="/onboarding" class="secondary-button">Edit Setup</a>
                 {% else %}
                     <h3>No active project yet</h3>
                     <p>Create your first project so BusinessBuilder AI can keep business context organized.</p>
@@ -176,23 +185,23 @@
                     </article>
                     <article class="bbai-slide">
                         <p class="feature-number">03</p>
-                        <h3>Generate your store draft</h3>
-                        <p>Create draft store content, Shopify assets, page copy, policies, and product candidates.</p>
+                        <h3>Generate pricing advice</h3>
+                        <p>Estimate price ranges, margins, break-even points, competitor positioning, and a first price to test.</p>
                     </article>
                     <article class="bbai-slide">
                         <p class="feature-number">04</p>
-                        <h3>Review and approve AI tasks</h3>
-                        <p>Edit or approve generated drafts before any supported safe changes are applied.</p>
+                        <h3>Choose payment methods</h3>
+                        <p>Compare PayPal, Paystack, EFT, card, Shopify payments, COD, mobile money, and international options.</p>
                     </article>
                     <article class="bbai-slide">
                         <p class="feature-number">05</p>
-                        <h3>Connect Shopify and Canva</h3>
-                        <p>Use integrations when you are ready for draft products, editable design briefs, and store setup assets.</p>
+                        <h3>Generate store assets</h3>
+                        <p>Create draft store content, Shopify assets, page copy, policies, Canva branding, and product candidates.</p>
                     </article>
                     <article class="bbai-slide">
                         <p class="feature-number">06</p>
-                        <h3>Download your launch package</h3>
-                        <p>Bring your strategy, product research, store drafts, branding, and launch checklist into one package.</p>
+                        <h3>Review and launch</h3>
+                        <p>Approve drafts, check launch readiness, and download your launch package when the business is ready.</p>
                     </article>
                 </div>
                 <div class="bbai-slider-controls">
@@ -267,7 +276,10 @@
                     <p class="eyebrow">Help</p>
                     <h3>Support</h3>
                     <p>Ask for help with billing, Shopify, Canva, AI output quality, account issues, or general questions.</p>
-                    <a href="/support" class="primary-button">Contact Support</a>
+                    <div class="card-actions">
+                        <a href="/support" class="primary-button">Contact Support</a>
+                        <a href="/payment_guide" class="secondary-button">Payment Setup Help</a>
+                    </div>
                 </article>
             </section>
 

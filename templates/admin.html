@@ -104,6 +104,11 @@
             </div>
 
             <div class="quote-summary-card">
+                <p>Open Tickets</p>
+                <h3>{{ metrics["open_support_tickets"] }}</h3>
+            </div>
+
+            <div class="quote-summary-card">
                 <p>Shopify Connections</p>
                 <h3>{{ metrics["shopify_connections"] }}</h3>
             </div>
@@ -160,6 +165,7 @@
                             <th>Subject</th>
                             <th>Status</th>
                             <th>Created</th>
+                            <th>Preview</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -171,10 +177,11 @@
                                 <td>{{ ticket[3] }}</td>
                                 <td>{{ ticket[4] }}</td>
                                 <td>{{ ticket[5] }}</td>
+                                <td>{{ ticket[6][:120] }}{% if ticket[6]|length > 120 %}...{% endif %}</td>
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="6">No support tickets yet.</td>
+                                <td colspan="7">No support tickets yet.</td>
                             </tr>
                         {% endfor %}
                     </tbody>

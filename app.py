@@ -55,7 +55,11 @@ SYSTEM_PROMPT = """
 You are BusinessBuilder AI, an AI assistant that helps users create businesses.
 Help with business ideas, branding, Shopify planning, Canva ideas, marketing, pricing, and invoices.
 Ask useful questions and give step-by-step help.
-Do not pretend real Shopify, Canva, or payment tools are connected yet.
+Give practical guidance for pricing, payment setup, supplier/platform choices, Shopify, Canva, and launch planning.
+Do not scrape websites or claim live access to Amazon, Alibaba, AliExpress, Takealot, supplier stock, current prices, delivery times, or availability.
+Do not collect card numbers, bank passwords, ID numbers, private banking credentials, API keys, or payment account secrets.
+Do not automatically create PayPal, Paystack, Shopify payment, supplier, domain, or subscription accounts.
+Tell users to verify provider requirements, fees, policies, taxes, customs, supplier quality, shipping, returns, and legal rules directly with the provider.
 """
 
 SHOPIFY_ADMIN_API_VERSION = "2026-04"
@@ -458,6 +462,52 @@ def init_db():
     """)
 
     execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS pricing_advice (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            business_idea TEXT,
+            product_type TEXT,
+            target_customer TEXT,
+            cost_price TEXT,
+            desired_profit TEXT,
+            competitor_price TEXT,
+            country TEXT,
+            budget TEXT,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS payment_guides (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            country TEXT,
+            business_type TEXT,
+            selling_platform TEXT,
+            payment_options TEXT,
+            budget TEXT,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS supplier_recommendations (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            business_idea TEXT,
+            product_type TEXT,
+            country TEXT,
+            budget TEXT,
+            sourcing_preference TEXT,
+            risk_level TEXT,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS business_projects (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -491,6 +541,21 @@ def init_db():
     cur.execute(sql("""
         CREATE INDEX IF NOT EXISTS idx_business_projects_user_active
         ON business_projects (user_id, active)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_pricing_advice_user
+        ON pricing_advice (user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_payment_guides_user
+        ON payment_guides (user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_supplier_recommendations_user
+        ON supplier_recommendations (user_id)
     """))
 
     cur.execute(sql("""
@@ -1682,6 +1747,195 @@ def get_recent_support_tickets(limit=10):
     return tickets
 
 
+def save_pricing_advice(user_id, data, content):
+    conn = db()
+    cur = conn.cursor()
+
+    if using_postgres():
+        cur.execute(
+            sql("""
+                INSERT INTO pricing_advice (
+                    user_id, business_idea, product_type, target_customer,
+                    cost_price, desired_profit, competitor_price, country,
+                    budget, content
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """),
+            (
+                user_id, data.get("business_idea", ""), data.get("product_type", ""),
+                data.get("target_customer", ""), data.get("cost_price", ""),
+                data.get("desired_profit", ""), data.get("competitor_price", ""),
+                data.get("country", ""), data.get("budget", ""), content
+            )
+        )
+        advice_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO pricing_advice (
+                    user_id, business_idea, product_type, target_customer,
+                    cost_price, desired_profit, competitor_price, country,
+                    budget, content
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """),
+            (
+                user_id, data.get("business_idea", ""), data.get("product_type", ""),
+                data.get("target_customer", ""), data.get("cost_price", ""),
+                data.get("desired_profit", ""), data.get("competitor_price", ""),
+                data.get("country", ""), data.get("budget", ""), content
+            )
+        )
+        advice_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+    return advice_id
+
+
+def get_pricing_advice_list(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("""
+            SELECT id, business_idea, product_type, target_customer,
+                   country, budget, content, created_at
+            FROM pricing_advice
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def save_payment_guide(user_id, data, content):
+    conn = db()
+    cur = conn.cursor()
+
+    if using_postgres():
+        cur.execute(
+            sql("""
+                INSERT INTO payment_guides (
+                    user_id, country, business_type, selling_platform,
+                    payment_options, budget, content
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """),
+            (
+                user_id, data.get("country", ""), data.get("business_type", ""),
+                data.get("selling_platform", ""), data.get("payment_options", ""),
+                data.get("budget", ""), content
+            )
+        )
+        guide_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO payment_guides (
+                    user_id, country, business_type, selling_platform,
+                    payment_options, budget, content
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """),
+            (
+                user_id, data.get("country", ""), data.get("business_type", ""),
+                data.get("selling_platform", ""), data.get("payment_options", ""),
+                data.get("budget", ""), content
+            )
+        )
+        guide_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+    return guide_id
+
+
+def get_payment_guides(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("""
+            SELECT id, country, business_type, selling_platform,
+                   payment_options, budget, content, created_at
+            FROM payment_guides
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def save_supplier_recommendations(user_id, data, content):
+    conn = db()
+    cur = conn.cursor()
+
+    if using_postgres():
+        cur.execute(
+            sql("""
+                INSERT INTO supplier_recommendations (
+                    user_id, business_idea, product_type, country, budget,
+                    sourcing_preference, risk_level, content
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """),
+            (
+                user_id, data.get("business_idea", ""), data.get("product_type", ""),
+                data.get("country", ""), data.get("budget", ""),
+                data.get("sourcing_preference", ""), data.get("risk_level", ""),
+                content
+            )
+        )
+        recommendation_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO supplier_recommendations (
+                    user_id, business_idea, product_type, country, budget,
+                    sourcing_preference, risk_level, content
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """),
+            (
+                user_id, data.get("business_idea", ""), data.get("product_type", ""),
+                data.get("country", ""), data.get("budget", ""),
+                data.get("sourcing_preference", ""), data.get("risk_level", ""),
+                content
+            )
+        )
+        recommendation_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+    return recommendation_id
+
+
+def get_supplier_recommendations(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("""
+            SELECT id, business_idea, product_type, country, budget,
+                   sourcing_preference, risk_level, content, created_at
+            FROM supplier_recommendations
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
 def build_project_context(user_id):
     project = get_active_business_project(user_id)
 
@@ -2095,6 +2349,7 @@ def get_admin_dashboard_data():
         "store_builds": count("SELECT COUNT(*) FROM ai_store_builds"),
         "store_agent_tasks": count("SELECT COUNT(*) FROM store_agent_tasks"),
         "support_tickets": count("SELECT COUNT(*) FROM support_tickets"),
+        "open_support_tickets": count("SELECT COUNT(*) FROM support_tickets WHERE status = ?", ("open",)),
         "total_usage_logs": count("SELECT COUNT(*) FROM usage_logs")
     }
 
@@ -2159,7 +2414,7 @@ def get_admin_dashboard_data():
     most_used_actions = cur.fetchall()
 
     cur.execute(sql("""
-        SELECT id, email, category, subject, status, created_at
+        SELECT id, email, category, subject, status, created_at, message
         FROM support_tickets
         ORDER BY id DESC
         LIMIT 10
@@ -2732,6 +2987,20 @@ STORE_AGENT_TASK_DEFINITIONS = {
         "explanation": "Find product ideas, supplier search paths, competitor examples, and the first products to add to Shopify.",
         "apply_supported": False
     },
+    "supplier_finder": {
+        "section": "Supplier Finder",
+        "title": "Supplier and Platform Recommendation",
+        "mode": "Advice Mode",
+        "explanation": "Compare Amazon-style research, Alibaba, AliExpress, local suppliers, print-on-demand, digital platforms, wholesalers, and other options based on budget.",
+        "apply_supported": False
+    },
+    "pricing_advisor": {
+        "section": "Pricing Advisor",
+        "title": "Pricing Strategy Advice",
+        "mode": "Advice Mode",
+        "explanation": "Generate suggested price ranges, margin guidance, break-even notes, competitor pricing advice, and first-price tests.",
+        "apply_supported": False
+    },
     "pages": {
         "section": "Shopify Pages",
         "title": "Shopify Page Drafts",
@@ -2750,7 +3019,7 @@ STORE_AGENT_TASK_DEFINITIONS = {
         "section": "Payments Setup",
         "title": "Payments Setup Checklist",
         "mode": "Advice Mode",
-        "explanation": "Create a Shopify payments checklist. Banking information must be entered directly inside Shopify.",
+        "explanation": "Create guidance for PayPal, Paystack, Shopify payments, EFT, card payments, cash on delivery, and other options. Banking information must be entered directly with the provider.",
         "apply_supported": True
     },
     "domain_setup": {
@@ -2789,6 +3058,8 @@ STORE_AGENT_SECTION_ORDER = [
     "homepage_design",
     "products",
     "product_sourcing",
+    "supplier_finder",
+    "pricing_advisor",
     "pages",
     "shipping_zones",
     "payments_setup",
@@ -4577,6 +4848,9 @@ def dashboard():
     ai_store_builds = get_ai_store_builds(user_id)
     store_agent_tasks = get_store_agent_tasks(user_id)
     product_research_list = get_product_research_list(user_id)
+    supplier_recommendations = get_supplier_recommendations(user_id)
+    pricing_advice_list = get_pricing_advice_list(user_id)
+    payment_guides = get_payment_guides(user_id)
     shopify_connection = get_shopify_connection(user_id)
     canva_connection = get_canva_connection(user_id)
     shopify_products = get_shopify_products(user_id)
@@ -4593,6 +4867,13 @@ def dashboard():
             "description": "Activate Starter, Pro, or Premium Build to unlock the guided business workspace.",
             "url": "/pricing",
             "label": "View Pricing"
+        }
+    elif not onboarding or not onboarding[9]:
+        next_action = {
+            "title": "Start your business setup",
+            "description": "Answer a few questions so BusinessBuilder AI can personalize product, pricing, payment, supplier, and store recommendations.",
+            "url": "/onboarding",
+            "label": "Start Onboarding"
         }
     elif not workflow_answers:
         next_action = {
@@ -4614,6 +4895,27 @@ def dashboard():
             "description": "Use AI Product Finder to identify product ideas, sourcing paths, competitors, pricing, and first draft products.",
             "url": "/product_finder",
             "label": "Find Products"
+        }
+    elif not supplier_recommendations:
+        next_action = {
+            "title": "Compare supplier and platform choices",
+            "description": "Use Supplier Finder to compare Amazon-style research, Alibaba, AliExpress, local suppliers, print-on-demand, digital platforms, and wholesale options.",
+            "url": "/supplier_finder",
+            "label": "Compare Suppliers"
+        }
+    elif not pricing_advice_list:
+        next_action = {
+            "title": "Generate pricing advice",
+            "description": "Estimate price ranges, margins, break-even points, competitor positioning, and the first price to test.",
+            "url": "/pricing_advisor",
+            "label": "Get Pricing Advice"
+        }
+    elif not payment_guides:
+        next_action = {
+            "title": "Choose safe payment methods",
+            "description": "Plan PayPal, Paystack, EFT, card payments, Shopify payments, COD, mobile money, and international payment options without sharing sensitive details.",
+            "url": "/payment_guide",
+            "label": "Open Payment Guide"
         }
     elif user_package_at_least(user_id, "Pro") and not ai_store_builds:
         next_action = {
@@ -4728,6 +5030,9 @@ def build_center():
     canva_connection = get_canva_connection(user_id)
     store_agent_tasks = get_store_agent_tasks(user_id)
     product_research_list = get_product_research_list(user_id)
+    supplier_recommendations = get_supplier_recommendations(user_id)
+    pricing_advice_list = get_pricing_advice_list(user_id)
+    payment_guides = get_payment_guides(user_id)
 
     def status_for(completed, started=False):
         if completed:
@@ -4803,6 +5108,30 @@ def build_center():
             "secondary_url": "/product_finder",
             "secondary_action": "New Product Search",
             "count": f"{len(product_research_list)} saved"
+        },
+        {
+            "title": "Supplier Finder",
+            "status": status_for(supplier_recommendations, bool(product_research_list or workflow_started)),
+            "description": "Compare Amazon-style research, Alibaba, AliExpress, local suppliers, print-on-demand, digital platforms, and wholesalers.",
+            "url": "/supplier_finder",
+            "action": "Find Suppliers",
+            "count": f"{len(supplier_recommendations)} saved"
+        },
+        {
+            "title": "Pricing Advisor",
+            "status": status_for(pricing_advice_list, bool(product_research_list or workflow_started)),
+            "description": "Generate price ranges, margin notes, break-even guidance, competitor pricing advice, and first-price tests.",
+            "url": "/pricing_advisor",
+            "action": "Get Pricing Advice",
+            "count": f"{len(pricing_advice_list)} saved"
+        },
+        {
+            "title": "Payment Guide",
+            "status": status_for(payment_guides, bool(workflow_started or shopify_plans)),
+            "description": "Choose PayPal, Paystack, EFT, card, Shopify payment, COD, mobile money, and international payment options safely.",
+            "url": "/payment_guide",
+            "action": "Open Payment Guide",
+            "count": f"{len(payment_guides)} saved"
         },
         {
             "title": "AI Store Builder",
@@ -4985,22 +5314,14 @@ def build_center():
     roadmap_steps = [
         {
             "number": "01",
-            "title": "Start",
-            "status": "Completed",
-            "description": "Your account and package workspace are ready.",
-            "url": "/dashboard",
-            "action": "Dashboard"
+            "title": "Onboarding / Business Details",
+            "status": status_for(completed_count == total_steps, workflow_started),
+            "description": "Complete the guided answers that power plans, store copy, branding, and launch tasks.",
+            "url": "/onboarding" if not workflow_started else "/business_workflow",
+            "action": "Start Onboarding" if not workflow_started else "Open Workflow"
         },
         {
             "number": "02",
-            "title": "Business Details",
-            "status": status_for(completed_count == total_steps, workflow_started),
-            "description": "Complete the guided answers that power plans, store copy, branding, and launch tasks.",
-            "url": "/business_workflow",
-            "action": "Open Workflow"
-        },
-        {
-            "number": "03",
             "title": "Product Finder",
             "status": status_for(product_research_list, workflow_started),
             "description": "Research product ideas, sourcing paths, competitor examples, and price angles.",
@@ -5008,7 +5329,31 @@ def build_center():
             "action": "Find Products"
         },
         {
+            "number": "03",
+            "title": "Supplier Finder",
+            "status": status_for(supplier_recommendations, bool(product_research_list)),
+            "description": "Compare supplier and platform options before buying inventory or choosing a fulfillment path.",
+            "url": "/supplier_finder",
+            "action": "Compare Suppliers"
+        },
+        {
             "number": "04",
+            "title": "Pricing Advisor",
+            "status": status_for(pricing_advice_list, bool(product_research_list or supplier_recommendations)),
+            "description": "Estimate price ranges, margins, break-even points, and a first price to test.",
+            "url": "/pricing_advisor",
+            "action": "Get Pricing Advice"
+        },
+        {
+            "number": "05",
+            "title": "Payment Guide",
+            "status": status_for(payment_guides, bool(pricing_advice_list or workflow_started)),
+            "description": "Plan PayPal, Paystack, Shopify, EFT, card, COD, mobile money, and international payment setup.",
+            "url": "/payment_guide",
+            "action": "Choose Payments"
+        },
+        {
+            "number": "06",
             "title": "Store Draft",
             "status": status_for(ai_store_builds or store_agent_tasks, product_research_list),
             "description": "Generate reviewable store drafts and AI Store Agent tasks before applying anything.",
@@ -5016,7 +5361,7 @@ def build_center():
             "action": "Open Agent"
         },
         {
-            "number": "05",
+            "number": "07",
             "title": "Shopify Assets",
             "status": status_for(shopify_products or shopify_collections or shopify_pages, shopify_connected),
             "description": "Create supported draft products, collections, pages, and setup guidance after approval.",
@@ -5024,7 +5369,7 @@ def build_center():
             "action": "Manage Shopify" if not shopify_connected else "View Assets"
         },
         {
-            "number": "06",
+            "number": "08",
             "title": "Canva Branding",
             "status": status_for(canva_branding_packages or canva_design_briefs or canva_designs, canva_connected),
             "description": "Create brand direction, logo briefs, social ideas, and marketing asset briefs.",
@@ -5032,7 +5377,7 @@ def build_center():
             "action": "Manage Canva" if not canva_connected else "Create Branding"
         },
         {
-            "number": "07",
+            "number": "09",
             "title": "Launch Readiness",
             "status": status_for(launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
             "description": "Check completed and missing launch items before you go live.",
@@ -5040,7 +5385,7 @@ def build_center():
             "action": "Check Score"
         },
         {
-            "number": "08",
+            "number": "10",
             "title": "Launch Package",
             "status": status_for(user_package_at_least(user_id, "Premium Build") and launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
             "description": "Bundle strategy, research, store assets, branding, and next steps into one package.",
@@ -5130,7 +5475,12 @@ def get_store_agent_sections(user_id):
             "status": status,
             "task": task,
             "apply_supported": definition["apply_supported"],
-            "url": "/product_finder" if task_type == "product_sourcing" else ""
+            "url": {
+                "product_sourcing": "/product_finder",
+                "supplier_finder": "/supplier_finder",
+                "pricing_advisor": "/pricing_advisor",
+                "payments_setup": "/payment_guide"
+            }.get(task_type, "")
         })
 
     return sections
@@ -5199,6 +5549,16 @@ Generate Shopify product drafts with descriptions, categories, suggested prices,
 Generate product sourcing research, supplier search paths, competitor examples to study, and initial product recommendations.
 Do not scrape Amazon or claim live supplier access.
 """,
+        "supplier_finder": """
+Compare supplier and platform options for the user's business, budget, country, and product type.
+Cover Amazon-style research, Alibaba, AliExpress, local suppliers, print-on-demand, digital product platforms, wholesalers, handmade/local manufacturing, and direct manufacturers where relevant.
+Do not scrape websites, claim live prices, claim live stock, or claim delivery availability.
+Tell the user what to verify before buying inventory or choosing a supplier.
+""",
+        "pricing_advisor": """
+Generate practical pricing advice with suggested selling price range, low/standard/premium options, profit margin notes, break-even explanation, competitor pricing advice, discount ideas, too-low and too-high warnings, first price to test, and customer-facing price explanation.
+Use estimates only and tell the user to verify costs, fees, taxes, packaging, shipping, and competitor positioning.
+""",
         "pages": """
 Generate Shopify page drafts for About, Contact, FAQ, Shipping Policy, and Refund Policy.
 """,
@@ -5207,7 +5567,10 @@ Generate recommended shipping zones, local delivery options, free shipping thres
 If API support is not available, make clear the user must configure this inside Shopify.
 """,
         "payments_setup": """
-Generate a Shopify payments setup checklist. Explain that banking details must be entered directly in Shopify and never inside BusinessBuilder AI.
+Generate a payment setup checklist covering PayPal, Paystack, Shopify Payments, EFT/bank transfer, card payments, cash on delivery, mobile money, and international payment considerations where relevant.
+Explain that requirements vary by country and provider.
+Explain that banking details, identity checks, tax details, card numbers, passwords, and private credentials must be entered directly with the payment provider or Shopify, never inside BusinessBuilder AI.
+Do not create payment accounts automatically.
 """,
         "domain_setup": """
 Suggest domain names, providers, cheaper offers, likely costs, buying decision questions, and Shopify connection instructions.
@@ -6714,6 +7077,274 @@ def submit_support():
     )
 
     return redirect("/support?submitted=1")
+
+
+@app.route("/pricing_advisor")
+def pricing_advisor():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    return render_template(
+        "pricing_advisor.html",
+        onboarding=get_user_onboarding(user_id),
+        advice_list=get_pricing_advice_list(user_id)
+    )
+
+
+@app.route("/generate_pricing_advice", methods=["GET", "POST"])
+def generate_pricing_advice():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    if request.method == "GET":
+        return redirect("/pricing_advisor")
+
+    user_id = session["user_id"]
+    data = {
+        "business_idea": request.form.get("business_idea", "").strip(),
+        "product_type": request.form.get("product_type", "").strip(),
+        "target_customer": request.form.get("target_customer", "").strip(),
+        "country": request.form.get("country", "").strip(),
+        "cost_price": request.form.get("cost_price", "").strip(),
+        "desired_profit": request.form.get("desired_profit", "").strip(),
+        "competitor_price": request.form.get("competitor_price", "").strip(),
+        "budget": request.form.get("budget", "").strip(),
+        "pricing_style": request.form.get("pricing_style", "").strip()
+    }
+
+    if not data["business_idea"]:
+        return redirect("/pricing_advisor?pricing_error=missing")
+
+    prompt = f"""
+Create practical pricing advice for this BusinessBuilder AI user.
+
+Safety and accuracy rules:
+- Use estimates and explain assumptions.
+- Do not claim live competitor prices or scrape websites.
+- Tell the user to verify cost price, payment fees, taxes, packaging, delivery, refunds, platform fees, and competitor positioning.
+- Do not request card numbers, banking passwords, ID numbers, or private payment credentials.
+
+Include:
+1. Suggested selling price range
+2. Low, standard, and premium pricing options
+3. Profit margin explanation
+4. Break-even explanation
+5. Competitor pricing advice
+6. Discount/promotion ideas
+7. Warning if price is too low
+8. Warning if price may be too high
+9. Recommended first price to test
+10. How to explain the price to customers
+
+Business/product: {data["business_idea"]}
+Product type: {data["product_type"]}
+Target customer: {data["target_customer"]}
+Country/market: {data["country"]}
+Estimated cost price: {data["cost_price"]}
+Desired profit: {data["desired_profit"]}
+Competitor price if known: {data["competitor_price"]}
+Budget level: {data["budget"]}
+Pricing style: {data["pricing_style"]}
+"""
+
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ]
+        )
+    except Exception:
+        return redirect("/pricing_advisor?pricing_error=ai_response")
+
+    save_pricing_advice(user_id, data, response.choices[0].message.content.strip())
+    return redirect("/pricing_advisor?pricing_notice=created")
+
+
+@app.route("/payment_guide")
+def payment_guide():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    return render_template(
+        "payment_guide.html",
+        onboarding=get_user_onboarding(user_id),
+        guides=get_payment_guides(user_id)
+    )
+
+
+@app.route("/generate_payment_guide", methods=["GET", "POST"])
+def generate_payment_guide():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    if request.method == "GET":
+        return redirect("/payment_guide")
+
+    user_id = session["user_id"]
+    payment_options = request.form.getlist("payment_options")
+    data = {
+        "country": request.form.get("country", "").strip(),
+        "business_type": request.form.get("business_type", "").strip(),
+        "selling_platform": request.form.get("selling_platform", "").strip(),
+        "payment_options": ", ".join(payment_options) if payment_options else request.form.get("payment_options", "").strip(),
+        "budget": request.form.get("budget", "").strip(),
+        "international_payments": request.form.get("international_payments", "").strip()
+    }
+
+    if not data["country"] or not data["business_type"]:
+        return redirect("/payment_guide?payment_error=missing")
+
+    prompt = f"""
+Create a payment setup guide for this BusinessBuilder AI user.
+
+Safety and compliance rules:
+- Do not collect or request card numbers, bank passwords, ID numbers, private banking credentials, API keys, or account secrets.
+- Do not create PayPal, Paystack, Shopify Payments, bank, or card processing accounts automatically.
+- Explain that requirements, fees, availability, verification, settlement times, and documents vary by country and provider.
+- Tell the user to verify everything directly with the payment provider, Shopify, bank, accountant, and local regulations.
+
+Include:
+1. Best payment methods for the user's country and business type
+2. PayPal setup guidance
+3. Paystack setup guidance
+4. Shopify payment setup guidance
+5. EFT/bank transfer guidance
+6. Cash on Delivery pros/cons
+7. International payment notes
+8. Fees/cost considerations in general terms
+9. Required documents checklist
+10. Fraud prevention tips
+11. Best low-budget option
+12. Best professional setup option
+13. Step-by-step setup checklist
+
+Country: {data["country"]}
+Business type: {data["business_type"]}
+Selling platform: {data["selling_platform"]}
+Preferred payment options: {data["payment_options"]}
+Budget level: {data["budget"]}
+Need international payments: {data["international_payments"]}
+"""
+
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ]
+        )
+    except Exception:
+        return redirect("/payment_guide?payment_error=ai_response")
+
+    save_payment_guide(user_id, data, response.choices[0].message.content.strip())
+    return redirect("/payment_guide?payment_notice=created")
+
+
+@app.route("/supplier_finder")
+def supplier_finder():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+
+    return render_template(
+        "supplier_finder.html",
+        onboarding=get_user_onboarding(user_id),
+        recommendations=get_supplier_recommendations(user_id)
+    )
+
+
+@app.route("/generate_supplier_recommendations", methods=["GET", "POST"])
+def generate_supplier_recommendations():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    if request.method == "GET":
+        return redirect("/supplier_finder")
+
+    user_id = session["user_id"]
+    data = {
+        "business_idea": request.form.get("business_idea", "").strip(),
+        "product_type": request.form.get("product_type", "").strip(),
+        "country": request.form.get("country", "").strip(),
+        "budget": request.form.get("budget", "").strip(),
+        "sourcing_preference": request.form.get("sourcing_preference", "").strip(),
+        "risk_level": request.form.get("risk_level", "").strip(),
+        "inventory": request.form.get("inventory", "").strip()
+    }
+
+    if not data["business_idea"]:
+        return redirect("/supplier_finder?supplier_error=missing")
+
+    prompt = f"""
+Create supplier and platform recommendation guidance for this BusinessBuilder AI user.
+
+Safety and research rules:
+- Do not scrape Amazon, Alibaba, AliExpress, Takealot, or any website.
+- Do not claim live prices, live stock, delivery times, reviews, supplier scores, or availability.
+- Generate research guidance and search suggestions only unless official API support is configured.
+- Tell the user to verify suppliers, shipping, customs, returns, product quality, platform rules, samples, fees, taxes, and legal restrictions before buying inventory.
+
+Compare these options where relevant:
+- Amazon
+- Alibaba
+- AliExpress
+- Local suppliers
+- Printful
+- Printify
+- CJdropshipping
+- Zendrop
+- Spocket
+- Takealot/local marketplace suggestions where relevant
+- Digital product platforms
+- Handmade/local manufacturing
+- Wholesale suppliers
+- Direct manufacturer sourcing
+
+For each option include:
+1. Best for
+2. Budget fit
+3. Pros
+4. Cons
+5. Shipping difficulty
+6. Quality-control risk
+7. Startup cost level
+8. Best product types
+9. What the user must verify
+10. Recommended option based on budget
+11. Cheapest option
+12. Safest beginner option
+13. Professional long-term option
+
+Business/store idea: {data["business_idea"]}
+Product type: {data["product_type"]}
+Country/market: {data["country"]}
+Budget level: {data["budget"]}
+Preference: {data["sourcing_preference"]}
+Priority/risk level: {data["risk_level"]}
+Willing to hold inventory: {data["inventory"]}
+"""
+
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ]
+        )
+    except Exception:
+        return redirect("/supplier_finder?supplier_error=ai_response")
+
+    save_supplier_recommendations(user_id, data, response.choices[0].message.content.strip())
+    return redirect("/supplier_finder?supplier_notice=created")
 
 
 @app.route("/projects")

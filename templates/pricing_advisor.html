@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pricing Advisor - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+<body>
+<div class="dashboard">
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div>
+                <h2>BusinessBuilder AI</h2>
+                <p>Pricing advisor</p>
+            </div>
+        </div>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/product_finder">Product Finder</a>
+        <a href="/supplier_finder">Supplier Finder</a>
+        <a href="/pricing_advisor">Pricing Advisor</a>
+        <a href="/payment_guide">Payment Guide</a>
+        <a href="/ai_store_agent">AI Store Agent</a>
+        <a href="/support">Support</a>
+        <a href="/settings">Settings</a>
+    </aside>
+
+    <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
+        <div class="dashboard-header">
+            <p class="eyebrow">Pricing Guidance</p>
+            <h1>Pricing Advisor</h1>
+            <p>Estimate a realistic price range, margin, break-even point, competitor positioning, and first price to test.</p>
+        </div>
+
+        {% if request.args.get("pricing_notice") == "created" %}
+            <p class="success-notice">Pricing advice generated.</p>
+        {% endif %}
+        {% if request.args.get("pricing_error") == "missing" %}
+            <p class="form-notice">Enter the product or service you want to price.</p>
+        {% elif request.args.get("pricing_error") == "ai_response" %}
+            <p class="form-notice">Pricing advice could not be generated. Please try again.</p>
+        {% endif %}
+
+        <section class="project-form">
+            <h2>Generate Pricing Advice</h2>
+            <p class="form-help">Use estimates only. Verify costs, fees, taxes, packaging, shipping, refunds, and competitor positioning before selling.</p>
+            <form method="POST" action="/generate_pricing_advice">
+                <label>What product/service are you selling?</label>
+                <input name="business_idea" required value="{{ onboarding[1] if onboarding else '' }}" placeholder="Example: Handmade skincare starter kit">
+
+                <label>Product type</label>
+                <select name="product_type">
+                    <option value="physical products">Physical products</option>
+                    <option value="digital products">Digital products</option>
+                    <option value="services">Services</option>
+                    <option value="affiliate products">Affiliate products</option>
+                    <option value="print-on-demand">Print-on-demand</option>
+                    <option value="not sure">Not sure</option>
+                </select>
+
+                <label>Target customer</label>
+                <input name="target_customer" value="{{ onboarding[7] if onboarding else '' }}" placeholder="Example: Students aged 18-25">
+
+                <label>Country/market</label>
+                <input name="country" value="{{ onboarding[2] if onboarding else '' }}" placeholder="Example: South Africa">
+
+                <label>Estimated cost price</label>
+                <input name="cost_price" placeholder="Example: R80 per unit">
+
+                <label>Desired profit</label>
+                <input name="desired_profit" placeholder="Example: R60 profit per sale or 40% margin">
+
+                <label>Competitor price if known</label>
+                <input name="competitor_price" placeholder="Example: Similar products sell for R180-R250">
+
+                <label>Budget level</label>
+                <select name="budget">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                </select>
+
+                <label>Pricing style</label>
+                <select name="pricing_style">
+                    <option value="not sure">Not sure</option>
+                    <option value="budget">Budget</option>
+                    <option value="standard">Standard</option>
+                    <option value="premium">Premium</option>
+                </select>
+
+                <button type="submit">Generate Pricing Advice</button>
+            </form>
+        </section>
+
+        <section>
+            <div class="section-heading-row">
+                <div>
+                    <p class="eyebrow">Saved Advice</p>
+                    <h2>Recent pricing guidance</h2>
+                </div>
+                <a href="/payment_guide" class="secondary-button">Choose Payment Methods</a>
+            </div>
+
+            <div class="cards">
+                {% for advice in advice_list %}
+                    <article class="card advisor-output-card">
+                        <p class="eyebrow">{{ advice[4] or "Market not set" }}</p>
+                        <h3>{{ advice[1] }}</h3>
+                        <p><strong>Type:</strong> {{ advice[2] or "Not set" }} | <strong>Budget:</strong> {{ advice[5] or "Not set" }}</p>
+                        <pre class="business-plan-output">{{ advice[6] }}</pre>
+                    </article>
+                {% else %}
+                    <article class="card empty-card">
+                        <h3>No pricing advice yet</h3>
+                        <p>Generate your first pricing recommendation before choosing payment methods or store drafts.</p>
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+    </main>
+</div>
+{% include "_app_scripts.html" %}
+</body>
+</html>

@@ -29,12 +29,30 @@
         <div class="dashboard-header">
             <p class="eyebrow">Onboarding</p>
             <h1>Start My Business</h1>
-            <p>Answer a few setup questions so BusinessBuilder AI can recommend the right next step.</p>
+            <p>Answer a few setup questions so BusinessBuilder AI can recommend the right next step, including products, pricing, payment setup, suppliers, store assets, and launch planning.</p>
         </div>
 
         {% if request.args.get("onboarding_error") %}
             <p class="form-notice">Enter your business idea before saving onboarding.</p>
         {% endif %}
+
+        <section class="cards product-finder-feature-grid">
+            <article class="card">
+                <p class="feature-number">01</p>
+                <h3>Save your idea</h3>
+                <p>Your answers become the context for business plans, product research, pricing advice, and supplier guidance.</p>
+            </article>
+            <article class="card">
+                <p class="feature-number">02</p>
+                <h3>Choose the right next step</h3>
+                <p>BusinessBuilder AI recommends whether to find products, price your offer, choose payments, or build store drafts.</p>
+            </article>
+            <article class="card">
+                <p class="feature-number">03</p>
+                <h3>Stay in control</h3>
+                <p>The AI gives advice and creates drafts. You review and approve before major actions.</p>
+            </article>
+        </section>
 
         <section class="project-form">
             <form method="POST" action="/save_onboarding">
@@ -49,26 +67,26 @@
 
                 <label>Do you already have a Shopify store?</label>
                 <select name="has_shopify">
-                    <option value="No">No</option>
-                    <option value="Yes">Yes</option>
-                    <option value="Not sure">Not sure</option>
+                    <option value="No" {{ "selected" if onboarding and onboarding[4] == "No" else "" }}>No</option>
+                    <option value="Yes" {{ "selected" if onboarding and onboarding[4] == "Yes" else "" }}>Yes</option>
+                    <option value="Not sure" {{ "selected" if onboarding and onboarding[4] == "Not sure" else "" }}>Not sure</option>
                 </select>
 
                 <label>Do you already use Canva?</label>
                 <select name="has_canva">
-                    <option value="No">No</option>
-                    <option value="Yes">Yes</option>
-                    <option value="Not sure">Not sure</option>
+                    <option value="No" {{ "selected" if onboarding and onboarding[5] == "No" else "" }}>No</option>
+                    <option value="Yes" {{ "selected" if onboarding and onboarding[5] == "Yes" else "" }}>Yes</option>
+                    <option value="Not sure" {{ "selected" if onboarding and onboarding[5] == "Not sure" else "" }}>Not sure</option>
                 </select>
 
                 <label>What do you want to sell?</label>
                 <select name="product_type">
-                    <option value="not sure">Not sure</option>
-                    <option value="physical products">Physical products</option>
-                    <option value="digital products">Digital products</option>
-                    <option value="services">Services</option>
-                    <option value="affiliate products">Affiliate products</option>
-                    <option value="print-on-demand">Print-on-demand</option>
+                    <option value="physical products" {{ "selected" if onboarding and onboarding[6] == "physical products" else "" }}>Physical products</option>
+                    <option value="digital products" {{ "selected" if onboarding and onboarding[6] == "digital products" else "" }}>Digital products</option>
+                    <option value="services" {{ "selected" if onboarding and onboarding[6] == "services" else "" }}>Services</option>
+                    <option value="affiliate products" {{ "selected" if onboarding and onboarding[6] == "affiliate products" else "" }}>Affiliate products</option>
+                    <option value="print-on-demand" {{ "selected" if onboarding and onboarding[6] == "print-on-demand" else "" }}>Print-on-demand</option>
+                    <option value="not sure" {{ "selected" if not onboarding or onboarding[6] == "not sure" else "" }}>Not sure</option>
                 </select>
 
                 <label>Who is your target customer?</label>
@@ -76,11 +94,12 @@
 
                 <label>What is your main goal?</label>
                 <select name="business_goal">
-                    <option value="start">Start</option>
-                    <option value="grow">Grow</option>
-                    <option value="launch store">Launch store</option>
-                    <option value="find products">Find products</option>
-                    <option value="create brand">Create brand</option>
+                    <option value="find products" {{ "selected" if onboarding and onboarding[8] == "find products" else "" }}>Find products</option>
+                    <option value="create business plan" {{ "selected" if onboarding and onboarding[8] == "create business plan" else "" }}>Create business plan</option>
+                    <option value="build Shopify store" {{ "selected" if onboarding and onboarding[8] == "build Shopify store" else "" }}>Build Shopify store</option>
+                    <option value="create Canva branding" {{ "selected" if onboarding and onboarding[8] == "create Canva branding" else "" }}>Create Canva branding</option>
+                    <option value="launch my business" {{ "selected" if onboarding and onboarding[8] == "launch my business" else "" }}>Launch my business</option>
+                    <option value="not sure" {{ "selected" if not onboarding or onboarding[8] == "not sure" else "" }}>Not sure</option>
                 </select>
 
                 <button type="submit">Save and Continue</button>
