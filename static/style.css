@@ -520,6 +520,49 @@ a {
     margin-bottom: 24px;
 }
 
+.tool-safety-card {
+    background: color-mix(in srgb, var(--surface-soft) 72%, var(--surface));
+}
+
+.tool-form-card {
+    max-width: 900px;
+}
+
+.tool-output {
+    max-height: none;
+    overflow: visible;
+    white-space: pre-wrap;
+}
+
+.dns-basics {
+    margin-top: 24px;
+}
+
+.definition-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    margin-top: 18px;
+}
+
+.definition-grid div {
+    background: color-mix(in srgb, var(--surface-soft) 70%, var(--surface));
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    display: grid;
+    gap: 6px;
+    padding: 16px;
+}
+
+.definition-grid strong {
+    color: var(--text);
+}
+
+.definition-grid span {
+    color: var(--muted);
+    line-height: 1.55;
+}
+
 .connection-status {
     display: inline-flex;
     padding: 8px 12px;

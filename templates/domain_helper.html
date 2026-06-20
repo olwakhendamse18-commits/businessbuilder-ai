@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Domain/DNS Helper - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+<body>
+<div class="dashboard">
+    <aside class="sidebar">
+        <div class="brand"><img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image"><div><h2>BusinessBuilder AI</h2><p>Domain and DNS help</p></div></div>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/ai_store_agent">AI Store Agent</a>
+        <a href="/domain_helper">Domain/DNS Helper</a>
+        <a href="/email_marketing">Email Marketing</a>
+        <a href="/launch_readiness">Launch Readiness</a>
+        <a href="/support">Support</a>
+        <a href="/settings">Settings</a>
+    </aside>
+    <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
+        <div class="dashboard-header">
+            <p class="eyebrow">Safe Domain Planning</p>
+            <h1>Domain/DNS Helper</h1>
+            <p>Compare domain ideas and providers, understand DNS, and prepare Shopify or custom-domain connection steps without making purchases or account changes.</p>
+        </div>
+
+        <section class="next-action-card tool-safety-card">
+            <h2>You choose the provider and approve every change.</h2>
+            <p>BusinessBuilder AI does not check live availability, claim live prices, buy domains, charge you, create registrar accounts, or request card details or passwords. Verify availability, first-year price, renewal cost, taxes, privacy fees, and terms directly with the provider.</p>
+        </section>
+
+        {% if request.args.get("domain_error") == "missing" %}
+            <p class="form-notice">Enter a business name and country or market.</p>
+        {% elif request.args.get("domain_error") == "ai_response" %}
+            <p class="form-notice">Domain guidance could not be generated. Please try again.</p>
+        {% endif %}
+
+        <section class="project-form tool-form-card">
+            <h2>Create domain and DNS guidance</h2>
+            <form method="POST" action="/generate_domain_advice">
+                <label for="business_name">Business name</label>
+                <input id="business_name" name="business_name" required value="{{ onboarding[1] if onboarding else '' }}" placeholder="Example: Cedar & Coast">
+
+                <label for="preferred_domain">Desired domain name, if any</label>
+                <input id="preferred_domain" name="preferred_domain" placeholder="Example: cedarandcoast.com">
+
+                <label for="country">Country or target market</label>
+                <input id="country" name="country" required value="{{ onboarding[2] if onboarding else '' }}" placeholder="Example: South Africa">
+
+                <label for="budget">Budget level</label>
+                <select id="budget" name="budget">
+                    <option value="very low">Very low</option><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option>
+                </select>
+
+                <label for="provider_preference">Provider preference</label>
+                <select id="provider_preference" name="provider_preference">
+                    <option value="GoDaddy">GoDaddy</option><option value="Namecheap">Namecheap</option><option value="Cloudflare">Cloudflare</option><option value="Domains.co.za">Domains.co.za</option><option value="Shopify Domains">Shopify Domains</option><option value="Not sure" selected>Not sure</option>
+                </select>
+
+                <label for="website_platform">Website or store platform</label>
+                <select id="website_platform" name="website_platform">
+                    <option value="Shopify">Shopify</option><option value="BusinessBuilder AI">BusinessBuilder AI</option><option value="Custom website">Custom website</option><option value="Not sure" selected>Not sure</option>
+                </select>
+
+                <label for="owns_domain">Do you already own a domain?</label>
+                <select id="owns_domain" name="owns_domain"><option value="no">No</option><option value="yes">Yes</option><option value="not sure">Not sure</option></select>
+
+                <button type="submit">Generate Domain Guide</button>
+            </form>
+        </section>
+
+        <section class="project-form dns-basics">
+            <p class="eyebrow">Quick Reference</p><h2>DNS terms in plain language</h2>
+            <div class="definition-grid">
+                <div><strong>Domain</strong><span>Your human-readable web address.</span></div>
+                <div><strong>DNS</strong><span>The system that points your domain to the correct service.</span></div>
+                <div><strong>A record</strong><span>Points a name to an IPv4 address.</span></div>
+                <div><strong>CNAME</strong><span>Points one hostname, often www, to another hostname.</span></div>
+                <div><strong>Nameservers</strong><span>Choose which provider manages your DNS records.</span></div>
+                <div><strong>SSL certificate</strong><span>Enables secure HTTPS connections.</span></div>
+                <div><strong>Root redirect</strong><span>Sends example.com visitors to www.example.com when needed.</span></div>
+                <div><strong>Propagation</strong><span>The delay while DNS changes update across the internet.</span></div>
+            </div>
+        </section>
+
+        <section>
+            <div class="section-heading-row"><div><p class="eyebrow">Saved Guides</p><h2>Previous domain guidance</h2></div><a href="/email_marketing" class="secondary-button">Plan Email Marketing</a></div>
+            <div class="cards">
+                {% for guide in guides %}
+                    <article class="card"><p class="eyebrow">{{ guide[6] or "Market not set" }}</p><h3>{{ guide[1] }}</h3><p><strong>Domain:</strong> {{ guide[2] or "Suggestions requested" }} · <strong>Platform:</strong> {{ guide[5] }}</p><p>{{ guide[7][:180] }}{% if guide[7]|length > 180 %}...{% endif %}</p><a href="/domain_guide/{{ guide[0] }}" class="primary-button">View Domain Guide</a></article>
+                {% else %}
+                    <article class="card empty-card"><h3>No domain guides yet</h3><p>Complete the form to create safe purchase and DNS connection guidance.</p></article>
+                {% endfor %}
+            </div>
+        </section>
+    </main>
+</div>
+{% include "_app_scripts.html" %}
+</body>
+</html>

@@ -58,7 +58,8 @@ Ask useful questions and give step-by-step help.
 Give practical guidance for pricing, payment setup, supplier/platform choices, Shopify, Canva, and launch planning.
 Do not scrape websites or claim live access to Amazon, Alibaba, AliExpress, Takealot, supplier stock, current prices, delivery times, or availability.
 Do not collect card numbers, bank passwords, ID numbers, private banking credentials, API keys, or payment account secrets.
-Do not automatically create PayPal, Paystack, Shopify payment, supplier, domain, or subscription accounts.
+Do not automatically create PayPal, Paystack, Shopify payment, supplier, domain, email-marketing, or subscription accounts.
+Do not send mass marketing emails without an official integration and explicit user approval.
 Tell users to verify provider requirements, fees, policies, taxes, customs, supplier quality, shipping, returns, and legal rules directly with the provider.
 """
 
@@ -508,6 +509,37 @@ def init_db():
     """)
 
     execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS email_campaigns (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            business_name TEXT,
+            business_type TEXT,
+            target_customer TEXT,
+            campaign_goal TEXT,
+            email_platform TEXT,
+            offer TEXT,
+            tone TEXT,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS domain_guides (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            business_name TEXT,
+            preferred_domain TEXT,
+            budget TEXT,
+            provider_preference TEXT,
+            website_platform TEXT,
+            country TEXT,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS business_projects (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -556,6 +588,16 @@ def init_db():
     cur.execute(sql("""
         CREATE INDEX IF NOT EXISTS idx_supplier_recommendations_user
         ON supplier_recommendations (user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_email_campaigns_user
+        ON email_campaigns (user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_domain_guides_user
+        ON domain_guides (user_id)
     """))
 
     cur.execute(sql("""
@@ -1936,6 +1978,159 @@ def get_supplier_recommendations(user_id):
     return rows
 
 
+def save_email_campaign(user_id, data, content):
+    conn = db()
+    cur = conn.cursor()
+    values = (
+        user_id, data.get("business_name", ""), data.get("business_type", ""),
+        data.get("target_customer", ""), data.get("campaign_goal", ""),
+        data.get("email_platform", ""), data.get("offer", ""),
+        data.get("tone", ""), content
+    )
+
+    if using_postgres():
+        cur.execute(
+            sql("""
+                INSERT INTO email_campaigns (
+                    user_id, business_name, business_type, target_customer,
+                    campaign_goal, email_platform, offer, tone, content
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """),
+            values
+        )
+        campaign_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO email_campaigns (
+                    user_id, business_name, business_type, target_customer,
+                    campaign_goal, email_platform, offer, tone, content
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """),
+            values
+        )
+        campaign_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+    return campaign_id
+
+
+def get_email_campaigns(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("""
+            SELECT id, business_name, business_type, target_customer,
+                   campaign_goal, email_platform, offer, tone, content, created_at
+            FROM email_campaigns
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_email_campaign(user_id, campaign_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("""
+            SELECT id, business_name, business_type, target_customer,
+                   campaign_goal, email_platform, offer, tone, content, created_at
+            FROM email_campaigns
+            WHERE user_id = ? AND id = ?
+            LIMIT 1
+        """),
+        (user_id, campaign_id)
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def save_domain_guide(user_id, data, content):
+    conn = db()
+    cur = conn.cursor()
+    values = (
+        user_id, data.get("business_name", ""), data.get("preferred_domain", ""),
+        data.get("budget", ""), data.get("provider_preference", ""),
+        data.get("website_platform", ""), data.get("country", ""), content
+    )
+
+    if using_postgres():
+        cur.execute(
+            sql("""
+                INSERT INTO domain_guides (
+                    user_id, business_name, preferred_domain, budget,
+                    provider_preference, website_platform, country, content
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """),
+            values
+        )
+        guide_id = cur.fetchone()[0]
+    else:
+        cur.execute(
+            sql("""
+                INSERT INTO domain_guides (
+                    user_id, business_name, preferred_domain, budget,
+                    provider_preference, website_platform, country, content
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """),
+            values
+        )
+        guide_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+    return guide_id
+
+
+def get_domain_guides(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("""
+            SELECT id, business_name, preferred_domain, budget,
+                   provider_preference, website_platform, country, content, created_at
+            FROM domain_guides
+            WHERE user_id = ?
+            ORDER BY id DESC
+        """),
+        (user_id,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_domain_guide(user_id, guide_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        sql("""
+            SELECT id, business_name, preferred_domain, budget,
+                   provider_preference, website_platform, country, content, created_at
+            FROM domain_guides
+            WHERE user_id = ? AND id = ?
+            LIMIT 1
+        """),
+        (user_id, guide_id)
+    )
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
 def build_project_context(user_id):
     project = get_active_business_project(user_id)
 
@@ -1965,6 +2160,8 @@ def get_launch_readiness(user_id):
     canva_branding = get_canva_branding_packages(user_id)
     canva_briefs = get_canva_design_briefs(user_id)
     ai_store_builds = get_ai_store_builds(user_id)
+    domain_guides = get_domain_guides(user_id)
+    email_campaigns = get_email_campaigns(user_id)
 
     checks = [
         {
@@ -2049,10 +2246,19 @@ def get_launch_readiness(user_id):
         },
         {
             "title": "Domain setup guidance created",
-            "complete": bool(latest_tasks.get("domain_setup")),
-            "description": "Create domain guidance without buying anything automatically.",
-            "url": "/generate_store_agent_task/domain_setup",
-            "action": "Create Domain Guide"
+            "complete": bool(domain_guides or latest_tasks.get("domain_setup")),
+            "description": "Create optional domain and DNS guidance without buying anything automatically.",
+            "url": "/domain_helper",
+            "action": "Open Domain Helper",
+            "optional": True
+        },
+        {
+            "title": "Email marketing campaign created",
+            "complete": bool(email_campaigns),
+            "description": "Create an optional campaign draft to support the launch.",
+            "url": "/email_marketing",
+            "action": "Create Email Campaign",
+            "optional": True
         },
         {
             "title": "Launch package generated/downloaded",
@@ -2063,7 +2269,13 @@ def get_launch_readiness(user_id):
         }
     ]
     completed = sum(1 for check in checks if check["complete"])
-    score = int(round((completed / len(checks)) * 100)) if checks else 0
+    core_checks = [check for check in checks if not check.get("optional")]
+    optional_checks = [check for check in checks if check.get("optional")]
+    core_completed = sum(1 for check in core_checks if check["complete"])
+    optional_completed = sum(1 for check in optional_checks if check["complete"])
+    core_score = int(round((core_completed / len(core_checks)) * 90)) if core_checks else 0
+    optional_score = int(round((optional_completed / len(optional_checks)) * 10)) if optional_checks else 0
+    score = min(100, core_score + optional_score)
     next_action = next(
         (check for check in checks if not check["complete"]),
         {
@@ -2974,7 +3186,7 @@ STORE_AGENT_TASK_DEFINITIONS = {
         "apply_supported": True
     },
     "products": {
-        "section": "Shopify Products",
+        "section": "Shopify Assets",
         "title": "Shopify Draft Products",
         "mode": "Action Mode",
         "explanation": "Generate product drafts and apply them as draft Shopify products after approval.",
@@ -3016,7 +3228,7 @@ STORE_AGENT_TASK_DEFINITIONS = {
         "apply_supported": True
     },
     "payments_setup": {
-        "section": "Payments Setup",
+        "section": "Payment Setup Guide",
         "title": "Payments Setup Checklist",
         "mode": "Advice Mode",
         "explanation": "Create guidance for PayPal, Paystack, Shopify payments, EFT, card payments, cash on delivery, and other options. Banking information must be entered directly with the provider.",
@@ -3043,6 +3255,13 @@ STORE_AGENT_TASK_DEFINITIONS = {
         "explanation": "Generate social post, story, ad, launch graphic, and product promotion briefs.",
         "apply_supported": True
     },
+    "email_marketing": {
+        "section": "Email Marketing",
+        "title": "Email Marketing Campaign Draft",
+        "mode": "Draft Mode",
+        "explanation": "Create email strategy, subject lines, body copy, calls to action, platform guidance, and a sending checklist. Emails are never sent automatically.",
+        "apply_supported": False
+    },
     "launch_checklist": {
         "section": "Launch Checklist",
         "title": "Store Launch Checklist",
@@ -3066,6 +3285,7 @@ STORE_AGENT_SECTION_ORDER = [
     "domain_setup",
     "canva_branding",
     "canva_marketing",
+    "email_marketing",
     "launch_checklist"
 ]
 
@@ -5033,6 +5253,8 @@ def build_center():
     supplier_recommendations = get_supplier_recommendations(user_id)
     pricing_advice_list = get_pricing_advice_list(user_id)
     payment_guides = get_payment_guides(user_id)
+    domain_guides = get_domain_guides(user_id)
+    email_campaigns = get_email_campaigns(user_id)
 
     def status_for(completed, started=False):
         if completed:
@@ -5132,6 +5354,20 @@ def build_center():
             "url": "/payment_guide",
             "action": "Open Payment Guide",
             "count": f"{len(payment_guides)} saved"
+        },
+        {
+            "title": "Domain/DNS Helper",
+            "status": status_for(domain_guides, bool(workflow_started)),
+            "description": "Compare domain options and create safe purchase, DNS, Shopify, SSL, and connection guidance.",
+            "url": (
+                f"/domain_guide/{domain_guides[0][0]}"
+                if domain_guides
+                else "/domain_helper"
+            ),
+            "action": "View Latest Domain Guide" if domain_guides else "Open Domain Helper",
+            "secondary_url": "/domain_helper",
+            "secondary_action": "New Domain Guide",
+            "count": f"{len(domain_guides)} saved"
         },
         {
             "title": "AI Store Builder",
@@ -5257,6 +5493,20 @@ def build_center():
             "count": f"{len(canva_designs)} created"
         },
         {
+            "title": "Email Marketing Assistant",
+            "status": status_for(email_campaigns, bool(ai_store_builds or workflow_started)),
+            "description": "Create reviewable email strategy, subject lines, campaign copy, platform advice, and setup checklists.",
+            "url": (
+                f"/email_campaign/{email_campaigns[0][0]}"
+                if email_campaigns
+                else "/email_marketing"
+            ),
+            "action": "View Latest Campaign" if email_campaigns else "Create Email Campaign",
+            "secondary_url": "/email_marketing",
+            "secondary_action": "New Email Campaign",
+            "count": f"{len(email_campaigns)} saved"
+        },
+        {
             "title": "Store + Branding Quote",
             "status": status_for(build_quotes, workflow_started),
             "description": "Review your saved informational store and branding estimate.",
@@ -5354,6 +5604,14 @@ def build_center():
         },
         {
             "number": "06",
+            "title": "Domain Helper",
+            "status": status_for(domain_guides, bool(payment_guides or workflow_started)),
+            "description": "Choose a domain and prepare safe DNS, SSL, Shopify, and custom-domain connection steps.",
+            "url": "/domain_helper",
+            "action": "Create Domain Guide"
+        },
+        {
+            "number": "07",
             "title": "Store Draft",
             "status": status_for(ai_store_builds or store_agent_tasks, product_research_list),
             "description": "Generate reviewable store drafts and AI Store Agent tasks before applying anything.",
@@ -5361,7 +5619,7 @@ def build_center():
             "action": "Open Agent"
         },
         {
-            "number": "07",
+            "number": "08",
             "title": "Shopify Assets",
             "status": status_for(shopify_products or shopify_collections or shopify_pages, shopify_connected),
             "description": "Create supported draft products, collections, pages, and setup guidance after approval.",
@@ -5369,7 +5627,7 @@ def build_center():
             "action": "Manage Shopify" if not shopify_connected else "View Assets"
         },
         {
-            "number": "08",
+            "number": "09",
             "title": "Canva Branding",
             "status": status_for(canva_branding_packages or canva_design_briefs or canva_designs, canva_connected),
             "description": "Create brand direction, logo briefs, social ideas, and marketing asset briefs.",
@@ -5377,7 +5635,15 @@ def build_center():
             "action": "Manage Canva" if not canva_connected else "Create Branding"
         },
         {
-            "number": "09",
+            "number": "10",
+            "title": "Email Marketing",
+            "status": status_for(email_campaigns, bool(ai_store_builds or canva_branding_packages)),
+            "description": "Create a reviewable launch, welcome, newsletter, promotion, or ecommerce email campaign draft.",
+            "url": "/email_marketing",
+            "action": "Create Campaign"
+        },
+        {
+            "number": "11",
             "title": "Launch Readiness",
             "status": status_for(launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
             "description": "Check completed and missing launch items before you go live.",
@@ -5385,7 +5651,7 @@ def build_center():
             "action": "Check Score"
         },
         {
-            "number": "10",
+            "number": "12",
             "title": "Launch Package",
             "status": status_for(user_package_at_least(user_id, "Premium Build") and launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
             "description": "Bundle strategy, research, store assets, branding, and next steps into one package.",
@@ -5458,6 +5724,8 @@ def store_builder():
 
 def get_store_agent_sections(user_id):
     latest_tasks = get_latest_store_agent_tasks_by_type(user_id)
+    domain_guides = get_domain_guides(user_id)
+    email_campaigns = get_email_campaigns(user_id)
     sections = []
 
     for task_type in STORE_AGENT_SECTION_ORDER:
@@ -5467,6 +5735,10 @@ def get_store_agent_sections(user_id):
 
         if task:
             status = task[5]
+        elif task_type == "domain_setup" and domain_guides:
+            status = "Completed"
+        elif task_type == "email_marketing" and email_campaigns:
+            status = "Completed"
 
         sections.append({
             "task_type": task_type,
@@ -5481,7 +5753,9 @@ def get_store_agent_sections(user_id):
                 "product_sourcing": "/product_finder",
                 "supplier_finder": "/supplier_finder",
                 "pricing_advisor": "/pricing_advisor",
-                "payments_setup": "/payment_guide"
+                "payments_setup": "/payment_guide",
+                "domain_setup": "/domain_helper",
+                "email_marketing": "/email_marketing"
             }.get(task_type, "")
         })
 
@@ -5583,6 +5857,10 @@ Generate a Canva branding package with logo brief, banner brief, product mockup 
 """,
         "canva_marketing": """
 Generate Canva marketing asset briefs for launch posts, product posts, story templates, promo banners, ads, and short-form video covers.
+""",
+        "email_marketing": """
+Generate an email campaign strategy, subject and preview options, full email body, CTA copy, audience segment, sending-time guidance, follow-up idea, platform recommendation, and setup checklist.
+Do not send emails or create external email-platform accounts.
 """,
         "launch_checklist": """
 Generate a launch checklist that guides the user through reviewing store content, legal pages, payments, shipping, domains, Canva assets, test orders, and final manual publishing.
@@ -6949,6 +7227,225 @@ def health_check():
         "paystack_configured": bool(os.getenv("PAYSTACK_SECRET_KEY")),
         "database_type": "postgres" if using_postgres() else "sqlite"
     })
+
+
+@app.route("/email_marketing")
+def email_marketing():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    return render_template(
+        "email_marketing.html",
+        onboarding=get_user_onboarding(user_id),
+        campaigns=get_email_campaigns(user_id)
+    )
+
+
+@app.route("/generate_email_campaign", methods=["GET", "POST"])
+def generate_email_campaign():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    if request.method == "GET":
+        return redirect("/email_marketing")
+
+    user_id = session["user_id"]
+    data = {
+        "business_name": request.form.get("business_name", "").strip(),
+        "business_type": request.form.get("business_type", "").strip(),
+        "target_customer": request.form.get("target_customer", "").strip(),
+        "campaign_goal": request.form.get("campaign_goal", "").strip(),
+        "email_platform": request.form.get("email_platform", "").strip(),
+        "offer": request.form.get("offer", "").strip(),
+        "tone": request.form.get("tone", "").strip()
+    }
+
+    if not data["business_name"] or not data["business_type"] or not data["campaign_goal"]:
+        return redirect("/email_marketing?email_error=missing")
+
+    prompt = f"""
+Create a practical email marketing campaign draft for this BusinessBuilder AI user.
+
+Safety and approval rules:
+- Generate strategy, copy drafts, and setup guidance only.
+- The user must review the audience, claims, links, offer terms, consent, unsubscribe handling, and final copy before sending.
+- Do not send mass emails automatically. An official integration and explicit user approval would be required for any sending action.
+- Do not create Brevo, Mailchimp, Klaviyo, Shopify, or other accounts.
+- Do not request passwords, API keys, payment details, or private credentials.
+- Remind the user to follow consent, anti-spam, privacy, and unsubscribe rules that apply in their market.
+
+Include these clearly labelled sections:
+1. Email campaign strategy
+2. At least five subject line options
+3. At least three preview text options
+4. Full email body
+5. Call-to-action button text options
+6. Customer segment suggestion
+7. Recommended sending time, described as a testable starting point rather than a guarantee
+8. Follow-up email idea
+9. Platform recommendation based on the user's needs
+10. Setup checklist for the selected email platform
+
+Platform guidance:
+- Brevo is beginner-friendly and useful for email/SMS marketing.
+- Mailchimp is beginner-friendly for email marketing.
+- Klaviyo is stronger for ecommerce automation.
+- Shopify Email is useful when the user mainly operates in Shopify.
+
+Business name: {data["business_name"]}
+Business type: {data["business_type"]}
+Target customer: {data["target_customer"]}
+Campaign goal: {data["campaign_goal"]}
+Preferred platform: {data["email_platform"]}
+Offer or discount: {data["offer"] or "None provided"}
+Tone: {data["tone"]}
+
+{build_project_context(user_id)}
+"""
+
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ]
+        )
+    except Exception:
+        return redirect("/email_marketing?email_error=ai_response")
+
+    campaign_id = save_email_campaign(
+        user_id,
+        data,
+        response.choices[0].message.content.strip()
+    )
+    return redirect(f"/email_campaign/{campaign_id}?email_notice=created")
+
+
+@app.route("/email_campaign/<int:campaign_id>")
+def email_campaign(campaign_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    campaign = get_email_campaign(session["user_id"], campaign_id)
+    if not campaign:
+        return redirect("/email_marketing")
+
+    return render_template("email_campaign.html", campaign=campaign)
+
+
+@app.route("/domain_helper")
+def domain_helper():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    return render_template(
+        "domain_helper.html",
+        onboarding=get_user_onboarding(user_id),
+        guides=get_domain_guides(user_id)
+    )
+
+
+@app.route("/generate_domain_advice", methods=["GET", "POST"])
+def generate_domain_advice():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    if request.method == "GET":
+        return redirect("/domain_helper")
+
+    user_id = session["user_id"]
+    data = {
+        "business_name": request.form.get("business_name", "").strip(),
+        "preferred_domain": request.form.get("preferred_domain", "").strip(),
+        "country": request.form.get("country", "").strip(),
+        "budget": request.form.get("budget", "").strip(),
+        "provider_preference": request.form.get("provider_preference", "").strip(),
+        "website_platform": request.form.get("website_platform", "").strip(),
+        "owns_domain": request.form.get("owns_domain", "").strip()
+    }
+
+    if not data["business_name"] or not data["country"]:
+        return redirect("/domain_helper?domain_error=missing")
+
+    prompt = f"""
+Create beginner-friendly domain selection and DNS guidance for this BusinessBuilder AI user.
+
+Safety and accuracy rules:
+- Do not claim live domain availability or live/current prices. No registrar availability API is configured.
+- Do not buy, register, renew, transfer, or charge for a domain automatically.
+- Do not create GoDaddy, Namecheap, Cloudflare, Domains.co.za, Shopify, or other accounts.
+- Never ask for card details, banking passwords, registrar passwords, API keys, or private credentials.
+- Tell the user to verify final availability, first-year price, renewal price, taxes, transfer rules, privacy fees, and terms directly with the provider before paying.
+- Explain that the user reviews and approves every real purchase or DNS change.
+
+Include these clearly labelled sections:
+1. Domain name suggestions
+2. Best extensions, including .com, .co.za, .store, .shop, .site, and other relevant choices
+3. Budget-friendly provider suggestions
+4. Professional provider suggestions
+5. Pros and cons of GoDaddy, Namecheap, Cloudflare, Domains.co.za, and Shopify Domains where relevant
+6. What to check before buying
+7. General estimated-cost guidance without claiming live prices
+8. Beginner DNS connection guide
+9. Shopify domain connection guide
+10. BusinessBuilder AI custom-domain connection guide that says to confirm the exact hosting target/records in BusinessBuilder AI support before changing DNS
+11. Email/domain credibility advice, including professional sender addresses and email authentication concepts
+12. Billing, renewal, phishing, account-security, and accidental-expiry warning
+13. Step-by-step purchase and connection checklist
+
+Explain these terms in plain language:
+- domain
+- DNS
+- CNAME record
+- A record
+- nameservers
+- SSL certificate
+- redirecting the root domain to www
+- DNS propagation delay
+
+Business name: {data["business_name"]}
+Desired domain: {data["preferred_domain"] or "No preference yet"}
+Country/market: {data["country"]}
+Budget level: {data["budget"]}
+Provider preference: {data["provider_preference"]}
+Website/store platform: {data["website_platform"]}
+Already owns a domain: {data["owns_domain"]}
+
+{build_project_context(user_id)}
+"""
+
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ]
+        )
+    except Exception:
+        return redirect("/domain_helper?domain_error=ai_response")
+
+    guide_id = save_domain_guide(
+        user_id,
+        data,
+        response.choices[0].message.content.strip()
+    )
+    return redirect(f"/domain_guide/{guide_id}?domain_notice=created")
+
+
+@app.route("/domain_guide/<int:guide_id>")
+def domain_guide(guide_id):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    guide = get_domain_guide(session["user_id"], guide_id)
+    if not guide:
+        return redirect("/domain_helper")
+
+    return render_template("domain_guide.html", guide=guide)
 
 
 @app.route("/launch_readiness")

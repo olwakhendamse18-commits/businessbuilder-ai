@@ -49,6 +49,9 @@
                         {{ "Completed" if check["complete"] else "Missing" }}
                     </p>
                     <h3>{{ check["title"] }}</h3>
+                    {% if check.get("optional") %}
+                        <p class="pricing-badge muted-badge">Optional launch boost</p>
+                    {% endif %}
                     <p>{{ check["description"] }}</p>
                     {% if not check["complete"] %}
                         <a href="{{ check['url'] }}" class="secondary-button">{{ check["action"] }}</a>

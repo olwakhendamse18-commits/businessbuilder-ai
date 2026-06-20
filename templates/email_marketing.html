@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Marketing Assistant - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+<body>
+<div class="dashboard">
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
+            <div><h2>BusinessBuilder AI</h2><p>Email marketing</p></div>
+        </div>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/ai_store_agent">AI Store Agent</a>
+        <a href="/email_marketing">Email Marketing</a>
+        <a href="/domain_helper">Domain/DNS Helper</a>
+        <a href="/launch_readiness">Launch Readiness</a>
+        <a href="/support">Support</a>
+        <a href="/settings">Settings</a>
+    </aside>
+
+    <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
+        <div class="dashboard-header">
+            <p class="eyebrow">Marketing Drafts</p>
+            <h1>Email Marketing Assistant</h1>
+            <p>Create a campaign strategy, subject lines, preview text, complete email copy, calls to action, audience guidance, and a platform setup checklist.</p>
+        </div>
+
+        <section class="next-action-card tool-safety-card">
+            <h2>The AI drafts. You review and send.</h2>
+            <p>BusinessBuilder AI does not create external marketing accounts or send mass emails automatically. Review consent, claims, offer terms, links, recipients, unsubscribe handling, and the final copy before sending through your chosen platform.</p>
+        </section>
+
+        {% if request.args.get("email_error") == "missing" %}
+            <p class="form-notice">Enter a business name, business type, and campaign goal.</p>
+        {% elif request.args.get("email_error") == "ai_response" %}
+            <p class="form-notice">The email campaign could not be generated. Please try again.</p>
+        {% endif %}
+
+        <section class="project-form tool-form-card">
+            <h2>Create an email campaign draft</h2>
+            <form method="POST" action="/generate_email_campaign">
+                <label for="business_name">Business name</label>
+                <input id="business_name" name="business_name" required value="{{ onboarding[1] if onboarding else '' }}" placeholder="Example: Cedar & Coast">
+
+                <label for="business_type">Business type</label>
+                <input id="business_type" name="business_type" required placeholder="Example: Shopify skincare store">
+
+                <label for="target_customer">Target customer</label>
+                <input id="target_customer" name="target_customer" value="{{ onboarding[7] if onboarding else '' }}" placeholder="Example: Busy professionals aged 25-40">
+
+                <label for="campaign_goal">Campaign goal</label>
+                <select id="campaign_goal" name="campaign_goal" required>
+                    <option value="Welcome email">Welcome email</option>
+                    <option value="Product launch">Product launch</option>
+                    <option value="Discount/promotion">Discount/promotion</option>
+                    <option value="Newsletter">Newsletter</option>
+                    <option value="Abandoned cart">Abandoned cart</option>
+                    <option value="New product announcement">New product announcement</option>
+                    <option value="Re-engagement email">Re-engagement email</option>
+                    <option value="Not sure">Not sure</option>
+                </select>
+
+                <label for="email_platform">Preferred platform</label>
+                <select id="email_platform" name="email_platform">
+                    <option value="Brevo">Brevo</option>
+                    <option value="Mailchimp">Mailchimp</option>
+                    <option value="Klaviyo">Klaviyo</option>
+                    <option value="Shopify Email">Shopify Email</option>
+                    <option value="Not sure" selected>Not sure</option>
+                </select>
+
+                <label for="offer">Offer or discount, if any</label>
+                <input id="offer" name="offer" placeholder="Example: 10% off first order; leave blank if none">
+
+                <label for="tone">Tone</label>
+                <select id="tone" name="tone">
+                    <option value="professional">Professional</option>
+                    <option value="friendly" selected>Friendly</option>
+                    <option value="luxury">Luxury</option>
+                    <option value="bold">Bold</option>
+                    <option value="simple">Simple</option>
+                    <option value="playful">Playful</option>
+                </select>
+
+                <button type="submit">Generate Email Campaign Draft</button>
+            </form>
+        </section>
+
+        <section>
+            <div class="section-heading-row">
+                <div><p class="eyebrow">Saved Campaigns</p><h2>Previous email drafts</h2></div>
+                <a href="/domain_helper" class="secondary-button">Plan Your Domain</a>
+            </div>
+            <div class="cards">
+                {% for campaign in campaigns %}
+                    <article class="card">
+                        <p class="eyebrow">{{ campaign[4] }}</p>
+                        <h3>{{ campaign[1] }}</h3>
+                        <p><strong>Platform:</strong> {{ campaign[5] or "Not sure" }} · <strong>Tone:</strong> {{ campaign[7]|title }}</p>
+                        <p>{{ campaign[8][:180] }}{% if campaign[8]|length > 180 %}...{% endif %}</p>
+                        <a href="/email_campaign/{{ campaign[0] }}" class="primary-button">View Campaign</a>
+                    </article>
+                {% else %}
+                    <article class="card empty-card"><h3>No campaigns yet</h3><p>Complete the form to create your first reviewable email draft.</p></article>
+                {% endfor %}
+            </div>
+        </section>
+    </main>
+</div>
+{% include "_app_scripts.html" %}
+</body>
+</html>

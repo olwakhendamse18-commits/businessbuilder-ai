@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Campaign - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+<body>
+<div class="dashboard">
+    <aside class="sidebar">
+        <div class="brand"><img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image"><div><h2>BusinessBuilder AI</h2><p>Campaign draft</p></div></div>
+        <a href="/dashboard">Dashboard</a><a href="/build_center">Build Center</a><a href="/email_marketing">Email Marketing</a><a href="/settings">Settings</a>
+    </aside>
+    <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
+        <div class="dashboard-header">
+            <p class="eyebrow">{{ campaign[4] }}</p>
+            <h1>{{ campaign[1] }} email campaign</h1>
+            <p>{{ campaign[2] }} · {{ campaign[5] or "Platform not selected" }} · {{ campaign[7]|title }} tone</p>
+        </div>
+        {% if request.args.get("email_notice") == "created" %}<p class="success-notice">Email campaign draft generated and saved.</p>{% endif %}
+        <section class="project-form">
+            <div class="security-warning"><strong>Review before sending.</strong>This is draft content and setup guidance. Confirm recipients have appropriate consent, test every link, verify claims and offer terms, and include required sender and unsubscribe information.</div>
+            <pre class="business-plan-output tool-output">{{ campaign[8] }}</pre>
+            <div class="generator-actions"><a href="/email_marketing" class="primary-button">Create Another Campaign</a><a href="/build_center" class="secondary-button">Back to Build Center</a></div>
+        </section>
+    </main>
+</div>
+{% include "_app_scripts.html" %}
+</body>
+</html>

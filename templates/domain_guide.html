@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Domain Guide - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+<body>
+<div class="dashboard">
+    <aside class="sidebar">
+        <div class="brand"><img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image"><div><h2>BusinessBuilder AI</h2><p>Domain guide</p></div></div>
+        <a href="/dashboard">Dashboard</a><a href="/build_center">Build Center</a><a href="/domain_helper">Domain/DNS Helper</a><a href="/settings">Settings</a>
+    </aside>
+    <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
+        <div class="dashboard-header"><p class="eyebrow">{{ guide[6] }}</p><h1>{{ guide[1] }} domain guide</h1><p>{{ guide[2] or "Domain suggestions" }} · {{ guide[4] or "Provider comparison" }} · {{ guide[5] }}</p></div>
+        {% if request.args.get("domain_notice") == "created" %}<p class="success-notice">Domain and DNS guide generated and saved.</p>{% endif %}
+        <section class="project-form">
+            <div class="security-warning"><strong>Verify before buying or changing DNS.</strong>Availability and prices are not live. Check the final price, renewal cost, terms, and records directly with the provider. Never enter card details or registrar passwords into BusinessBuilder AI.</div>
+            <pre class="business-plan-output tool-output">{{ guide[7] }}</pre>
+            <div class="generator-actions"><a href="/domain_helper" class="primary-button">Create Another Guide</a><a href="/build_center" class="secondary-button">Back to Build Center</a></div>
+        </section>
+    </main>
+</div>
+{% include "_app_scripts.html" %}
+</body>
+</html>
