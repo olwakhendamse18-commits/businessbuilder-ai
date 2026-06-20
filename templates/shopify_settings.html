@@ -43,13 +43,14 @@
 
         <div class="dashboard-header">
             <p class="eyebrow">Store Integration</p>
-            <h1>Shopify Connection</h1>
-            <p>Connect your store securely, then create draft products, collections, and pages for review before anything is published.</p>
+            <h1>Connect your Shopify store</h1>
+            <p>BusinessBuilder AI can help create Shopify draft products, store content, product descriptions, homepage drafts, pages, and launch guidance after you connect your Shopify store. The AI will not publish products or make major live changes without your approval.</p>
         </div>
 
         <section class="project-form settings-panel">
+            <h2>Connection status</h2>
             {% if connection and connection["status"] == "connected" %}
-                <p class="connection-status connected">Shopify Connected</p>
+                <p class="connection-status connected">Connected</p>
                 <p><strong>Connected store:</strong> {{ connection["shop_domain"] }}</p>
 
                 <div class="generator-actions">
@@ -63,8 +64,10 @@
                     </a>
                 </div>
             {% elif connection %}
-                <p class="connection-status not-connected">Shopify Not Connected</p>
+                <p class="connection-status not-connected">Not connected</p>
                 <p><strong>Last tested store:</strong> {{ connection["shop_domain"] }}</p>
+            {% else %}
+                <p class="connection-status not-connected">Not connected</p>
             {% endif %}
 
             {% if message %}
@@ -97,8 +100,61 @@
                     Your token is encrypted server-side and is never shown again after submission.
                 </p>
 
-                <button type="submit">Save and Test Connection</button>
+                <button type="submit">{{ "Replace Token and Test Connection" if connection else "Test Connection" }}</button>
             </form>
+        </section>
+
+        <section class="project-form connection-guide">
+            <p class="eyebrow">Beginner Guide</p>
+            <h2>Connect Shopify step by step</h2>
+            <ol class="connection-steps">
+                <li><strong>Open your Shopify admin dashboard.</strong></li>
+                <li><strong>Go to Settings.</strong></li>
+                <li><strong>Go to Apps and sales channels.</strong></li>
+                <li><strong>Click Develop apps.</strong> If Develop apps is disabled, enable custom app development.</li>
+                <li><strong>Create a new custom app called BusinessBuilder AI.</strong></li>
+                <li><strong>Go to Configure Admin API scopes.</strong></li>
+                <li>
+                    <strong>Enable the permissions the features you plan to use need:</strong>
+                    <ul>
+                        <li><code>read_products</code> and <code>write_products</code></li>
+                        <li><code>read_content</code> and <code>write_content</code></li>
+                        <li><code>read_themes</code> if theme reading is supported</li>
+                        <li><code>write_themes</code> only for supported, approved theme edits</li>
+                        <li><code>read_files</code> if needed</li>
+                        <li><code>write_files</code> only if needed</li>
+                    </ul>
+                    <p class="guide-note"><strong>Theme safety:</strong> Only enable theme write permissions if you understand that theme changes can affect your store design. BusinessBuilder AI should ask for approval before applying theme changes.</p>
+                </li>
+                <li><strong>Install the app.</strong></li>
+                <li><strong>Copy the Admin API access token.</strong></li>
+                <li><strong>Paste the Admin API access token into BusinessBuilder AI</strong> in the secure field above.</li>
+                <li><strong>Enter your Shopify store domain.</strong> Example: <code>your-store-name.myshopify.com</code></li>
+                <li><strong>Click Test Connection.</strong></li>
+                <li><strong>After a successful test, use BusinessBuilder AI to create safe draft Shopify assets.</strong> Review and approve drafts before supported changes are applied.</li>
+            </ol>
+
+            <div class="security-warning" role="note">
+                <strong>Keep your token private.</strong>
+                Never share your Shopify Admin API token publicly. Treat it like a password. BusinessBuilder AI stores it securely and never displays it back to you.
+            </div>
+
+            <details class="connection-help">
+                <summary>How do I find my Shopify token?</summary>
+                <p>In Shopify admin, open Settings → Apps and sales channels → Develop apps, select BusinessBuilder AI, configure the Admin API scopes, install the app, then reveal and copy the Admin API access token. Do not use a Storefront API token.</p>
+            </details>
+
+            <details class="connection-help">
+                <summary>Troubleshooting a failed connection</summary>
+                <ul>
+                    <li>Check that the store domain uses the format <code>your-store-name.myshopify.com</code>.</li>
+                    <li>Make sure the token is the Admin API access token, not a storefront token.</li>
+                    <li>Make sure the required scopes are enabled.</li>
+                    <li>Make sure the custom app is installed.</li>
+                    <li>Make sure your Shopify store is active.</li>
+                    <li>If you changed scopes, reinstall the app or update the app token if needed.</li>
+                </ul>
+            </details>
         </section>
 
     </main>

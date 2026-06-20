@@ -98,12 +98,12 @@
                 <h2>Shopify</h2>
                 {% if shopify_connection and shopify_connection[3] == "connected" %}
                     <p class="connection-status connected">Connected</p>
-                    <p>Your Shopify connection is ready for approved draft product and page actions.</p>
+                    <p>Connect Shopify so the AI can help create draft products, product descriptions, pages, and store assets. You review and approve drafts.</p>
                 {% else %}
                     <p class="connection-status not-connected">Not connected</p>
-                    <p>Connect Shopify when you are ready to create draft products and safe store assets.</p>
+                    <p>Connect Shopify so the AI can help create draft products, product descriptions, pages, and store assets.</p>
                 {% endif %}
-                <a href="/shopify_settings" class="primary-button">Shopify Settings</a>
+                <a href="/shopify_settings" class="primary-button">Manage Shopify Connection</a>
             </article>
 
             <article class="project-form settings-section">
@@ -111,12 +111,12 @@
                 <h2>Canva</h2>
                 {% if canva_connection and canva_connection[2] == "connected" %}
                     <p class="connection-status connected">Connected</p>
-                    <p>Your Canva account is ready for approved design brief and draft creation where supported.</p>
+                    <p>Connect Canva so the AI can help create branding briefs, banners, social media ideas, and design drafts. You review and approve drafts.</p>
                 {% else %}
                     <p class="connection-status not-connected">Not connected</p>
-                    <p>Connect Canva to create editable drafts from approved branding and marketing briefs.</p>
+                    <p>Connect Canva so the AI can help create branding briefs, banners, social media ideas, and design drafts.</p>
                 {% endif %}
-                <a href="/canva_settings" class="primary-button">Canva Settings</a>
+                <a href="/canva_settings" class="primary-button">Manage Canva Connection</a>
             </article>
         </section>
 

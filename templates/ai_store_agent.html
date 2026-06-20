@@ -78,6 +78,32 @@
             </div>
         </section>
 
+        <section class="integration-prompt-grid" aria-label="Integration connection guidance">
+            <article class="project-form integration-prompt">
+                {% if shopify_connected %}
+                    <p class="connection-status connected">Shopify connected</p>
+                    <p>The AI can prepare supported draft products and store assets for approval.</p>
+                    <a href="/shopify_settings" class="secondary-button">Manage Shopify</a>
+                {% else %}
+                    <p class="connection-status not-connected">Shopify not connected</p>
+                    <p>Connect Shopify to let the AI create draft products and store assets after approval.</p>
+                    <a href="/shopify_settings" class="primary-button">Connect Shopify</a>
+                {% endif %}
+            </article>
+            <article class="project-form integration-prompt">
+                {% if canva_connected %}
+                    <p class="connection-status connected">Canva connected</p>
+                    <p>The AI can prepare supported Canva design drafts for approval.</p>
+                    <a href="/canva_settings" class="secondary-button">Manage Canva</a>
+                {% else %}
+                    <p class="connection-status not-connected">Canva not connected</p>
+                    <p>Connect Canva to let the AI create branding briefs and Canva-ready design assets.</p>
+                    <a href="/canva_settings" class="primary-button">Connect Canva</a>
+                {% endif %}
+            </article>
+        </section>
+        <p class="form-help integration-guidance">Connections are optional for guidance and draft generation. They only enable supported actions in the connected service.</p>
+
         <section class="agent-mode-grid">
             <div class="agent-mode-card">
                 <p class="eyebrow">Advice Mode</p>

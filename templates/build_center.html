@@ -73,6 +73,33 @@
             </div>
         </section>
 
+        <section class="integration-prompt-grid" aria-label="Integration connection status">
+            <article class="project-form integration-prompt">
+                {% if shopify_connected %}
+                    <p class="connection-status connected">Shopify connected</p>
+                    <p>The AI can prepare supported Shopify draft assets for your review and approval.</p>
+                    <a href="/shopify_settings" class="secondary-button">Manage Shopify</a>
+                {% else %}
+                    <p class="connection-status not-connected">Shopify not connected</p>
+                    <p>Connect Shopify to let the AI create draft products and store assets after approval.</p>
+                    <a href="/shopify_settings" class="primary-button">Connect Shopify</a>
+                {% endif %}
+            </article>
+            <article class="project-form integration-prompt">
+                {% if canva_connected %}
+                    <p class="connection-status connected">Canva connected</p>
+                    <p>The AI can prepare supported Canva drafts after you review and approve them.</p>
+                    <a href="/canva_settings" class="secondary-button">Manage Canva</a>
+                {% else %}
+                    <p class="connection-status not-connected">Canva not connected</p>
+                    <p>Connect Canva to let the AI create branding briefs and Canva-ready design assets.</p>
+                    <a href="/canva_settings" class="primary-button">Connect Canva</a>
+                {% endif %}
+            </article>
+        </section>
+
+        <p class="form-help integration-guidance">You can still generate guidance and reviewable drafts without these connections. Connections are needed only for supported actions in Shopify or Canva.</p>
+
         <section class="next-action-card">
             <p class="eyebrow">Main Recommended Action</p>
             <h2>{{ "Generate My Store" if pro_package else "Build Your Launch Foundation" }}</h2>

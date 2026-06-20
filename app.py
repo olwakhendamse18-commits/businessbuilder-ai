@@ -5402,6 +5402,8 @@ def build_center():
         total_steps=total_steps,
         next_recommended_action=next_recommended_action,
         current_package=current_package,
+        shopify_connected=shopify_connected,
+        canva_connected=canva_connected,
         pro_package=user_package_at_least(user_id, "Pro"),
         premium_build=user_package_at_least(user_id, "Premium Build")
     )

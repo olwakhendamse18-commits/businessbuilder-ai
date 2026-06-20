@@ -450,6 +450,76 @@ a {
     margin: -6px 0 18px;
 }
 
+.connection-guide {
+    margin-top: 24px;
+    max-width: 900px;
+}
+
+.connection-steps {
+    display: grid;
+    gap: 14px;
+    padding-left: 28px;
+}
+
+.connection-steps > li {
+    line-height: 1.65;
+    padding-left: 6px;
+}
+
+.connection-steps ul,
+.connection-help ul {
+    margin: 10px 0 0;
+    padding-left: 22px;
+}
+
+.guide-note,
+.security-warning,
+.connection-help {
+    background: color-mix(in srgb, var(--surface-soft) 72%, var(--surface));
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+}
+
+.security-warning {
+    background: color-mix(in srgb, var(--warning) 12%, var(--surface));
+    border-color: color-mix(in srgb, var(--warning) 38%, var(--border));
+    margin: 20px 0;
+}
+
+.security-warning strong {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.connection-help {
+    margin-top: 12px;
+}
+
+.connection-help summary {
+    cursor: pointer;
+    font-weight: 850;
+}
+
+.connection-help[open] summary {
+    margin-bottom: 10px;
+}
+
+.integration-prompt-grid {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 24px 0 10px;
+}
+
+.integration-prompt {
+    margin: 0;
+}
+
+.integration-guidance {
+    margin-bottom: 24px;
+}
+
 .connection-status {
     display: inline-flex;
     padding: 8px 12px;
@@ -2524,6 +2594,10 @@ html[data-theme="light"] .business-plan-document-header h2 {
     .dashboard-summary-grid,
     .settings-grid,
     .product-finder-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .integration-prompt-grid {
         grid-template-columns: 1fr;
     }
 

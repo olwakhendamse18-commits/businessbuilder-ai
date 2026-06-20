@@ -43,8 +43,8 @@
 
         <div class="dashboard-header">
             <p class="eyebrow">Design Integration</p>
-            <h1>Canva Connection</h1>
-            <p>Connect Canva securely to create editable design drafts from your saved branding package and design briefs.</p>
+            <h1>Connect your Canva account</h1>
+            <p>BusinessBuilder AI can help create Canva branding briefs, banner ideas, social media design briefs, logo direction, marketing assets, and Canva-ready design instructions. Where Canva API features are supported, the AI may help create Canva drafts after your approval.</p>
         </div>
 
         <section class="project-form settings-panel">
@@ -52,7 +52,7 @@
             <p class="form-help">Your Canva tokens are encrypted server-side and are never displayed.</p>
 
             {% if connection and connection["status"] == "connected" %}
-                <p class="connection-status connected">Canva Connected</p>
+                <p class="connection-status connected">Connected</p>
                 <p>Your Canva account is connected and ready to create editable design drafts.</p>
 
                 <div class="generator-actions">
@@ -61,7 +61,7 @@
                     <a href="/business_workflow" class="secondary-button">Open Workflow</a>
                 </div>
             {% else %}
-                <p class="connection-status not-connected">Canva Not Connected</p>
+                <p class="connection-status not-connected">Not connected</p>
                 <p>Connect your Canva account securely through Canva OAuth.</p>
             {% endif %}
 
@@ -74,6 +74,43 @@
             {% if not connection or connection["status"] != "connected" %}
                 <a href="/connect_canva" class="primary-button">Connect Canva</a>
             {% endif %}
+        </section>
+
+        <section class="project-form connection-guide">
+            <p class="eyebrow">Beginner Guide</p>
+            <h2>Connect Canva step by step</h2>
+            <ol class="connection-steps">
+                <li><strong>Click Connect Canva.</strong></li>
+                <li><strong>You will be redirected to Canva.</strong></li>
+                <li><strong>Log in to your Canva account.</strong> Enter your login only on Canva's official authorization page.</li>
+                <li><strong>Review the permissions requested by BusinessBuilder AI.</strong></li>
+                <li><strong>Click Allow or Authorize.</strong></li>
+                <li><strong>Canva will redirect you back to BusinessBuilder AI.</strong></li>
+                <li><strong>After a successful connection, generate Canva branding briefs and design drafts where supported.</strong> You review and approve drafts.</li>
+            </ol>
+
+            <p class="guide-note"><strong>What the connection does:</strong> BusinessBuilder AI does not replace Canva. It helps you prepare brand direction, design briefs, banners, content ideas, and marketing assets that can be used inside Canva.</p>
+
+            <div class="security-warning" role="note">
+                <strong>Use official authorization only.</strong>
+                Only connect your own Canva account. Do not share your Canva login password with anyone. BusinessBuilder AI uses the official Canva connection flow and never asks for your Canva password directly.
+            </div>
+
+            <details class="connection-help">
+                <summary>How does Canva connection work?</summary>
+                <p>Connect Canva sends you to Canva's official authorization page. After you review and approve access, Canva sends you back to BusinessBuilder AI. Your Canva password is not entered into BusinessBuilder AI.</p>
+            </details>
+
+            <details class="connection-help">
+                <summary>Troubleshooting a failed connection</summary>
+                <ul>
+                    <li>Check that your redirect URL is correct.</li>
+                    <li>Make sure you are using the correct BusinessBuilder AI domain.</li>
+                    <li>Try logging out of Canva and connecting again.</li>
+                    <li>Make sure the Canva integration is enabled in your Canva developer settings.</li>
+                    <li>If you see <code>redirect_uri mismatch</code>, add <code>https://www.businessbuilder.site/canva_callback</code> in Canva.</li>
+                </ul>
+            </details>
         </section>
 
         <div class="plan-actions">
