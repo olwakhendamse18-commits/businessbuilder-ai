@@ -3459,6 +3459,79 @@ a {
     margin-top: 34px;
 }
 
+.expanded-pricing-grid {
+    align-items: stretch;
+}
+
+.expanded-pricing-grid .pricing-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.expanded-pricing-grid .pricing-button {
+    margin-top: auto;
+}
+
+.current-plan-pill,
+.plan-access-line,
+.plan-requirement-badge {
+    background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+    border-radius: 999px;
+    color: var(--text);
+    display: inline-flex;
+    padding: 8px 12px;
+}
+
+.plan-requirement-badge {
+    font-size: 0.78rem;
+    font-weight: 850;
+    margin: 0;
+    width: fit-content;
+}
+
+.current-plan-button {
+    cursor: default;
+}
+
+.pricing-safety-note {
+    background: color-mix(in srgb, var(--surface-soft) 76%, var(--surface));
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    box-shadow: var(--shadow);
+    margin: 34px 0;
+    padding: 28px;
+}
+
+.comparison-table-wrap {
+    overflow-x: auto;
+}
+
+.pricing-comparison-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: 760px;
+    width: 100%;
+}
+
+.pricing-comparison-table th,
+.pricing-comparison-table td {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px;
+    text-align: left;
+}
+
+.pricing-comparison-table th {
+    background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+    color: var(--text);
+}
+
+.build-status.locked {
+    background: color-mix(in srgb, var(--danger) 11%, var(--surface));
+    color: var(--danger);
+}
+
 .top-settings {
     z-index: 40;
 }

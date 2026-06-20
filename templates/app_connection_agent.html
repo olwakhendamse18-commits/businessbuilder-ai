@@ -19,6 +19,7 @@
             <p class="eyebrow">Permission-First Integrations</p>
             <h1>App Connection Agent</h1>
             <p>BusinessBuilder AI can connect to supported apps with your permission and help create marketing, design, store, and website drafts. Every major action starts as a draft for your review.</p>
+            <p class="plan-access-line"><strong>{{ current_package }}</strong> plan · App recommendations and guides require Pro; connected-app draft actions require Premium Build.</p>
         </div>
 
         {% if request.args.get("app_error") == "unsupported" %}<p class="form-notice">That platform is not supported.</p>{% endif %}
@@ -61,9 +62,9 @@
                                 <p><strong>Best for:</strong> {{ app.best_for }}</p>
                                 <p><strong>Budget fit:</strong> {{ app.budget_fit }}</p>
                                 <div class="card-actions">
-                                    <a href="{{ app.connect_url }}" class="primary-button">{{ "Manage" if app.status in ["Connected", "Configured"] else "Connect" }}</a>
+                                    {% if app.connection_mode == "manual" and not premium_actions %}<a href="/pricing" class="primary-button">Premium to Connect</a>{% else %}<a href="{{ app.connect_url }}" class="primary-button">{{ "Manage" if app.status in ["Connected", "Configured"] else "Connect" }}</a>{% endif %}
                                     <a href="{{ app.guide_url }}" class="secondary-button">Guide</a>
-                                    {% if app.draft_url %}<a href="{{ app.draft_url }}" class="secondary-button">Create Draft</a>{% endif %}
+                                    {% if app.draft_url %}<a href="{{ app.draft_url if premium_actions else '/pricing' }}" class="secondary-button">{{ 'Create Draft' if premium_actions else 'Premium Draft Action' }}</a>{% endif %}
                                 </div>
                             </article>
                         {% endfor %}

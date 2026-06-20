@@ -26,7 +26,9 @@
             <p class="eyebrow">Safe Domain Planning</p>
             <h1>Domain/DNS Helper</h1>
             <p>Compare domain ideas and providers, understand DNS, and prepare Shopify or custom-domain connection steps without making purchases or account changes.</p>
+            <p class="plan-access-line"><strong>{{ current_package }}</strong> plan · {{ usage_summary["domain_guides"] }} of {{ usage_summary["domain_guide_limit"] if usage_summary["domain_guide_limit"] is not none else "fair-use" }} domain guides used.</p>
         </div>
+        {% if request.args.get("usage_limit") == "domain_guide" %}<p class="form-notice">You reached your current domain-guide limit. Your saved guides remain available.</p>{% endif %}
 
         <section class="next-action-card tool-safety-card">
             <h2>You choose the provider and approve every change.</h2>

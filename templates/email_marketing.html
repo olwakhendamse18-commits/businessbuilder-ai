@@ -30,7 +30,9 @@
             <p class="eyebrow">Marketing Drafts</p>
             <h1>Email Marketing Assistant</h1>
             <p>Create a campaign strategy, subject lines, preview text, complete email copy, calls to action, audience guidance, and a platform setup checklist.</p>
+            <p class="plan-access-line"><strong>{{ current_package }}</strong> plan · {{ usage_summary["email_campaigns"] }} of {{ usage_summary["email_campaign_limit"] if usage_summary["email_campaign_limit"] is not none else "fair-use" }} campaign drafts used.</p>
         </div>
+        {% if request.args.get("usage_limit") == "email_campaign" %}<p class="form-notice">You reached your email campaign limit. Upgrade to Premium Build for up to 30 drafts.</p>{% endif %}
 
         <section class="next-action-card tool-safety-card">
             <h2>The AI drafts. You review and send.</h2>

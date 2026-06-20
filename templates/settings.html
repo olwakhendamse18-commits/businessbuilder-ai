@@ -34,7 +34,7 @@
         <a href="/support">Support</a>
         <a href="/business_workflow">Business Workflow</a>
         <a href="/business_workflow">Business Plans</a>
-        {% if premium_build %}
+        {% if pro_package %}
             <a href="/launch_package">Launch Package</a>
         {% endif %}
         <a href="/settings">Settings</a>
@@ -59,6 +59,7 @@
                 <h2>Workspace Details</h2>
                 <p><strong>Email:</strong> {{ email or "Not available" }}</p>
                 <p><strong>Current package:</strong> {{ current_package }}</p>
+                <p>{{ current_plan_details.get("best_for", "Choose a package to activate plan features.") }}</p>
                 {% if latest_payment %}
                     <p><strong>Payment status:</strong> {{ latest_payment[2] }}</p>
                 {% else %}
@@ -188,7 +189,7 @@
                 <p><strong>Latest payment:</strong> No payment recorded</p>
             {% endif %}
 
-            <div class="usage-summary-grid compact-usage-grid">
+                <div class="usage-summary-grid compact-usage-grid">
                 <div class="usage-stat">
                     <span>Business plans</span>
                     <strong>{{ usage_summary["business_plans"] }} / {{ usage_summary["business_plan_limit"] if usage_summary["business_plan_limit"] else "Fair use" }}</strong>
@@ -205,6 +206,13 @@
                     <span>PDF exports</span>
                     <strong>{{ usage_summary["pdf_exports"] }} / {{ usage_summary["pdf_export_limit"] }}</strong>
                 </div>
+                <div class="usage-stat"><span>Pricing advice</span><strong>{{ usage_summary["pricing_advice"] }} / {{ usage_summary["pricing_advice_limit"] if usage_summary["pricing_advice_limit"] is not none else "Fair use" }}</strong></div>
+                <div class="usage-stat"><span>Supplier guides</span><strong>{{ usage_summary["supplier_guides"] }} / {{ usage_summary["supplier_guide_limit"] if usage_summary["supplier_guide_limit"] is not none else "Fair use" }}</strong></div>
+                <div class="usage-stat"><span>Payment guides</span><strong>{{ usage_summary["payment_guides"] }} / {{ usage_summary["payment_guide_limit"] if usage_summary["payment_guide_limit"] is not none else "Fair use" }}</strong></div>
+                <div class="usage-stat"><span>Domain guides</span><strong>{{ usage_summary["domain_guides"] }} / {{ usage_summary["domain_guide_limit"] if usage_summary["domain_guide_limit"] is not none else "Fair use" }}</strong></div>
+                <div class="usage-stat"><span>Email campaigns</span><strong>{{ usage_summary["email_campaigns"] }} / {{ usage_summary["email_campaign_limit"] if usage_summary["email_campaign_limit"] is not none else "Fair use" }}</strong></div>
+                <div class="usage-stat"><span>Shopify draft products</span><strong>{{ usage_summary["shopify_products"] }} / {{ usage_summary["shopify_product_limit"] if usage_summary["shopify_product_limit"] is not none else "Fair use" }}</strong></div>
+                <div class="usage-stat"><span>Advanced app drafts</span><strong>{{ usage_summary["app_action_drafts"] }} / {{ usage_summary["app_action_draft_limit"] if usage_summary["app_action_draft_limit"] is not none else "Fair use" }}</strong></div>
             </div>
 
             <div class="generator-actions">

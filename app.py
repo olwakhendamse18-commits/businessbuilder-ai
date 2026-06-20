@@ -1208,15 +1208,33 @@ PACKAGE_LEVELS = {
 PAYSTACK_PLANS = {
     "starter": {
         "package_name": "Starter",
-        "amount": 49900
+        "amount": 49900,
+        "currency": "ZAR"
     },
     "pro": {
         "package_name": "Pro",
-        "amount": 99900
+        "amount": 99900,
+        "currency": "ZAR"
     },
     "premium": {
         "package_name": "Premium Build",
-        "amount": 199900
+        "amount": 199900,
+        "currency": "ZAR"
+    }
+}
+
+PLAN_DETAILS = {
+    "Starter": {
+        "best_for": "Beginners who need business planning, product ideas, and launch guidance.",
+        "price": "R499"
+    },
+    "Pro": {
+        "best_for": "Entrepreneurs who want Shopify, Canva, product, pricing, and marketing assets.",
+        "price": "R999"
+    },
+    "Premium Build": {
+        "best_for": "Users who want the most complete AI-assisted store and business launch package.",
+        "price": "R1,999"
     }
 }
 
@@ -1263,11 +1281,13 @@ def resolve_paystack_plan(transaction, fallback_plan=None):
         return None
 
     amount = transaction.get("amount")
+    currency = transaction.get("currency")
 
     if (
         not isinstance(amount, (int, float))
         or isinstance(amount, bool)
         or amount != plan["amount"]
+        or (currency is not None and currency != plan["currency"])
     ):
         return None
 
@@ -1279,6 +1299,17 @@ PACKAGE_USAGE_LIMITS = {
         "business_plan": {"limit": 3, "period": "total"},
         "shopify_plan": {"limit": 3, "period": "total"},
         "product_research": {"limit": 3, "period": "total"},
+        "pricing_advice": {"limit": 3, "period": "total"},
+        "supplier_guide": {"limit": 3, "period": "total"},
+        "payment_guide": {"limit": 3, "period": "total"},
+        "domain_guide": {"limit": 3, "period": "total"},
+        "email_campaign": {"limit": 0, "period": "total"},
+        "app_action_draft": {"limit": 0, "period": "total"},
+        "shopify_product": {"limit": 0, "period": "total"},
+        "canva_branding": {"limit": 0, "period": "total"},
+        "canva_design_brief": {"limit": 0, "period": "total"},
+        "canva_design": {"limit": 0, "period": "total"},
+        "launch_package": {"limit": 0, "period": "total"},
         "store_agent_task": {"limit": 3, "period": "total"},
         "pdf_export": {"limit": 20, "period": "total"}
     },
@@ -1287,11 +1318,18 @@ PACKAGE_USAGE_LIMITS = {
         "business_plan": {"limit": 10, "period": "total"},
         "shopify_plan": {"limit": 10, "period": "total"},
         "product_research": {"limit": 10, "period": "total"},
+        "pricing_advice": {"limit": 10, "period": "total"},
+        "supplier_guide": {"limit": 10, "period": "total"},
+        "payment_guide": {"limit": 10, "period": "total"},
+        "domain_guide": {"limit": 10, "period": "total"},
+        "email_campaign": {"limit": 10, "period": "total"},
+        "app_action_draft": {"limit": 0, "period": "total"},
         "store_agent_task": {"limit": 20, "period": "total"},
         "shopify_product": {"limit": 10, "period": "total"},
         "canva_branding": {"limit": 20, "period": "total"},
         "canva_design_brief": {"limit": 20, "period": "total"},
         "canva_design": {"limit": 10, "period": "total"},
+        "launch_package": {"limit": 10, "period": "total"},
         "pdf_export": {"limit": 50, "period": "total"}
     },
     "Premium Build": {
@@ -1299,6 +1337,12 @@ PACKAGE_USAGE_LIMITS = {
         "business_plan": {"limit": None, "period": "total"},
         "shopify_plan": {"limit": None, "period": "total"},
         "product_research": {"limit": None, "period": "total"},
+        "pricing_advice": {"limit": None, "period": "total"},
+        "supplier_guide": {"limit": None, "period": "total"},
+        "payment_guide": {"limit": None, "period": "total"},
+        "domain_guide": {"limit": None, "period": "total"},
+        "email_campaign": {"limit": 30, "period": "total"},
+        "app_action_draft": {"limit": None, "period": "total"},
         "store_agent_task": {"limit": None, "period": "total"},
         "shopify_product": {"limit": 30, "period": "total"},
         "canva_branding": {"limit": None, "period": "total"},
@@ -1435,24 +1479,24 @@ def get_package_required_message(package_name):
 
     package_messages = {
         "Starter": (
-            "Starter users can generate business plans, basic product research, "
-            "limited AI Store Agent drafts, and PDF downloads."
+            "Starter includes planning, basic product/supplier/pricing/payment/domain guidance, "
+            "three AI Store Agent drafts, launch readiness, PDF downloads, and support."
         ),
         "Pro": (
-            "Pro unlocks AI Store Builder, Shopify draft product creation, "
-            "Canva briefs and drafts where supported, shipping/payment/domain "
-            "guidance, and launch package tools."
+            "Upgrade to Pro to create Shopify draft products, generate full Canva branding "
+            "briefs, use email marketing, receive app recommendations, and open the launch package."
         ),
         "Premium Build": (
-            "Premium Build unlocks the full AI Store Agent workflow, advanced "
-            "product sourcing, higher Shopify draft-product limits, and the "
-            "advanced launch package."
+            "Upgrade to Premium Build for the full AI Store Agent, advanced app connection "
+            "drafts and safe applying, higher Shopify/email limits, priority support, "
+            "and the premium launch package PDF."
         )
     }
 
     return (
         f"This feature requires the {package_name} package. "
         f"{package_messages.get(package_name, '')} "
+        "Your current plan includes guidance and drafts, but this action requires a higher plan. "
         "Review the available packages to upgrade your account."
     )
 
@@ -2721,6 +2765,12 @@ USAGE_LABELS = {
     "business_plan": "business plan generation",
     "shopify_plan": "Shopify setup plan generation",
     "product_research": "AI Product Finder research reports",
+    "pricing_advice": "pricing advice reports",
+    "supplier_guide": "supplier guides",
+    "payment_guide": "payment setup guides",
+    "domain_guide": "domain and DNS guides",
+    "email_campaign": "email campaign drafts",
+    "app_action_draft": "advanced app action drafts",
     "store_agent_task": "AI Store Agent task drafts",
     "shopify_product": "Shopify product creation",
     "canva_branding": "Canva branding package generation",
@@ -2864,6 +2914,18 @@ def get_usage_summary(user_id):
         "product_research_limit": (
             package_limits.get("product_research", {}).get("limit")
         ),
+        "pricing_advice": counts["pricing_advice"],
+        "pricing_advice_limit": package_limits.get("pricing_advice", {}).get("limit"),
+        "supplier_guides": counts["supplier_guide"],
+        "supplier_guide_limit": package_limits.get("supplier_guide", {}).get("limit"),
+        "payment_guides": counts["payment_guide"],
+        "payment_guide_limit": package_limits.get("payment_guide", {}).get("limit"),
+        "domain_guides": counts["domain_guide"],
+        "domain_guide_limit": package_limits.get("domain_guide", {}).get("limit"),
+        "email_campaigns": counts["email_campaign"],
+        "email_campaign_limit": package_limits.get("email_campaign", {}).get("limit"),
+        "app_action_drafts": counts["app_action_draft"],
+        "app_action_draft_limit": package_limits.get("app_action_draft", {}).get("limit"),
         "store_agent_tasks": counts["store_agent_task"],
         "store_agent_task_limit": (
             package_limits.get("store_agent_task", {}).get("limit")
@@ -5602,6 +5664,7 @@ def dashboard():
             request.args.get("package_required")
         ),
         current_package=current_package,
+        current_plan_details=PLAN_DETAILS.get(current_package, {}),
         pro_package=user_package_at_least(user_id, "Pro"),
         premium_build=user_package_at_least(user_id, "Premium Build"),
         is_admin=is_admin_user()
@@ -5986,7 +6049,15 @@ def build_center():
         "Shopify Store Draft",
         "Canva Design Briefs",
         "Canva Connection",
-        "Canva Design Drafts"
+        "Canva Design Drafts",
+        "Email Marketing Assistant",
+        "App Recommendations"
+    }
+    premium_features = {
+        "App Connections",
+        "Marketing Drafts",
+        "Design Drafts",
+        "Website/Store Drafts"
     }
 
     for item in build_items:
@@ -5998,6 +6069,16 @@ def build_center():
             item["url"] = "/pricing"
             item["action"] = "Upgrade to Pro"
             item["secondary_url"] = ""
+            item["required_plan"] = "Pro"
+        elif (
+            item["title"] in premium_features
+            and not user_package_at_least(user_id, "Premium Build")
+        ):
+            item["status"] = "Locked"
+            item["url"] = "/pricing"
+            item["action"] = "Upgrade to Premium Build"
+            item["secondary_url"] = ""
+            item["required_plan"] = "Premium Build"
 
     next_recommended_action = next(
         item
@@ -6145,12 +6226,27 @@ def build_center():
         {
             "number": "17",
             "title": "Launch Package",
-            "status": status_for(user_package_at_least(user_id, "Premium Build") and launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
+            "status": status_for(user_package_at_least(user_id, "Pro") and launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
             "description": "Bundle strategy, research, store assets, branding, and next steps into one package.",
-            "url": "/launch_package" if user_package_at_least(user_id, "Premium Build") else "/pricing",
-            "action": "Open Package" if user_package_at_least(user_id, "Premium Build") else "Unlock Premium"
+            "url": "/launch_package" if user_package_at_least(user_id, "Pro") else "/pricing",
+            "action": "Open Package" if user_package_at_least(user_id, "Pro") else "Upgrade to Pro"
         }
     ]
+
+    roadmap_requirements = {
+        "Store Draft": "Pro", "Shopify Assets": "Pro", "Canva Branding": "Pro",
+        "Email Marketing": "Pro", "App Recommendations": "Pro", "Launch Package": "Pro",
+        "App Connections": "Premium Build", "Marketing Drafts": "Premium Build",
+        "Design Drafts": "Premium Build", "Website/Store Drafts": "Premium Build"
+    }
+    for step in roadmap_steps:
+        required_plan = roadmap_requirements.get(step["title"], "Starter")
+        step["required_plan"] = required_plan
+        step["unlocked"] = user_package_at_least(user_id, required_plan)
+        if not step["unlocked"]:
+            step["status"] = "Locked"
+            step["url"] = "/pricing"
+            step["action"] = f"Upgrade to {required_plan}"
 
     return render_template(
         "build_center.html",
@@ -6160,6 +6256,7 @@ def build_center():
         total_steps=total_steps,
         next_recommended_action=next_recommended_action,
         current_package=current_package,
+        current_plan_details=PLAN_DETAILS.get(current_package, {}),
         shopify_connected=shopify_connected,
         canva_connected=canva_connected,
         pro_package=user_package_at_least(user_id, "Pro"),
@@ -6422,7 +6519,8 @@ def ai_store_agent():
             and get_canva_connection(user_id)[2] == "connected"
         ),
         connected_app_count=len(connected_apps),
-        pending_app_draft_count=sum(1 for draft in app_drafts if not draft[7])
+        pending_app_draft_count=sum(1 for draft in app_drafts if not draft[7]),
+        current_package=get_user_package(user_id) or "Starter"
     )
 
 
@@ -7218,18 +7316,17 @@ def launch_package():
 
     user_id = session["user_id"]
 
-    if not user_package_at_least(user_id, "Premium Build"):
-        return package_access_redirect("Premium Build")
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro")
 
     if usage_limit_reached(user_id, "launch_package"):
         return usage_limit_redirect("launch_package")
 
     send_launch_package_email_once(user_id)
 
-    response = render_template(
-        "launch_package.html",
-        **get_launch_package_data(user_id)
-    )
+    launch_data = get_launch_package_data(user_id)
+    launch_data["premium_build"] = user_package_at_least(user_id, "Premium Build")
+    response = render_template("launch_package.html", **launch_data)
 
     log_usage(user_id, "launch_package")
 
@@ -7520,6 +7617,7 @@ def settings():
         "settings.html",
         email=get_user_email(user_id),
         current_package=get_user_package(user_id) or "No active package",
+        current_plan_details=PLAN_DETAILS.get(get_user_package(user_id), {}),
         latest_payment=latest_payment,
         usage_summary=get_usage_summary(user_id),
         settings=get_user_settings(user_id),
@@ -7527,6 +7625,7 @@ def settings():
         shopify_connection=get_shopify_connection(user_id),
         canva_connection=get_canva_connection(user_id),
         connected_apps=get_connected_app_summaries(user_id),
+        pro_package=user_package_at_least(user_id, "Pro"),
         premium_build=user_package_at_least(user_id, "Premium Build")
     )
 
@@ -7732,6 +7831,8 @@ def app_connection_agent():
     if "user_id" not in session:
         return redirect("/login")
     user_id = session["user_id"]
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro")
     drafts = get_app_action_drafts(user_id)
     return render_template(
         "app_connection_agent.html",
@@ -7739,7 +7840,9 @@ def app_connection_agent():
         connected_apps=get_connected_app_summaries(user_id),
         recommendations=get_app_recommendations(user_id),
         pending_drafts=[draft for draft in drafts if not draft[7]],
-        all_drafts=drafts
+        all_drafts=drafts,
+        premium_actions=user_package_at_least(user_id, "Premium Build"),
+        current_package=get_user_package(user_id) or "Starter"
     )
 
 
@@ -7748,6 +7851,8 @@ def recommend_apps():
     if "user_id" not in session:
         return redirect("/login")
     user_id = session["user_id"]
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro")
     return render_template(
         "app_recommendations.html",
         onboarding=get_user_onboarding(user_id),
@@ -7759,6 +7864,8 @@ def recommend_apps():
 def generate_app_recommendations():
     if "user_id" not in session:
         return redirect("/login")
+    if not user_package_at_least(session["user_id"], "Pro"):
+        return package_access_redirect("Pro")
     if request.method == "GET":
         return redirect("/recommend_apps")
 
@@ -7824,6 +7931,8 @@ Skill level: {data['skill_level']}
 def app_connection_guide(platform):
     if "user_id" not in session:
         return redirect("/login")
+    if not user_package_at_least(session["user_id"], "Pro"):
+        return package_access_redirect("Pro")
     platform = normalize_app_platform(platform)
     if platform not in APP_CATALOG:
         return redirect("/app_connection_agent?app_error=unsupported")
@@ -7832,7 +7941,8 @@ def app_connection_guide(platform):
         platform=platform,
         app_info=APP_CATALOG[platform],
         status=get_app_connection_status(session["user_id"], platform),
-        connection=bool(get_app_connection(session["user_id"], platform)) if APP_CATALOG[platform]["connection_mode"] == "manual" else False
+        connection=bool(get_app_connection(session["user_id"], platform)) if APP_CATALOG[platform]["connection_mode"] == "manual" else False,
+        premium_actions=user_package_at_least(session["user_id"], "Premium Build")
     )
 
 
@@ -7850,6 +7960,8 @@ def connect_app(platform):
         return redirect("/shopify_settings")
     if mode == "guidance":
         return redirect(f"/app_connection_guide/{platform}")
+    if not user_package_at_least(session["user_id"], "Premium Build"):
+        return package_access_redirect("Premium Build", f"/app_connection_guide/{platform}")
     if request.method == "GET":
         return redirect(f"/app_connection_guide/{platform}")
 
@@ -7915,6 +8027,10 @@ Safety rules:
 def create_app_action_draft(platform, action_type):
     if "user_id" not in session:
         return redirect("/login")
+    if not user_package_at_least(session["user_id"], "Premium Build"):
+        return package_access_redirect("Premium Build", "/app_connection_agent")
+    if usage_limit_reached(session["user_id"], "app_action_draft"):
+        return usage_limit_redirect("app_action_draft", "/app_connection_agent")
     platform = normalize_app_platform(platform)
     action_type = (action_type or "").strip().lower()
     if platform not in APP_CATALOG or action_type not in APP_ACTION_TYPES or action_type not in APP_CATALOG[platform]["draft_actions"]:
@@ -7937,6 +8053,7 @@ def create_app_action_draft(platform, action_type):
         session["user_id"], platform, action_type, title,
         response.choices[0].message.content.strip()
     )
+    log_usage(session["user_id"], "app_action_draft")
     return redirect(f"/review_app_action_draft/{draft_id}")
 
 
@@ -8000,6 +8117,8 @@ def apply_app_action_draft(draft_id):
     if "user_id" not in session:
         return redirect("/login")
     user_id = session["user_id"]
+    if not user_package_at_least(user_id, "Premium Build"):
+        return package_access_redirect("Premium Build", f"/review_app_action_draft/{draft_id}")
     draft = get_app_action_draft(user_id, draft_id)
     if not draft:
         return redirect("/app_connection_agent")
@@ -8047,10 +8166,14 @@ def email_marketing():
         return redirect("/login")
 
     user_id = session["user_id"]
+    if not user_package_at_least(user_id, "Pro"):
+        return package_access_redirect("Pro")
     return render_template(
         "email_marketing.html",
         onboarding=get_user_onboarding(user_id),
-        campaigns=get_email_campaigns(user_id)
+        campaigns=get_email_campaigns(user_id),
+        current_package=get_user_package(user_id) or "Starter",
+        usage_summary=get_usage_summary(user_id)
     )
 
 
@@ -8059,10 +8182,14 @@ def generate_email_campaign():
     if "user_id" not in session:
         return redirect("/login")
 
+    if not user_package_at_least(session["user_id"], "Pro"):
+        return package_access_redirect("Pro")
     if request.method == "GET":
         return redirect("/email_marketing")
 
     user_id = session["user_id"]
+    if usage_limit_reached(user_id, "email_campaign"):
+        return usage_limit_redirect("email_campaign", "/email_marketing")
     data = {
         "business_name": request.form.get("business_name", "").strip(),
         "business_type": request.form.get("business_type", "").strip(),
@@ -8132,6 +8259,7 @@ Tone: {data["tone"]}
         data,
         response.choices[0].message.content.strip()
     )
+    log_usage(user_id, "email_campaign")
     return redirect(f"/email_campaign/{campaign_id}?email_notice=created")
 
 
@@ -8156,7 +8284,9 @@ def domain_helper():
     return render_template(
         "domain_helper.html",
         onboarding=get_user_onboarding(user_id),
-        guides=get_domain_guides(user_id)
+        guides=get_domain_guides(user_id),
+        current_package=get_user_package(user_id) or "Starter",
+        usage_summary=get_usage_summary(user_id)
     )
 
 
@@ -8169,6 +8299,8 @@ def generate_domain_advice():
         return redirect("/domain_helper")
 
     user_id = session["user_id"]
+    if usage_limit_reached(user_id, "domain_guide"):
+        return usage_limit_redirect("domain_guide", "/domain_helper")
     data = {
         "business_name": request.form.get("business_name", "").strip(),
         "preferred_domain": request.form.get("preferred_domain", "").strip(),
@@ -8245,6 +8377,7 @@ Already owns a domain: {data["owns_domain"]}
         data,
         response.choices[0].message.content.strip()
     )
+    log_usage(user_id, "domain_guide")
     return redirect(f"/domain_guide/{guide_id}?domain_notice=created")
 
 
@@ -8400,7 +8533,9 @@ def pricing_advisor():
     return render_template(
         "pricing_advisor.html",
         onboarding=get_user_onboarding(user_id),
-        advice_list=get_pricing_advice_list(user_id)
+        advice_list=get_pricing_advice_list(user_id),
+        current_package=get_user_package(user_id) or "Starter",
+        usage_summary=get_usage_summary(user_id)
     )
 
 
@@ -8413,6 +8548,8 @@ def generate_pricing_advice():
         return redirect("/pricing_advisor")
 
     user_id = session["user_id"]
+    if usage_limit_reached(user_id, "pricing_advice"):
+        return usage_limit_redirect("pricing_advice", "/pricing_advisor")
     data = {
         "business_idea": request.form.get("business_idea", "").strip(),
         "product_type": request.form.get("product_type", "").strip(),
@@ -8472,6 +8609,7 @@ Pricing style: {data["pricing_style"]}
         return redirect("/pricing_advisor?pricing_error=ai_response")
 
     save_pricing_advice(user_id, data, response.choices[0].message.content.strip())
+    log_usage(user_id, "pricing_advice")
     return redirect("/pricing_advisor?pricing_notice=created")
 
 
@@ -8485,7 +8623,9 @@ def payment_guide():
     return render_template(
         "payment_guide.html",
         onboarding=get_user_onboarding(user_id),
-        guides=get_payment_guides(user_id)
+        guides=get_payment_guides(user_id),
+        current_package=get_user_package(user_id) or "Starter",
+        usage_summary=get_usage_summary(user_id)
     )
 
 
@@ -8498,6 +8638,8 @@ def generate_payment_guide():
         return redirect("/payment_guide")
 
     user_id = session["user_id"]
+    if usage_limit_reached(user_id, "payment_guide"):
+        return usage_limit_redirect("payment_guide", "/payment_guide")
     payment_options = request.form.getlist("payment_options")
     data = {
         "country": request.form.get("country", "").strip(),
@@ -8555,6 +8697,7 @@ Need international payments: {data["international_payments"]}
         return redirect("/payment_guide?payment_error=ai_response")
 
     save_payment_guide(user_id, data, response.choices[0].message.content.strip())
+    log_usage(user_id, "payment_guide")
     return redirect("/payment_guide?payment_notice=created")
 
 
@@ -8568,7 +8711,9 @@ def supplier_finder():
     return render_template(
         "supplier_finder.html",
         onboarding=get_user_onboarding(user_id),
-        recommendations=get_supplier_recommendations(user_id)
+        recommendations=get_supplier_recommendations(user_id),
+        current_package=get_user_package(user_id) or "Starter",
+        usage_summary=get_usage_summary(user_id)
     )
 
 
@@ -8581,6 +8726,8 @@ def generate_supplier_recommendations():
         return redirect("/supplier_finder")
 
     user_id = session["user_id"]
+    if usage_limit_reached(user_id, "supplier_guide"):
+        return usage_limit_redirect("supplier_guide", "/supplier_finder")
     data = {
         "business_idea": request.form.get("business_idea", "").strip(),
         "product_type": request.form.get("product_type", "").strip(),
@@ -8655,6 +8802,7 @@ Willing to hold inventory: {data["inventory"]}
         return redirect("/supplier_finder?supplier_error=ai_response")
 
     save_supplier_recommendations(user_id, data, response.choices[0].message.content.strip())
+    log_usage(user_id, "supplier_guide")
     return redirect("/supplier_finder?supplier_notice=created")
 
 
@@ -8740,7 +8888,12 @@ def project_detail(project_id):
 
 @app.route("/pricing")
 def pricing():
-    return render_template("pricing.html")
+    current_package = get_user_package(session["user_id"]) if "user_id" in session else None
+    return render_template(
+        "pricing.html",
+        current_package=current_package,
+        plan_details=PLAN_DETAILS
+    )
 
 
 @app.route("/service-worker.js")
@@ -8925,7 +9078,7 @@ def paystack_checkout():
     data = {
         "email": email,
         "amount": amount,
-        "currency": "ZAR",
+        "currency": plan["currency"],
         "callback_url": (
             request.host_url
             + "payment_success?"
@@ -8933,7 +9086,9 @@ def paystack_checkout():
         ),
         "metadata": {
             "plan": plan_slug,
-            "package_name": plan["package_name"]
+            "package_name": plan["package_name"],
+            "user_id": session["user_id"],
+            "email": email
         }
     }
 

@@ -44,7 +44,7 @@
             </div>
 
             <div class="card-actions">
-                <a href="/download_launch_package" class="primary-button">Download PDF</a>
+                {% if premium_build %}<a href="/download_launch_package" class="primary-button">Download Premium PDF</a>{% else %}<a href="/pricing" class="primary-button">Upgrade for Premium PDF</a>{% endif %}
                 <a href="/build_center" class="secondary-button">Back to Build Center</a>
             </div>
         </div>
@@ -239,7 +239,7 @@
 
         <div class="plan-actions">
             <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
-            <a href="/download_launch_package" class="secondary-button">Download PDF</a>
+            {% if premium_build %}<a href="/download_launch_package" class="secondary-button">Download Premium PDF</a>{% else %}<a href="/pricing" class="secondary-button">Upgrade for Premium PDF</a>{% endif %}
             <a href="/build_center" class="primary-button">Open Build Center</a>
         </div>
 

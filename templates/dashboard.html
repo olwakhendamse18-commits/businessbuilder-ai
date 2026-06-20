@@ -34,7 +34,7 @@
         <a href="/support">Support</a>
         <a href="/business_workflow">Business Workflow</a>
         <a href="/business_workflow">Business Plans</a>
-        {% if premium_build %}
+        {% if pro_package %}
             <a href="/launch_package">Launch Package</a>
         {% endif %}
         <a href="/settings">Settings</a>
@@ -127,15 +127,16 @@
 
             <article class="card dashboard-summary-card">
                 <p class="eyebrow">Current Package</p>
-                <h3>{{ current_package }}</h3>
+                <h3>{{ current_package or "No active plan" }}</h3>
+                <p>{{ current_plan_details.get("best_for", "Choose a package that matches your build stage.") }}</p>
                 <p>
                     {% if paid %}
-                        {{ latest_payment[2]|title if latest_payment else "Active" }} package access.
+                        <strong>Payment status:</strong> {{ latest_payment[2]|title if latest_payment else "Active" }}.
                     {% else %}
                         Choose a package to unlock the guided business workspace.
                     {% endif %}
                 </p>
-                <a href="/settings" class="secondary-button">View Account Settings</a>
+                <div class="card-actions"><a href="/settings" class="secondary-button">View Account Settings</a>{% if current_package != "Premium Build" %}<a href="/pricing" class="primary-button">View Upgrade Options</a>{% endif %}</div>
             </article>
 
             <article class="card dashboard-summary-card">

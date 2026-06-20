@@ -34,7 +34,9 @@
             <p class="eyebrow">Pricing Guidance</p>
             <h1>Pricing Advisor</h1>
             <p>Estimate a realistic price range, margin, break-even point, competitor positioning, and first price to test.</p>
+            <p class="plan-access-line"><strong>{{ current_package }}</strong> plan · {{ usage_summary["pricing_advice"] }} of {{ usage_summary["pricing_advice_limit"] if usage_summary["pricing_advice_limit"] is not none else "fair-use" }} reports used.</p>
         </div>
+        {% if request.args.get("usage_limit") == "pricing_advice" %}<p class="form-notice">You reached your current pricing-advice limit. Upgrade for more reports.</p>{% endif %}
 
         {% if request.args.get("pricing_notice") == "created" %}
             <p class="success-notice">Pricing advice generated.</p>

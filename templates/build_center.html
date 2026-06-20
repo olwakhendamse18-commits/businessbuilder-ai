@@ -36,7 +36,7 @@
         <a href="/store_builder">AI Store Builder</a>
         <a href="/business_workflow">Business Workflow</a>
         <a href="/business_workflow">Business Plans</a>
-        {% if premium_build %}
+        {% if pro_package %}
             <a href="/launch_package">Launch Package</a>
         {% endif %}
         <a href="/settings">Settings</a>
@@ -50,6 +50,7 @@
             <p class="eyebrow">Business Progress</p>
             <h1>Build Center</h1>
             <p>Track your complete business creation journey with your {{ current_package }} package.</p>
+            <p class="plan-access-line">{{ current_plan_details.get("best_for", "Your plan controls generation limits and advanced actions.") }}</p>
         </div>
 
         <section class="project-form">
@@ -143,6 +144,7 @@
                     <article class="roadmap-step">
                         <div class="roadmap-icon">{{ step["number"] }}</div>
                         <p class="build-status {{ step['status']|lower|replace(' ', '-') }}">{{ step["status"] }}</p>
+                        <p class="plan-requirement-badge">{{ step["required_plan"] }} plan</p>
                         <h3>{{ step["title"] }}</h3>
                         <p>{{ step["description"] }}</p>
                         <a href="{{ step['url'] }}" class="secondary-button">{{ step["action"] }}</a>
@@ -159,11 +161,11 @@
             </div>
 
             <div class="card-actions">
-                {% if premium_build %}
+                {% if pro_package %}
                     <a href="/launch_package" class="primary-button">View Launch Package</a>
-                    <a href="/download_launch_package" class="secondary-button">Download Launch Package PDF</a>
+                    {% if premium_build %}<a href="/download_launch_package" class="secondary-button">Download Premium Launch PDF</a>{% else %}<a href="/pricing" class="secondary-button">Upgrade for Premium PDF</a>{% endif %}
                 {% else %}
-                    <a href="/pricing" class="primary-button">Unlock Launch Package with Premium Build</a>
+                    <a href="/pricing" class="primary-button">Unlock Launch Package with Pro</a>
                 {% endif %}
             </div>
         </section>
@@ -174,6 +176,7 @@
                     <p class="build-status {{ item['status']|lower|replace(' ', '-') }}">
                         {{ item["status"] }}
                     </p>
+                    {% if item.get("required_plan") %}<p class="plan-requirement-badge">Requires {{ item["required_plan"] }}</p>{% endif %}
 
                     <h3>{{ item["title"] }}</h3>
                     <p>{{ item["description"] }}</p>

@@ -34,7 +34,9 @@
             <p class="eyebrow">Supplier + Platform Choices</p>
             <h1>Supplier Finder</h1>
             <p>Compare supplier and platform options based on your business idea, budget, country, risk level, and product type.</p>
+            <p class="plan-access-line"><strong>{{ current_package }}</strong> plan · {{ usage_summary["supplier_guides"] }} of {{ usage_summary["supplier_guide_limit"] if usage_summary["supplier_guide_limit"] is not none else "fair-use" }} guides used.</p>
         </div>
+        {% if request.args.get("usage_limit") == "supplier_guide" %}<p class="form-notice">You reached your current supplier-guide limit. Upgrade for more recommendations.</p>{% endif %}
 
         {% if request.args.get("supplier_notice") == "created" %}
             <p class="success-notice">Supplier recommendations generated.</p>

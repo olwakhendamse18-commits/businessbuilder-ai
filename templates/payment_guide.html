@@ -33,7 +33,9 @@
             <p class="eyebrow">Payment Setup</p>
             <h1>Payment Guide</h1>
             <p>Compare PayPal, Paystack, Shopify Payments, EFT, card payments, cash on delivery, mobile money, and international payment options safely.</p>
+            <p class="plan-access-line"><strong>{{ current_package }}</strong> plan · {{ usage_summary["payment_guides"] }} of {{ usage_summary["payment_guide_limit"] if usage_summary["payment_guide_limit"] is not none else "fair-use" }} guides used.</p>
         </div>
+        {% if request.args.get("usage_limit") == "payment_guide" %}<p class="form-notice">You reached your current payment-guide limit. Upgrade for more guidance.</p>{% endif %}
 
         {% if request.args.get("payment_notice") == "created" %}
             <p class="success-notice">Payment guide generated.</p>
