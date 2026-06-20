@@ -1,3 +1,7 @@
+{% if session.get("user_id") %}
+    {% include "_ai_assistant_widget.html" %}
+{% endif %}
+
 <script>
     (function() {
         const sidebar = document.querySelector(".sidebar");
