@@ -95,6 +95,36 @@
         <section class="settings-grid">
             <article class="project-form settings-section">
                 <p class="eyebrow">Integrations</p>
+                <h2>App Connection Agent</h2>
+                <p>Connect approved apps with permission, compare suitable platforms, and create drafts that stay under your review.</p>
+                <div class="generator-actions">
+                    <a href="/app_connection_agent" class="primary-button">Open App Connection Agent</a>
+                    <a href="/recommend_apps" class="secondary-button">Recommend Apps</a>
+                </div>
+            </article>
+            <article class="project-form settings-section">
+                <p class="eyebrow">Email Integrations</p>
+                <h2>Email marketing platforms</h2>
+                <p>Configure Brevo, Mailchimp, or Klaviyo with an encrypted API key, or use Shopify Email through the existing Shopify connection.</p>
+                <div class="generator-actions"><a href="/app_connection_guide/brevo" class="secondary-button">Brevo</a><a href="/app_connection_guide/mailchimp" class="secondary-button">Mailchimp</a><a href="/app_connection_guide/klaviyo" class="secondary-button">Klaviyo</a></div>
+            </article>
+        </section>
+
+        <section class="project-form settings-section">
+            <p class="eyebrow">Connected Apps</p>
+            <h2>Connection summary</h2>
+            <div class="connected-app-list">
+                {% for app in connected_apps %}
+                    <div><span class="connection-status connected">{{ app.status }}</span><strong>{{ app.name }}</strong><span>{{ app.account_name }}</span><a href="/app_connection_guide/{{ app.platform }}">Manage</a></div>
+                {% else %}
+                    <p>No apps are connected yet. Draft guidance remains available without a connection.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="settings-grid">
+            <article class="project-form settings-section">
+                <p class="eyebrow">Integrations</p>
                 <h2>Shopify</h2>
                 {% if shopify_connection and shopify_connection[3] == "connected" %}
                     <p class="connection-status connected">Connected</p>

@@ -563,6 +563,70 @@ a {
     line-height: 1.55;
 }
 
+.app-category-section {
+    margin: 26px 0;
+}
+
+.app-card-grid,
+.compact-card-grid {
+    display: grid;
+    gap: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.app-connection-card {
+    align-content: start;
+    display: grid;
+    gap: 10px;
+}
+
+.app-connection-card .card-actions {
+    align-self: end;
+}
+
+.permission-check {
+    align-items: flex-start;
+    background: color-mix(in srgb, var(--surface-soft) 72%, var(--surface));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    display: flex;
+    gap: 10px;
+    margin: 14px 0;
+    padding: 14px;
+}
+
+.permission-check input {
+    flex: 0 0 auto;
+    margin-top: 4px;
+    min-height: auto;
+    width: auto;
+}
+
+.connected-app-list {
+    display: grid;
+    gap: 12px;
+}
+
+.connected-app-list > div {
+    align-items: center;
+    background: color-mix(in srgb, var(--surface-soft) 70%, var(--surface));
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: auto 1fr 1fr auto;
+    padding: 14px;
+}
+
+.safety-rules-list li {
+    margin-bottom: 10px;
+}
+
+.final-confirmation {
+    border-color: color-mix(in srgb, var(--warning) 42%, var(--border));
+    margin-top: 24px;
+}
+
 .connection-status {
     display: inline-flex;
     padding: 8px 12px;
@@ -2644,6 +2708,11 @@ html[data-theme="light"] .business-plan-document-header h2 {
         grid-template-columns: 1fr;
     }
 
+    .connected-app-list > div {
+        align-items: start;
+        grid-template-columns: 1fr;
+    }
+
     .section-heading-row {
         display: block;
     }
@@ -3314,6 +3383,7 @@ a {
 
 .build-status.approved,
 .build-status.applied,
+.build-status.applied-safely,
 .build-status.completed {
     background: color-mix(in srgb, var(--success) 15%, var(--surface));
     color: #0f6b33;

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>App Recommendations - BusinessBuilder AI</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" type="image/png" href="/static/favicon.png">{% include "_pwa_head.html" %}</head>
+<body><div class="dashboard">
+<aside class="sidebar"><div class="brand"><img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image"><div><h2>BusinessBuilder AI</h2><p>App recommendations</p></div></div><a href="/dashboard">Dashboard</a><a href="/app_connection_agent">App Connection Agent</a><a href="/build_center">Build Center</a><a href="/settings">Settings</a></aside>
+<main class="dashboard-main">{% include "_settings_menu.html" %}
+<div class="dashboard-header"><p class="eyebrow">Platform Selection</p><h1>Recommend apps for my business</h1><p>Compare practical platforms by budget, country, business type, goal, selling platform, and skill level. Provider prices and availability must be verified directly.</p></div>
+{% if request.args.get("app_notice") == "created" %}<p class="success-notice">App recommendations generated and saved.</p>{% endif %}
+{% if request.args.get("app_error") == "missing" %}<p class="form-notice">Enter your business type, country, and monthly budget.</p>{% elif request.args.get("app_error") == "ai_response" %}<p class="form-notice">Recommendations could not be generated. Please try again.</p>{% endif %}
+<section class="project-form tool-form-card"><h2>Tell the AI what you need</h2><form method="POST" action="/generate_app_recommendations">
+<label>Business type</label><input name="business_type" required value="{{ onboarding[1] if onboarding else '' }}" placeholder="Example: Online fashion store">
+<label>Country/market</label><input name="country" required value="{{ onboarding[2] if onboarding else '' }}" placeholder="Example: South Africa">
+<label>Monthly budget</label><select name="budget"><option value="very low">Very low</option><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
+<label>Main goal</label><select name="goal"><option value="email marketing">Email marketing</option><option value="create ads">Create ads</option><option value="create designs">Create designs</option><option value="build website">Build website</option><option value="build Shopify store">Build Shopify store</option><option value="automate workflow">Automate workflow</option><option value="not sure">Not sure</option></select>
+<label>Selling platform</label><select name="selling_platform"><option value="Shopify">Shopify</option><option value="website">Website</option><option value="social media">Social media</option><option value="marketplace">Marketplace</option><option value="not sure">Not sure</option></select>
+<label>Skill level</label><select name="skill_level"><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select>
+<button type="submit">Generate App Recommendations</button></form></section>
+<section><div class="section-heading-row"><div><p class="eyebrow">Saved Recommendations</p><h2>Previous platform comparisons</h2></div><a href="/app_connection_agent" class="secondary-button">Open App Connection Agent</a></div><div class="cards">
+{% for item in recommendations %}<article class="card advisor-output-card"><p class="eyebrow">{{ item[4] }} · {{ item[3] }} budget</p><h3>{{ item[1] }} in {{ item[2] }}</h3><p><strong>Selling platform:</strong> {{ item[5] }}</p><pre class="business-plan-output">{{ item[6] }}</pre></article>{% else %}<article class="card empty-card"><h3>No recommendations yet</h3><p>Complete the form to compare suitable apps.</p></article>{% endfor %}
+</div></section></main></div>{% include "_app_scripts.html" %}</body></html>

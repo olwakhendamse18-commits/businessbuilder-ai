@@ -104,6 +104,22 @@
         </section>
         <p class="form-help integration-guidance">Connections are optional for guidance and draft generation. They only enable supported actions in the connected service.</p>
 
+        <section class="project-form">
+            <div class="section-heading-row">
+                <div><p class="eyebrow">App Connection Agent</p><h2>Connected platforms and approval drafts</h2></div>
+                <a href="/app_connection_agent" class="primary-button">Open App Connection Agent</a>
+            </div>
+            <p>The AI gives advice, recommends platforms, creates drafts, and helps prepare launch actions. You review and approve before any supported major action.</p>
+            <div class="requirement-grid">
+                <div class="requirement-item {{ 'ready' if connected_app_count else 'optional' }}"><strong>{{ connected_app_count }}</strong><span>Connected apps</span></div>
+                <div class="requirement-item optional"><strong>Marketing</strong><span>Email and ad-plan drafts</span></div>
+                <div class="requirement-item optional"><strong>Design</strong><span>Canva-ready briefs</span></div>
+                <div class="requirement-item optional"><strong>Website / Store</strong><span>Page, copy, and product drafts</span></div>
+                <div class="requirement-item {{ 'missing' if pending_app_draft_count else 'ready' }}"><strong>{{ pending_app_draft_count }}</strong><span>Approval drafts waiting</span></div>
+            </div>
+            <div class="generator-actions"><a href="/recommend_apps" class="secondary-button">Recommend Platforms</a><a href="/app_connection_agent" class="secondary-button">Review Approval Drafts</a></div>
+        </section>
+
         <section class="agent-mode-grid">
             <div class="agent-mode-card">
                 <p class="eyebrow">Advice Mode</p>

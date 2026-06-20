@@ -60,6 +60,8 @@ Do not scrape websites or claim live access to Amazon, Alibaba, AliExpress, Take
 Do not collect card numbers, bank passwords, ID numbers, private banking credentials, API keys, or payment account secrets.
 Do not automatically create PayPal, Paystack, Shopify payment, supplier, domain, email-marketing, or subscription accounts.
 Do not send mass marketing emails without an official integration and explicit user approval.
+Never connect a third-party platform without explicit user permission, and never ask for a platform password.
+Create drafts first and require review, approval, and separate final confirmation before supported external actions.
 Tell users to verify provider requirements, fees, policies, taxes, customs, supplier quality, shipping, returns, and legal rules directly with the provider.
 """
 
@@ -72,6 +74,33 @@ CANVA_SCOPES = os.getenv(
     "CANVA_SCOPES",
     "design:meta:read design:content:write profile:read"
 )
+
+APP_CATALOG = {
+    "brevo": {"name": "Brevo", "category": "Email marketing", "best_for": "Beginner-friendly email and SMS campaign planning", "budget_fit": "Very low to medium", "connection_mode": "manual", "draft_actions": ["email_campaign"]},
+    "mailchimp": {"name": "Mailchimp", "category": "Email marketing", "best_for": "Beginner-friendly newsletters and email campaigns", "budget_fit": "Low to medium", "connection_mode": "manual", "draft_actions": ["email_campaign"]},
+    "klaviyo": {"name": "Klaviyo", "category": "Email marketing", "best_for": "Ecommerce segmentation and automation planning", "budget_fit": "Medium to high", "connection_mode": "manual", "draft_actions": ["email_campaign"]},
+    "shopify_email": {"name": "Shopify Email", "category": "Email marketing", "best_for": "Email marketing for Shopify-first businesses", "budget_fit": "Very low to medium", "connection_mode": "shopify", "draft_actions": ["email_campaign"]},
+    "canva": {"name": "Canva", "category": "Design", "best_for": "Branding, social graphics, banners, and design briefs", "budget_fit": "Very low to high", "connection_mode": "canva", "draft_actions": ["canva_design_brief"]},
+    "shopify": {"name": "Shopify", "category": "Store/ecommerce", "best_for": "Products, collections, pages, and ecommerce store assets", "budget_fit": "Low to high", "connection_mode": "shopify", "draft_actions": ["shopify_product_draft", "website_copy"]},
+    "webflow": {"name": "Webflow", "category": "Website builder", "best_for": "Professional visual websites and CMS page planning", "budget_fit": "Medium to high", "connection_mode": "guidance", "draft_actions": ["webflow_page_draft", "website_copy"]},
+    "wordpress": {"name": "WordPress / WooCommerce", "category": "Website builder", "best_for": "Flexible websites and ecommerce guidance", "budget_fit": "Low to high", "connection_mode": "guidance", "draft_actions": ["website_copy"]},
+    "wix": {"name": "Wix", "category": "Website builder", "best_for": "Beginner-friendly website planning", "budget_fit": "Low to medium", "connection_mode": "guidance", "draft_actions": ["website_copy"]},
+    "meta_ads": {"name": "Meta Ads", "category": "Ads", "best_for": "Facebook and Instagram ad-copy and campaign-plan drafts", "budget_fit": "Medium to high", "connection_mode": "guidance", "draft_actions": ["social_ad_draft"]},
+    "google_ads": {"name": "Google Ads", "category": "Ads", "best_for": "Search-ad keyword and campaign-plan drafts", "budget_fit": "Medium to high", "connection_mode": "guidance", "draft_actions": ["social_ad_draft"]},
+    "tiktok_ads": {"name": "TikTok Ads", "category": "Ads", "best_for": "Short-form creative and campaign-plan drafts", "budget_fit": "Medium to high", "connection_mode": "guidance", "draft_actions": ["social_ad_draft"]},
+    "zapier": {"name": "Zapier", "category": "Automation", "best_for": "No-code workflow automation plans", "budget_fit": "Low to high", "connection_mode": "guidance", "draft_actions": ["automation_plan"]},
+    "make": {"name": "Make", "category": "Automation", "best_for": "Visual multi-step automation plans", "budget_fit": "Low to high", "connection_mode": "guidance", "draft_actions": ["automation_plan"]}
+}
+
+APP_ACTION_TYPES = {
+    "email_campaign": "Email Campaign Draft",
+    "social_ad_draft": "Ad Copy and Campaign Plan",
+    "canva_design_brief": "Canva Design Brief",
+    "shopify_product_draft": "Shopify Product Draft",
+    "webflow_page_draft": "Webflow Page/CMS Draft",
+    "website_copy": "Website Copy Draft",
+    "automation_plan": "Automation Plan"
+}
 
 
 # -----------------------------
@@ -540,6 +569,53 @@ def init_db():
     """)
 
     execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS app_recommendations (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            business_type TEXT,
+            country TEXT,
+            budget TEXT,
+            goal TEXT,
+            selling_platform TEXT,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS app_connections (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            platform TEXT NOT NULL,
+            category TEXT NOT NULL,
+            connection_status TEXT NOT NULL,
+            access_token_encrypted TEXT,
+            refresh_token_encrypted TEXT,
+            api_key_encrypted TEXT,
+            account_name TEXT,
+            scopes TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS app_action_drafts (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            platform TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            draft_content TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'Needs Approval',
+            approved INTEGER NOT NULL DEFAULT 0,
+            applied INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS business_projects (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -598,6 +674,21 @@ def init_db():
     cur.execute(sql("""
         CREATE INDEX IF NOT EXISTS idx_domain_guides_user
         ON domain_guides (user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_app_recommendations_user
+        ON app_recommendations (user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_app_connections_user_platform
+        ON app_connections (user_id, platform)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_app_action_drafts_user
+        ON app_action_drafts (user_id)
     """))
 
     cur.execute(sql("""
@@ -2129,6 +2220,318 @@ def get_domain_guide(user_id, guide_id):
     row = cur.fetchone()
     conn.close()
     return row
+
+
+def save_app_recommendation(user_id, data, content):
+    conn = db()
+    cur = conn.cursor()
+    values = (
+        user_id, data.get("business_type", ""), data.get("country", ""),
+        data.get("budget", ""), data.get("goal", ""),
+        data.get("selling_platform", ""), content
+    )
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO app_recommendations (
+                user_id, business_type, country, budget, goal,
+                selling_platform, content
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """), values)
+        recommendation_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO app_recommendations (
+                user_id, business_type, country, budget, goal,
+                selling_platform, content
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """), values)
+        recommendation_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return recommendation_id
+
+
+def get_app_recommendations(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, business_type, country, budget, goal,
+               selling_platform, content, created_at
+        FROM app_recommendations
+        WHERE user_id = ?
+        ORDER BY id DESC
+    """), (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def save_app_connection(user_id, platform, category, connection_data):
+    access_token = connection_data.get("access_token", "").strip()
+    refresh_token = connection_data.get("refresh_token", "").strip()
+    api_key = connection_data.get("api_key", "").strip()
+
+    encrypted_access_token = encrypt_token(access_token) if access_token else None
+    encrypted_refresh_token = encrypt_token(refresh_token) if refresh_token else None
+    encrypted_api_key = encrypt_token(api_key) if api_key else None
+
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id FROM app_connections
+        WHERE user_id = ? AND platform = ?
+        LIMIT 1
+    """), (user_id, platform))
+    existing = cur.fetchone()
+    values = (
+        category,
+        connection_data.get("connection_status", "configured"),
+        encrypted_access_token,
+        encrypted_refresh_token,
+        encrypted_api_key,
+        connection_data.get("account_name", "").strip(),
+        connection_data.get("scopes", "").strip()
+    )
+
+    if existing:
+        cur.execute(sql("""
+            UPDATE app_connections
+            SET category = ?, connection_status = ?,
+                access_token_encrypted = ?, refresh_token_encrypted = ?,
+                api_key_encrypted = ?, account_name = ?, scopes = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND platform = ?
+        """), values + (user_id, platform))
+        connection_id = existing[0]
+    elif using_postgres():
+        cur.execute(sql("""
+            INSERT INTO app_connections (
+                user_id, platform, category, connection_status,
+                access_token_encrypted, refresh_token_encrypted,
+                api_key_encrypted, account_name, scopes
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """), (user_id, platform) + values)
+        connection_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO app_connections (
+                user_id, platform, category, connection_status,
+                access_token_encrypted, refresh_token_encrypted,
+                api_key_encrypted, account_name, scopes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """), (user_id, platform) + values)
+        connection_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+    return connection_id
+
+
+def get_app_connections(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, platform, category, connection_status,
+               access_token_encrypted, refresh_token_encrypted,
+               api_key_encrypted, account_name, scopes, created_at, updated_at
+        FROM app_connections
+        WHERE user_id = ?
+        ORDER BY platform
+    """), (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_app_connection(user_id, platform):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, platform, category, connection_status,
+               access_token_encrypted, refresh_token_encrypted,
+               api_key_encrypted, account_name, scopes, created_at, updated_at
+        FROM app_connections
+        WHERE user_id = ? AND platform = ?
+        LIMIT 1
+    """), (user_id, platform))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def disconnect_app_connection(user_id, platform):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        DELETE FROM app_connections
+        WHERE user_id = ? AND platform = ?
+    """), (user_id, platform))
+    conn.commit()
+    conn.close()
+
+
+def create_app_action_draft_record(user_id, platform, action_type, title, content):
+    conn = db()
+    cur = conn.cursor()
+    values = (user_id, platform, action_type, title, content, "Needs Approval", 0, 0)
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO app_action_drafts (
+                user_id, platform, action_type, title, draft_content,
+                status, approved, applied
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """), values)
+        draft_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO app_action_drafts (
+                user_id, platform, action_type, title, draft_content,
+                status, approved, applied
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """), values)
+        draft_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return draft_id
+
+
+def get_app_action_drafts(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, platform, action_type, title, draft_content, status,
+               approved, applied, created_at, updated_at
+        FROM app_action_drafts
+        WHERE user_id = ?
+        ORDER BY id DESC
+    """), (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_app_action_draft(user_id, draft_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, platform, action_type, title, draft_content, status,
+               approved, applied, created_at, updated_at
+        FROM app_action_drafts
+        WHERE user_id = ? AND id = ?
+        LIMIT 1
+    """), (user_id, draft_id))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def update_app_action_draft_content(user_id, draft_id, content):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        UPDATE app_action_drafts
+        SET draft_content = ?, status = 'Needs Approval', approved = 0,
+            applied = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND id = ?
+    """), (content, user_id, draft_id))
+    conn.commit()
+    conn.close()
+
+
+def update_app_action_draft_status(user_id, draft_id, status, approved, applied):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        UPDATE app_action_drafts
+        SET status = ?, approved = ?, applied = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND id = ?
+    """), (status, int(bool(approved)), int(bool(applied)), user_id, draft_id))
+    conn.commit()
+    conn.close()
+
+
+def delete_app_action_draft_record(user_id, draft_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        DELETE FROM app_action_drafts
+        WHERE user_id = ? AND id = ?
+    """), (user_id, draft_id))
+    conn.commit()
+    conn.close()
+
+
+def normalize_app_platform(platform):
+    return (platform or "").strip().lower().replace("-", "_")
+
+
+def get_app_connection_status(user_id, platform):
+    if platform in {"shopify", "shopify_email"}:
+        connection = get_shopify_connection(user_id)
+        return "Connected" if connection and connection[3] == "connected" else "Not connected"
+    if platform == "canva":
+        connection = get_canva_connection(user_id)
+        return "Connected" if connection and connection[2] == "connected" else "Not connected"
+
+    catalog_item = APP_CATALOG[platform]
+    if catalog_item["connection_mode"] == "guidance":
+        return "Guidance only"
+    connection = get_app_connection(user_id, platform)
+    return "Configured" if connection and connection[3] == "configured" else "Not connected"
+
+
+def get_app_catalog_cards(user_id):
+    cards = []
+    for platform, details in APP_CATALOG.items():
+        card = dict(details)
+        card.update({
+            "platform": platform,
+            "status": get_app_connection_status(user_id, platform),
+            "guide_url": f"/app_connection_guide/{platform}",
+            "connect_url": f"/connect_app/{platform}",
+            "draft_url": (
+                f"/create_app_action_draft/{platform}/{details['draft_actions'][0]}"
+                if details["draft_actions"] else ""
+            )
+        })
+        cards.append(card)
+    return cards
+
+
+def get_connected_app_summaries(user_id):
+    summaries = []
+    shopify = get_shopify_connection(user_id)
+    canva = get_canva_connection(user_id)
+    if shopify and shopify[3] == "connected":
+        summaries.append({"platform": "shopify", "name": "Shopify", "category": "Store/ecommerce", "account_name": shopify[1], "status": "Connected"})
+    if canva and canva[2] == "connected":
+        summaries.append({"platform": "canva", "name": "Canva", "category": "Design", "account_name": canva[3] or "Canva account", "status": "Connected"})
+    for connection in get_app_connections(user_id):
+        details = APP_CATALOG.get(connection[1], {})
+        summaries.append({
+            "platform": connection[1],
+            "name": details.get("name", connection[1].replace("_", " ").title()),
+            "category": connection[2],
+            "account_name": connection[7] or "Account configured",
+            "status": "Configured"
+        })
+    return summaries
+
+
+def get_app_action_risk(action_type):
+    risks = {
+        "email_campaign": {"creates": "A campaign draft saved inside BusinessBuilder AI", "cost": "No automatic charge", "public": "No email is sent"},
+        "social_ad_draft": {"creates": "Ad copy and a campaign plan saved inside BusinessBuilder AI", "cost": "No ad spend is created", "public": "No ad is published"},
+        "canva_design_brief": {"creates": "A Canva-ready design brief", "cost": "No automatic charge", "public": "Nothing is published"},
+        "shopify_product_draft": {"creates": "Draft Shopify products if Shopify is connected", "cost": "No automatic charge", "public": "Products remain drafts"},
+        "webflow_page_draft": {"creates": "A Webflow page/CMS draft inside BusinessBuilder AI", "cost": "No automatic charge", "public": "No website page is published"},
+        "website_copy": {"creates": "Website/store copy saved inside BusinessBuilder AI", "cost": "No automatic charge", "public": "No website change is published"},
+        "automation_plan": {"creates": "A manual automation plan", "cost": "No automatic charge", "public": "No automation is enabled"}
+    }
+    return risks[action_type]
 
 
 def build_project_context(user_id):
@@ -5255,6 +5658,12 @@ def build_center():
     payment_guides = get_payment_guides(user_id)
     domain_guides = get_domain_guides(user_id)
     email_campaigns = get_email_campaigns(user_id)
+    app_recommendations = get_app_recommendations(user_id)
+    connected_apps = get_connected_app_summaries(user_id)
+    app_action_drafts = get_app_action_drafts(user_id)
+    marketing_app_drafts = [draft for draft in app_action_drafts if draft[2] in {"email_campaign", "social_ad_draft"}]
+    design_app_drafts = [draft for draft in app_action_drafts if draft[2] == "canva_design_brief"]
+    website_store_app_drafts = [draft for draft in app_action_drafts if draft[2] in {"shopify_product_draft", "webflow_page_draft", "website_copy", "automation_plan"}]
 
     def status_for(completed, started=False):
         if completed:
@@ -5527,6 +5936,49 @@ def build_center():
         }
     ]
 
+    build_items.extend([
+        {
+            "title": "App Recommendations",
+            "status": status_for(app_recommendations, workflow_started),
+            "description": "Compare apps by budget, country, business type, goal, platform, and skill level.",
+            "url": "/recommend_apps",
+            "action": "Recommend Apps",
+            "count": f"{len(app_recommendations)} saved"
+        },
+        {
+            "title": "App Connections",
+            "status": status_for(connected_apps, bool(app_recommendations)),
+            "description": "Manage permission-first Shopify, Canva, email-platform, and guidance-only integrations.",
+            "url": "/app_connection_agent",
+            "action": "Manage Connections",
+            "count": f"{len(connected_apps)} configured"
+        },
+        {
+            "title": "Marketing Drafts",
+            "status": status_for(marketing_app_drafts, bool(connected_apps or app_recommendations)),
+            "description": "Create reviewable email and advertising plans without sending, publishing, or spending.",
+            "url": "/app_connection_agent",
+            "action": "Create Marketing Draft",
+            "count": f"{len(marketing_app_drafts)} drafts"
+        },
+        {
+            "title": "Design Drafts",
+            "status": status_for(design_app_drafts, bool(canva_branding_packages or connected_apps)),
+            "description": "Create Canva-ready briefs and visual asset instructions for approval.",
+            "url": "/app_connection_agent",
+            "action": "Create Design Draft",
+            "count": f"{len(design_app_drafts)} drafts"
+        },
+        {
+            "title": "Website/Store Drafts",
+            "status": status_for(website_store_app_drafts, bool(ai_store_builds or app_recommendations)),
+            "description": "Create website copy, Webflow page plans, and safe Shopify product drafts.",
+            "url": "/app_connection_agent",
+            "action": "Create Website/Store Draft",
+            "count": f"{len(website_store_app_drafts)} drafts"
+        }
+    ])
+
     pro_features = {
         "AI Store Builder",
         "Shopify Connection",
@@ -5644,6 +6096,46 @@ def build_center():
         },
         {
             "number": "11",
+            "title": "App Recommendations",
+            "status": status_for(app_recommendations, workflow_started),
+            "description": "Choose suitable platforms based on budget, market, business type, goals, and skill level.",
+            "url": "/recommend_apps",
+            "action": "Recommend Apps"
+        },
+        {
+            "number": "12",
+            "title": "App Connections",
+            "status": status_for(connected_apps, bool(app_recommendations)),
+            "description": "Connect supported platforms with permission or use guidance-only setup paths.",
+            "url": "/app_connection_agent",
+            "action": "Manage Connections"
+        },
+        {
+            "number": "13",
+            "title": "Marketing Drafts",
+            "status": status_for(marketing_app_drafts, bool(app_recommendations or connected_apps)),
+            "description": "Prepare email and advertising drafts without sending, publishing, or spending.",
+            "url": "/app_connection_agent",
+            "action": "Create Marketing Draft"
+        },
+        {
+            "number": "14",
+            "title": "Design Drafts",
+            "status": status_for(design_app_drafts, bool(canva_branding_packages or connected_apps)),
+            "description": "Prepare Canva-ready design briefs for review and approval.",
+            "url": "/app_connection_agent",
+            "action": "Create Design Draft"
+        },
+        {
+            "number": "15",
+            "title": "Website/Store Drafts",
+            "status": status_for(website_store_app_drafts, bool(ai_store_builds or app_recommendations)),
+            "description": "Prepare website copy, page plans, automation plans, and draft store assets.",
+            "url": "/app_connection_agent",
+            "action": "Create Website/Store Draft"
+        },
+        {
+            "number": "16",
             "title": "Launch Readiness",
             "status": status_for(launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
             "description": "Check completed and missing launch items before you go live.",
@@ -5651,7 +6143,7 @@ def build_center():
             "action": "Check Score"
         },
         {
-            "number": "12",
+            "number": "17",
             "title": "Launch Package",
             "status": status_for(user_package_at_least(user_id, "Premium Build") and launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
             "description": "Bundle strategy, research, store assets, branding, and next steps into one package.",
@@ -5913,6 +6405,9 @@ def ai_store_agent():
     if not user_has_paid(user_id):
         return redirect("/dashboard")
 
+    app_drafts = get_app_action_drafts(user_id)
+    connected_apps = get_connected_app_summaries(user_id)
+
     return render_template(
         "ai_store_agent.html",
         sections=get_store_agent_sections(user_id),
@@ -5925,7 +6420,9 @@ def ai_store_agent():
         canva_connected=bool(
             get_canva_connection(user_id)
             and get_canva_connection(user_id)[2] == "connected"
-        )
+        ),
+        connected_app_count=len(connected_apps),
+        pending_app_draft_count=sum(1 for draft in app_drafts if not draft[7])
     )
 
 
@@ -7029,6 +7526,7 @@ def settings():
         theme_options=THEME_OPTIONS,
         shopify_connection=get_shopify_connection(user_id),
         canva_connection=get_canva_connection(user_id),
+        connected_apps=get_connected_app_summaries(user_id),
         premium_build=user_package_at_least(user_id, "Premium Build")
     )
 
@@ -7227,6 +7725,320 @@ def health_check():
         "paystack_configured": bool(os.getenv("PAYSTACK_SECRET_KEY")),
         "database_type": "postgres" if using_postgres() else "sqlite"
     })
+
+
+@app.route("/app_connection_agent")
+def app_connection_agent():
+    if "user_id" not in session:
+        return redirect("/login")
+    user_id = session["user_id"]
+    drafts = get_app_action_drafts(user_id)
+    return render_template(
+        "app_connection_agent.html",
+        app_cards=get_app_catalog_cards(user_id),
+        connected_apps=get_connected_app_summaries(user_id),
+        recommendations=get_app_recommendations(user_id),
+        pending_drafts=[draft for draft in drafts if not draft[7]],
+        all_drafts=drafts
+    )
+
+
+@app.route("/recommend_apps")
+def recommend_apps():
+    if "user_id" not in session:
+        return redirect("/login")
+    user_id = session["user_id"]
+    return render_template(
+        "app_recommendations.html",
+        onboarding=get_user_onboarding(user_id),
+        recommendations=get_app_recommendations(user_id)
+    )
+
+
+@app.route("/generate_app_recommendations", methods=["GET", "POST"])
+def generate_app_recommendations():
+    if "user_id" not in session:
+        return redirect("/login")
+    if request.method == "GET":
+        return redirect("/recommend_apps")
+
+    user_id = session["user_id"]
+    data = {
+        "business_type": request.form.get("business_type", "").strip(),
+        "country": request.form.get("country", "").strip(),
+        "budget": request.form.get("budget", "").strip(),
+        "goal": request.form.get("goal", "").strip(),
+        "selling_platform": request.form.get("selling_platform", "").strip(),
+        "skill_level": request.form.get("skill_level", "").strip()
+    }
+    if not data["business_type"] or not data["country"] or not data["budget"]:
+        return redirect("/recommend_apps?app_error=missing")
+
+    prompt = f"""
+Recommend approved business apps for this BusinessBuilder AI user.
+
+Safety rules:
+- Do not claim live prices. Tell the user to verify provider pricing, limits, availability, and country support.
+- Do not connect accounts, create accounts, spend ad money, publish ads, send mass emails, or publish website/store changes.
+- Explain what requires explicit user approval and what should stay manual.
+- Recommend official OAuth or API-key flows only. Never ask for passwords.
+
+Budget logic to apply:
+- Very low: Canva free/low-cost, Brevo, Shopify Email for Shopify users, WhatsApp Business guidance, and organic social content.
+- Low: Brevo, Mailchimp, Canva, Shopify, and Webflow guidance only when a website is the goal.
+- Medium: Klaviyo for ecommerce, small controlled Meta Ads planning, Mailchimp/Brevo, and Canva Pro only if chosen.
+- High: Klaviyo, Meta Ads, Google Ads, Webflow, and advanced Zapier/Make automation planning.
+
+Include:
+1. Best app/platform
+2. Cheapest option
+3. Best beginner option
+4. Best professional option
+5. What each recommended platform can do
+6. What BusinessBuilder AI can draft through it
+7. What requires user approval
+8. What may cost money
+9. What should stay manual for safety
+10. Recommended next step
+
+Business type: {data['business_type']}
+Country/market: {data['country']}
+Monthly budget: {data['budget']}
+Main goal: {data['goal']}
+Selling platform: {data['selling_platform']}
+Skill level: {data['skill_level']}
+{build_project_context(user_id)}
+"""
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+        )
+    except Exception:
+        return redirect("/recommend_apps?app_error=ai_response")
+    save_app_recommendation(user_id, data, response.choices[0].message.content.strip())
+    return redirect("/recommend_apps?app_notice=created")
+
+
+@app.route("/app_connection_guide/<platform>")
+def app_connection_guide(platform):
+    if "user_id" not in session:
+        return redirect("/login")
+    platform = normalize_app_platform(platform)
+    if platform not in APP_CATALOG:
+        return redirect("/app_connection_agent?app_error=unsupported")
+    return render_template(
+        "app_connection_guide.html",
+        platform=platform,
+        app_info=APP_CATALOG[platform],
+        status=get_app_connection_status(session["user_id"], platform),
+        connection=bool(get_app_connection(session["user_id"], platform)) if APP_CATALOG[platform]["connection_mode"] == "manual" else False
+    )
+
+
+@app.route("/connect_app/<platform>", methods=["GET", "POST"])
+def connect_app(platform):
+    if "user_id" not in session:
+        return redirect("/login")
+    platform = normalize_app_platform(platform)
+    if platform not in APP_CATALOG:
+        return redirect("/app_connection_agent?app_error=unsupported")
+    mode = APP_CATALOG[platform]["connection_mode"]
+    if mode == "canva":
+        return redirect("/canva_settings")
+    if mode == "shopify":
+        return redirect("/shopify_settings")
+    if mode == "guidance":
+        return redirect(f"/app_connection_guide/{platform}")
+    if request.method == "GET":
+        return redirect(f"/app_connection_guide/{platform}")
+
+    api_key = request.form.get("api_key", "").strip()
+    account_name = request.form.get("account_name", "").strip()
+    permission_confirmed = request.form.get("permission_confirmed") == "yes"
+    if not api_key or not permission_confirmed:
+        return redirect(f"/app_connection_guide/{platform}?connection_error=missing")
+    try:
+        save_app_connection(session["user_id"], platform, APP_CATALOG[platform]["category"], {
+            "connection_status": "configured",
+            "api_key": api_key,
+            "account_name": account_name,
+            "scopes": "User-supplied API key; permissions controlled by provider"
+        })
+    except ExternalServiceError:
+        return redirect(f"/app_connection_guide/{platform}?connection_error=encryption")
+    return redirect(f"/app_connection_guide/{platform}?connection_notice=saved")
+
+
+@app.route("/disconnect_app/<platform>", methods=["GET", "POST"])
+def disconnect_app(platform):
+    if "user_id" not in session:
+        return redirect("/login")
+    platform = normalize_app_platform(platform)
+    if platform not in APP_CATALOG:
+        return redirect("/app_connection_agent?app_error=unsupported")
+    if APP_CATALOG[platform]["connection_mode"] != "manual":
+        return redirect(f"/app_connection_guide/{platform}")
+    if request.method == "GET":
+        return redirect(f"/app_connection_guide/{platform}?confirm_disconnect=1")
+    disconnect_app_connection(session["user_id"], platform)
+    return redirect(f"/app_connection_guide/{platform}?connection_notice=disconnected")
+
+
+def build_app_action_prompt(platform, action_type, user_id):
+    app_name = APP_CATALOG[platform]["name"]
+    instructions = {
+        "email_campaign": "Create strategy, subject lines, preview text, full email body, CTA, audience segment, sending-time test, follow-up, and platform setup checklist.",
+        "social_ad_draft": "Create audience ideas, campaign objective, ad-copy options, headlines, CTA options, creative brief, tracking checklist, controlled-budget planning notes, and risks. Do not publish or spend.",
+        "canva_design_brief": "Create a Canva-ready design brief with dimensions, layout, copy, colors, imagery, accessibility, and export guidance.",
+        "shopify_product_draft": "Return JSON only with a top-level products array containing 3 objects. Each needs title, description, suggested_price, category, seo_title, and meta_description. Products must remain drafts.",
+        "webflow_page_draft": "Create a Webflow page/CMS draft with page goal, sections, copy, CMS fields, SEO title, meta description, and manual build checklist.",
+        "website_copy": "Create reviewable website/store copy with hero, benefits, CTA, trust section, FAQ, SEO title, and meta description.",
+        "automation_plan": "Create a trigger/action automation plan, field mapping, failure handling, privacy risks, test plan, and manual enablement checklist. Do not enable it."
+    }[action_type]
+    return f"""
+Create a {APP_ACTION_TYPES[action_type]} for {app_name}.
+{instructions}
+
+Safety rules:
+- Create a draft only. The user must review, edit, approve, and separately confirm any supported apply action.
+- Never request passwords or expose tokens.
+- Never spend ad money, publish ads, send mass emails, or publish website/store changes.
+- Clearly state provider costs are not live and must be verified.
+- Separate draft content from manual setup and approval steps.
+
+{build_project_context(user_id)}
+"""
+
+
+@app.route("/create_app_action_draft/<platform>/<action_type>", methods=["GET", "POST"])
+def create_app_action_draft(platform, action_type):
+    if "user_id" not in session:
+        return redirect("/login")
+    platform = normalize_app_platform(platform)
+    action_type = (action_type or "").strip().lower()
+    if platform not in APP_CATALOG or action_type not in APP_ACTION_TYPES or action_type not in APP_CATALOG[platform]["draft_actions"]:
+        return redirect("/app_connection_agent?draft_error=unsupported")
+    kwargs = {
+        "model": "gpt-4.1-mini",
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": build_app_action_prompt(platform, action_type, session["user_id"])}
+        ]
+    }
+    if action_type == "shopify_product_draft":
+        kwargs["response_format"] = {"type": "json_object"}
+    try:
+        response = safe_openai_chat_completion(**kwargs)
+    except Exception:
+        return redirect("/app_connection_agent?draft_error=ai_response")
+    title = f"{APP_CATALOG[platform]['name']} — {APP_ACTION_TYPES[action_type]}"
+    draft_id = create_app_action_draft_record(
+        session["user_id"], platform, action_type, title,
+        response.choices[0].message.content.strip()
+    )
+    return redirect(f"/review_app_action_draft/{draft_id}")
+
+
+@app.route("/review_app_action_draft/<int:draft_id>")
+def review_app_action_draft(draft_id):
+    if "user_id" not in session:
+        return redirect("/login")
+    draft = get_app_action_draft(session["user_id"], draft_id)
+    if not draft:
+        return redirect("/app_connection_agent")
+    return render_template(
+        "app_action_draft.html", draft=draft,
+        app_info=APP_CATALOG.get(draft[1], {}),
+        risk=get_app_action_risk(draft[2]),
+        show_confirmation=False
+    )
+
+
+@app.route("/edit_app_action_draft/<int:draft_id>", methods=["POST"])
+def edit_app_action_draft(draft_id):
+    if "user_id" not in session:
+        return redirect("/login")
+    content = request.form.get("draft_content", "").strip()
+    if not get_app_action_draft(session["user_id"], draft_id) or not content:
+        return redirect(f"/review_app_action_draft/{draft_id}?draft_error=empty")
+    update_app_action_draft_content(session["user_id"], draft_id, content)
+    return redirect(f"/review_app_action_draft/{draft_id}?draft_notice=updated")
+
+
+@app.route("/improve_app_action_draft/<int:draft_id>", methods=["POST"])
+def improve_app_action_draft(draft_id):
+    if "user_id" not in session:
+        return redirect("/login")
+    user_id = session["user_id"]
+    draft = get_app_action_draft(user_id, draft_id)
+    feedback = request.form.get("feedback", "").strip()
+    if not draft or not feedback:
+        return redirect(f"/review_app_action_draft/{draft_id}?draft_error=feedback")
+    prompt = f"Revise this draft using the feedback. Keep it draft-only and preserve all no-publish, no-send, no-spend safety rules.\nFeedback: {feedback}\nDraft:\n{draft[4]}"
+    try:
+        response = safe_openai_chat_completion(model="gpt-4.1-mini", messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}])
+    except Exception:
+        return redirect(f"/review_app_action_draft/{draft_id}?draft_error=ai_response")
+    update_app_action_draft_content(user_id, draft_id, response.choices[0].message.content.strip())
+    return redirect(f"/review_app_action_draft/{draft_id}?draft_notice=updated")
+
+
+@app.route("/approve_app_action_draft/<int:draft_id>", methods=["POST"])
+def approve_app_action_draft(draft_id):
+    if "user_id" not in session:
+        return redirect("/login")
+    user_id = session["user_id"]
+    if not get_app_action_draft(user_id, draft_id):
+        return redirect("/app_connection_agent")
+    update_app_action_draft_status(user_id, draft_id, "Approved", True, False)
+    return redirect(f"/review_app_action_draft/{draft_id}?draft_notice=approved")
+
+
+@app.route("/apply_app_action_draft/<int:draft_id>", methods=["GET", "POST"])
+def apply_app_action_draft(draft_id):
+    if "user_id" not in session:
+        return redirect("/login")
+    user_id = session["user_id"]
+    draft = get_app_action_draft(user_id, draft_id)
+    if not draft:
+        return redirect("/app_connection_agent")
+    if not draft[6]:
+        return redirect(f"/review_app_action_draft/{draft_id}?draft_error=not_approved")
+    risk = get_app_action_risk(draft[2])
+    if request.method == "GET":
+        return render_template("app_action_draft.html", draft=draft, app_info=APP_CATALOG.get(draft[1], {}), risk=risk, show_confirmation=True)
+    if request.form.get("confirm_apply") != "yes":
+        return redirect(f"/apply_app_action_draft/{draft_id}?draft_error=confirmation")
+
+    applied = True
+    message = "Approved draft saved inside BusinessBuilder AI. No external action was published."
+    if draft[2] == "shopify_product_draft":
+        task = (None, user_id, "products", draft[3], draft[4])
+        applied, message = apply_store_agent_products(user_id, task)
+    elif draft[2] == "canva_design_brief":
+        save_canva_design_brief(user_id, draft[3], draft[4])
+        message = "Canva-ready design brief saved. No design was published."
+    elif draft[2] == "email_campaign":
+        save_email_campaign(user_id, {
+            "business_name": APP_CATALOG[draft[1]]["name"], "business_type": "App Connection Agent",
+            "target_customer": "", "campaign_goal": "Draft campaign", "email_platform": APP_CATALOG[draft[1]]["name"],
+            "offer": "", "tone": ""
+        }, draft[4])
+        message = "Email campaign draft saved. No email was sent."
+
+    if not applied:
+        return redirect(f"/review_app_action_draft/{draft_id}?draft_error=apply_failed&apply_message={urllib.parse.quote(message)}")
+    update_app_action_draft_status(user_id, draft_id, "Applied Safely", True, True)
+    return redirect(f"/review_app_action_draft/{draft_id}?draft_notice=applied&apply_message={urllib.parse.quote(message)}")
+
+
+@app.route("/delete_app_action_draft/<int:draft_id>", methods=["POST"])
+def delete_app_action_draft(draft_id):
+    if "user_id" not in session:
+        return redirect("/login")
+    delete_app_action_draft_record(session["user_id"], draft_id)
+    return redirect("/app_connection_agent?draft_notice=deleted")
 
 
 @app.route("/email_marketing")

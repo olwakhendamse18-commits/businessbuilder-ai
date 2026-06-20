@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App Connection Agent - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+<body>
+<div class="dashboard">
+    <aside class="sidebar">
+        <div class="brand"><img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image"><div><h2>BusinessBuilder AI</h2><p>App connections</p></div></div>
+        <a href="/dashboard">Dashboard</a><a href="/build_center">Build Center</a><a href="/ai_store_agent">AI Store Agent</a><a href="/app_connection_agent">App Connection Agent</a><a href="/recommend_apps">App Recommendations</a><a href="/settings">Settings</a>
+    </aside>
+    <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
+        <div class="dashboard-header">
+            <p class="eyebrow">Permission-First Integrations</p>
+            <h1>App Connection Agent</h1>
+            <p>BusinessBuilder AI can connect to supported apps with your permission and help create marketing, design, store, and website drafts. Every major action starts as a draft for your review.</p>
+        </div>
+
+        {% if request.args.get("app_error") == "unsupported" %}<p class="form-notice">That platform is not supported.</p>{% endif %}
+        {% if request.args.get("draft_error") == "ai_response" %}<p class="form-notice">The AI draft could not be generated. Please try again.</p>{% endif %}
+        {% if request.args.get("draft_notice") == "deleted" %}<p class="success-notice">Draft deleted.</p>{% endif %}
+
+        <section class="next-action-card agent-safety-card">
+            <p class="eyebrow">Recommended Apps</p>
+            <h2>Choose tools that fit the business—not the other way around.</h2>
+            {% if recommendations %}
+                <p>{{ recommendations[0][6][:360] }}{% if recommendations[0][6]|length > 360 %}...{% endif %}</p>
+                <a href="/recommend_apps" class="primary-button">Review or Update Recommendations</a>
+            {% else %}
+                <p>Tell the AI your budget, country, business type, goal, selling platform, and skill level to get a practical platform recommendation.</p>
+                <a href="/recommend_apps" class="primary-button">Recommend Apps</a>
+            {% endif %}
+        </section>
+
+        <section>
+            <div class="section-heading-row"><div><p class="eyebrow">Connected Apps</p><h2>Approved connections</h2></div><a href="/settings" class="secondary-button">Integration Settings</a></div>
+            <div class="cards compact-card-grid">
+                {% for app in connected_apps %}
+                    <article class="card"><p class="connection-status connected">{{ app.status }}</p><h3>{{ app.name }}</h3><p>{{ app.category }} · {{ app.account_name }}</p><a href="/app_connection_guide/{{ app.platform }}" class="secondary-button">Manage</a></article>
+                {% else %}
+                    <article class="card empty-card"><h3>No connected apps yet</h3><p>You can still create guidance and drafts without connecting an app.</p></article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section>
+            <p class="eyebrow">Available Integrations</p><h2>Marketing, design, store, website, ads, and automation</h2>
+            {% for category in ["Email marketing", "Design", "Store/ecommerce", "Website builder", "Ads", "Automation"] %}
+                <div class="app-category-section">
+                    <h3>{{ category }}</h3>
+                    <div class="cards app-card-grid">
+                        {% for app in app_cards if app.category == category %}
+                            <article class="card app-connection-card">
+                                <p class="connection-status {{ 'connected' if app.status in ['Connected', 'Configured'] else 'not-connected' }}">{{ app.status }}</p>
+                                <h3>{{ app.name }}</h3>
+                                <p><strong>Best for:</strong> {{ app.best_for }}</p>
+                                <p><strong>Budget fit:</strong> {{ app.budget_fit }}</p>
+                                <div class="card-actions">
+                                    <a href="{{ app.connect_url }}" class="primary-button">{{ "Manage" if app.status in ["Connected", "Configured"] else "Connect" }}</a>
+                                    <a href="{{ app.guide_url }}" class="secondary-button">Guide</a>
+                                    {% if app.draft_url %}<a href="{{ app.draft_url }}" class="secondary-button">Create Draft</a>{% endif %}
+                                </div>
+                            </article>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endfor %}
+        </section>
+
+        <section>
+            <p class="eyebrow">Approval Queue</p><h2>Draft actions waiting for approval</h2>
+            <div class="cards">
+                {% for draft in pending_drafts %}
+                    <article class="card"><p class="build-status {{ draft[5]|lower|replace(' ', '-') }}">{{ draft[5] }}</p><h3>{{ draft[3] }}</h3><p>{{ draft[4][:180] }}{% if draft[4]|length > 180 %}...{% endif %}</p><a href="/review_app_action_draft/{{ draft[0] }}" class="primary-button">Review Draft</a></article>
+                {% else %}<article class="card empty-card"><h3>No drafts waiting</h3><p>Create a draft from any supported app card.</p></article>{% endfor %}
+            </div>
+        </section>
+
+        <section class="project-form safety-rules-list">
+            <p class="eyebrow">Safety Rules</p><h2>You control every connection and final action</h2>
+            <ul><li>No platform is connected without your permission.</li><li>BusinessBuilder AI never asks for platform passwords or displays stored keys.</li><li>Official OAuth or encrypted API-key flows are used where implemented.</li><li>No ad spend, ad publishing, mass email sending, or major website/store publishing happens automatically.</li><li>The AI creates drafts first. You review, edit, approve, and separately confirm supported actions.</li></ul>
+        </section>
+    </main>
+</div>
+{% include "_app_scripts.html" %}
+</body>
+</html>
