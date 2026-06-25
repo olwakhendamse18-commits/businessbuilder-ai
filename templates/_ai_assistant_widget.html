@@ -36,22 +36,18 @@
         </label>
 
         <div class="bb-assistant-chips" aria-label="Quick actions">
-            {% for label, query in [
-                ("Generate My Store", "generate store"),
-                ("Find Products", "find products"),
-                ("Create Business Plan", "business plan"),
-                ("Connect Shopify", "connect Shopify"),
-                ("Connect Canva", "connect Canva"),
-                ("Pricing Advisor", "price product"),
-                ("Payment Guide", "payment"),
-                ("Supplier Finder", "find supplier"),
-                ("Email Marketing", "email marketing"),
-                ("Domain Helper", "domain"),
-                ("Launch Readiness", "launch"),
-                ("Support", "support")
-            ] %}
-                <button type="button" class="bb-assistant-chip" data-bb-assistant-query="{{ query }}">{{ label }}</button>
-            {% endfor %}
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="generate store">Generate My Store</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="find products">Find Products</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="business plan">Create Business Plan</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="connect Shopify">Connect Shopify</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="connect Canva">Connect Canva</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="price product">Pricing Advisor</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="payment">Payment Guide</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="find supplier">Supplier Finder</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="email marketing">Email Marketing</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="domain">Domain Helper</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="launch">Launch Readiness</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="support">Support</button>
         </div>
 
         <div class="bb-assistant-results" id="bbAssistantResults" aria-live="polite"></div>

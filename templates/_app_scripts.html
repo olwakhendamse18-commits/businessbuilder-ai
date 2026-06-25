@@ -1,4 +1,4 @@
-{% if session.get("user_id") %}
+{% if session is defined and session.get("user_id") %}
     {% include "_ai_assistant_widget.html" %}
 {% endif %}
 
