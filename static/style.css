@@ -628,27 +628,31 @@ a {
 }
 
 /* Floating BusinessBuilder AI tool assistant */
-.bb-assistant {
+.bb-assistant,
+.bb-ai-assistant {
     bottom: 24px;
     position: fixed;
     right: 24px;
-    z-index: 120;
+    z-index: 9999;
+    pointer-events: none;
 }
 
-.bb-assistant-panel {
+.bb-assistant-panel,
+.bb-ai-panel {
     background: color-mix(in srgb, var(--surface) 97%, transparent);
     border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
     border-radius: 24px;
-    bottom: 76px;
+    bottom: 100px;
     box-shadow: 0 28px 70px rgba(15, 23, 42, 0.24);
     color: var(--text);
     display: flex;
     flex-direction: column;
-    max-height: min(720px, calc(100vh - 120px));
+    max-height: min(70vh, 720px);
     overflow: hidden;
-    position: absolute;
-    right: 0;
-    width: min(430px, calc(100vw - 32px));
+    pointer-events: auto;
+    position: fixed;
+    right: 24px;
+    width: min(410px, calc(100vw - 32px));
 }
 
 .bb-assistant-panel[hidden] {
@@ -684,7 +688,8 @@ a {
     margin: 0;
 }
 
-.bb-assistant-avatar {
+.bb-assistant-avatar,
+.bb-ai-avatar {
     align-items: center;
     background: #061733;
     border: 2px solid rgba(255, 255, 255, 0.8);
@@ -692,11 +697,11 @@ a {
     box-shadow: 0 8px 24px color-mix(in srgb, var(--primary) 30%, transparent);
     display: inline-flex;
     flex: 0 0 auto;
-    height: 48px;
+    height: 44px;
     justify-content: center;
-    overflow: visible;
+    overflow: hidden;
     position: relative;
-    width: 48px;
+    width: 44px;
 }
 
 .bb-assistant-avatar.small {
@@ -704,11 +709,15 @@ a {
     width: 42px;
 }
 
-.bb-assistant-avatar img {
-    border-radius: 50%;
-    height: 100%;
-    object-fit: cover;
-    width: 100%;
+.bb-assistant-avatar img,
+.bb-ai-avatar img {
+    border-radius: 0;
+    display: block;
+    height: 34px;
+    max-height: 34px;
+    max-width: 34px;
+    object-fit: contain;
+    width: 34px;
 }
 
 .bb-assistant-spark {
@@ -898,18 +907,27 @@ a {
     white-space: nowrap;
 }
 
-.bb-assistant-toggle {
+.bb-assistant-toggle,
+.bb-ai-toggle {
     align-items: center;
     background: linear-gradient(135deg, #0b2a59, #2563eb 58%, #7c3aed);
     border: 1px solid rgba(255, 255, 255, 0.38);
     border-radius: 999px;
+    bottom: 24px;
     box-shadow: 0 18px 38px rgba(15, 23, 42, 0.3);
     color: #fff;
     cursor: pointer;
     display: flex;
     gap: 10px;
-    min-height: 62px;
-    padding: 7px 18px 7px 7px;
+    height: 64px;
+    justify-content: center;
+    min-height: 64px;
+    overflow: hidden;
+    padding: 0;
+    pointer-events: auto;
+    position: fixed;
+    right: 24px;
+    width: 64px;
 }
 
 .bb-assistant-toggle:hover,
@@ -919,9 +937,17 @@ a {
 }
 
 .bb-assistant-toggle-label {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
     font-size: 0.86rem;
     font-weight: 850;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
     white-space: nowrap;
+    width: 1px;
 }
 
 .connection-status {
@@ -3993,32 +4019,48 @@ a {
         gap: 10px;
     }
 
-    .bb-assistant {
+    .bb-assistant,
+    .bb-ai-assistant {
         bottom: max(16px, env(safe-area-inset-bottom));
         right: 16px;
     }
 
-    .bb-assistant-panel {
-        bottom: 70px;
-        max-height: min(680px, calc(100dvh - 104px));
-        width: calc(100vw - 32px);
+    .bb-assistant-panel,
+    .bb-ai-panel {
+        bottom: 84px;
+        left: 12px;
+        max-height: 80vh;
+        right: 12px;
+        width: auto;
     }
 
-    .bb-assistant-toggle {
+    .bb-assistant-toggle,
+    .bb-ai-toggle {
         border-radius: 50%;
-        height: 58px;
-        min-height: 58px;
-        padding: 5px;
-        width: 58px;
+        bottom: max(16px, env(safe-area-inset-bottom));
+        height: 56px;
+        min-height: 56px;
+        padding: 0;
+        right: 16px;
+        width: 56px;
     }
 
     .bb-assistant-toggle-label {
         display: none;
     }
 
-    .bb-assistant-avatar {
-        height: 46px;
-        width: 46px;
+    .bb-assistant-avatar,
+    .bb-ai-avatar {
+        height: 40px;
+        width: 40px;
+    }
+
+    .bb-assistant-avatar img,
+    .bb-ai-avatar img {
+        height: 32px;
+        max-height: 32px;
+        max-width: 32px;
+        width: 32px;
     }
 
     .bb-assistant-result {
