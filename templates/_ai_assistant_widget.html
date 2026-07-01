@@ -85,6 +85,7 @@
         const closeButton = root.querySelector("[data-bb-assistant-close]");
         const search = root.querySelector("#bbAssistantSearch");
         const results = root.querySelector("#bbAssistantResults");
+        const currentPath = window.location.pathname;
 
         const tools = [
             { name: "Dashboard", description: "See your plan, progress, and recommended next step.", route: "/dashboard", category: "Workspace", plan: "Starter" },
@@ -122,6 +123,17 @@
             { terms: ["support", "help account", "billing help"], text: "You can contact support for billing, Shopify, Canva, AI output, or account help.", label: "Open Support", route: "/support" }
         ];
 
+        const pageSuggestions = {
+            "/dashboard": ["Build Center", "AI Store Agent", "Product Finder", "Launch Readiness"],
+            "/build_center": ["Business Workflow", "Product Finder", "AI Store Agent", "Launch Readiness"],
+            "/ai_store_agent": ["Product Finder", "Shopify Settings", "Canva Settings", "Launch Readiness"],
+            "/product_finder": ["Supplier Finder", "Pricing Advisor", "AI Store Agent", "Build Center"],
+            "/supplier_finder": ["Product Finder", "Pricing Advisor", "Payment Guide", "Build Center"],
+            "/pricing_advisor": ["Supplier Finder", "Payment Guide", "AI Store Agent", "Build Center"],
+            "/payment_guide": ["Pricing Advisor", "Shopify Settings", "Settings", "Support"],
+            "/settings": ["Shopify Settings", "Canva Settings", "Pricing", "Support"]
+        };
+
         function normalize(value) {
             return (value || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, " ");
         }
@@ -150,9 +162,13 @@
             if (!normalized) {
                 const heading = document.createElement("p");
                 heading.className = "bb-assistant-results-label";
-                heading.textContent = "Popular tools";
+                heading.textContent = pageSuggestions[currentPath] ? "Useful from this page" : "Popular tools";
                 results.appendChild(heading);
-                [tools[1], tools[4], tools[6], tools[8]].forEach(function(item) {
+                const suggestedNames = pageSuggestions[currentPath];
+                const suggestedTools = suggestedNames
+                    ? suggestedNames.map(function(name) { return tools.find(function(item) { return item.name === name; }); }).filter(Boolean)
+                    : [tools[1], tools[4], tools[6], tools[8]];
+                suggestedTools.forEach(function(item) {
                     results.appendChild(makeLink(item));
                 });
                 return;

@@ -41,7 +41,7 @@
             <p class="form-notice">Domain guidance could not be generated. Please try again.</p>
         {% endif %}
 
-        <section class="project-form tool-form-card">
+        <section class="project-form tool-form-card" id="domainForm">
             <h2>Create domain and DNS guidance</h2>
             <form method="POST" action="/generate_domain_advice">
                 <label for="business_name">Business name</label>
@@ -95,7 +95,7 @@
                 {% for guide in guides %}
                     <article class="card"><p class="eyebrow">{{ guide[6] or "Market not set" }}</p><h3>{{ guide[1] }}</h3><p><strong>Domain:</strong> {{ guide[2] or "Suggestions requested" }} · <strong>Platform:</strong> {{ guide[5] }}</p><p>{{ guide[7][:180] }}{% if guide[7]|length > 180 %}...{% endif %}</p><a href="/domain_guide/{{ guide[0] }}" class="primary-button">View Domain Guide</a></article>
                 {% else %}
-                    <article class="card empty-card"><h3>No domain guides yet</h3><p>Complete the form to create safe purchase and DNS connection guidance.</p></article>
+                    <article class="card empty-card"><h3>No domain guides yet</h3><p>Complete the form to create safe purchase and DNS connection guidance.</p><a href="#domainForm" class="primary-button">Create Domain Guide</a></article>
                 {% endfor %}
             </div>
         </section>

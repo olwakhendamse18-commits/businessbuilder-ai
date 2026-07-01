@@ -49,11 +49,15 @@
             <p>Manage your account, appearance, plan, integrations, app install, and security actions from one place.</p>
         </div>
 
+        <nav class="settings-jump-nav" aria-label="Settings sections">
+            <a href="#account-settings">Account</a><a href="#plan-settings">Plan & billing</a><a href="#appearance-settings">Appearance</a><a href="#integration-settings">Integrations</a><a href="#install-settings">Install app</a><a href="#support-settings">Support & security</a>
+        </nav>
+
         {% if request.args.get("settings_notice") == "saved" %}
             <p class="success-notice">Settings saved.</p>
         {% endif %}
 
-        <section class="settings-grid">
+        <section class="settings-grid" id="account-settings">
             <article class="project-form settings-section">
                 <p class="eyebrow">Account</p>
                 <h2>Workspace Details</h2>
@@ -73,7 +77,7 @@
                 </div>
             </article>
 
-            <article class="project-form settings-section">
+            <article class="project-form settings-section" id="appearance-settings">
                 <p class="eyebrow">Appearance</p>
                 <h2>Theme</h2>
                 <p>Theme changes apply instantly in this browser and are saved to your account when you click save.</p>
@@ -93,7 +97,7 @@
             </article>
         </section>
 
-        <section class="settings-grid">
+        <section class="settings-grid" id="integration-settings">
             <article class="project-form settings-section">
                 <p class="eyebrow">Integrations</p>
                 <h2>App Connection Agent</h2>
@@ -111,7 +115,7 @@
             </article>
         </section>
 
-        <section class="project-form settings-section">
+        <section class="project-form settings-section" id="plan-settings">
             <p class="eyebrow">Connected Apps</p>
             <h2>Connection summary</h2>
             <div class="connected-app-list">
@@ -124,7 +128,7 @@
         </section>
 
         <section class="settings-grid">
-            <article class="project-form settings-section">
+            <article class="project-form settings-section" id="install-settings">
                 <p class="eyebrow">Integrations</p>
                 <h2>Shopify</h2>
                 {% if shopify_connection and shopify_connection[3] == "connected" %}
@@ -137,7 +141,7 @@
                 <a href="/shopify_settings" class="primary-button">Manage Shopify Connection</a>
             </article>
 
-            <article class="project-form settings-section">
+            <article class="project-form settings-section" id="support-settings">
                 <p class="eyebrow">Integrations</p>
                 <h2>Canva</h2>
                 {% if canva_connection and canva_connection[2] == "connected" %}

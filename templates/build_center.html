@@ -47,9 +47,9 @@
         {% include "_settings_menu.html" %}
 
         <div class="dashboard-header">
-            <p class="eyebrow">Business Progress</p>
+            <p class="eyebrow">Your guided launch roadmap</p>
             <h1>Build Center</h1>
-            <p>Track your complete business creation journey with your {{ current_package }} package.</p>
+            <p>Follow your step-by-step business launch roadmap. Start with the foundation, then move toward store drafts, branding, marketing, and launch readiness.</p>
             <p class="plan-access-line">{{ current_plan_details.get("best_for", "Your plan controls generation limits and advanced actions.") }}</p>
         </div>
 
@@ -139,15 +139,15 @@
                 <a href="/launch_readiness" class="secondary-button">View Launch Readiness</a>
             </div>
 
-            <div class="roadmap-grid">
+            <div class="roadmap-grid launch-roadmap">
                 {% for step in roadmap_steps %}
-                    <article class="roadmap-step">
+                    <article class="roadmap-step {{ 'roadmap-complete' if step['status'] == 'Completed' else 'roadmap-active' if step['status'] == 'In Progress' else '' }}">
                         <div class="roadmap-icon">{{ step["number"] }}</div>
                         <p class="build-status {{ step['status']|lower|replace(' ', '-') }}">{{ step["status"] }}</p>
                         <p class="plan-requirement-badge">{{ step["required_plan"] }} plan</p>
                         <h3>{{ step["title"] }}</h3>
                         <p>{{ step["description"] }}</p>
-                        <a href="{{ step['url'] }}" class="secondary-button">{{ step["action"] }}</a>
+                        <a href="{{ step['url'] }}" class="{{ 'primary-button' if step['status'] == 'In Progress' else 'secondary-button' }}">{{ step["action"] }}</a>
                     </article>
                 {% endfor %}
             </div>

@@ -47,20 +47,20 @@
         {% include "_settings_menu.html" %}
 
         <div class="dashboard-header">
-            <p class="eyebrow">Continue Building</p>
-            <h1>Welcome back to your business build</h1>
+            <div class="workspace-heading-row"><div><p class="eyebrow">Your business command center</p>
+            <h1>Welcome back</h1>
             <p>
                 {% if active_project %}
-                    Continue building {{ active_project[1] }}.
+                    Let’s keep building {{ active_project[1] }}.
                 {% elif onboarding and onboarding[1] %}
-                    Continue building {{ onboarding[1] }}.
+                    Let’s keep building {{ onboarding[1] }}.
                 {% else %}
-                    Pick up from your next recommended action, generate store drafts, or open the Build Center to review progress.
+                    Let’s keep building your business.
                 {% endif %}
-            </p>
+            </p></div><span class="workspace-plan-badge">{{ current_package or "No active plan" }}</span></div>
             <div class="generator-actions dashboard-hero-actions">
                 <a href="{{ '/onboarding' if not onboarding or not onboarding[9] else next_action['url'] }}" class="primary-button">Continue Building</a>
-                <a href="/build_center" class="secondary-button">Open Build Center</a>
+                <a href="{{ '/store_builder' if pro_package else '/pricing' }}" class="secondary-button">Generate My Store</a>
             </div>
         </div>
 
@@ -220,6 +220,30 @@
             <div class="generator-actions">
                 <a href="{{ next_action['url'] }}" class="primary-button">{{ next_action["label"] }}</a>
                 <a href="/build_center" class="secondary-button">Open Build Center</a>
+            </div>
+        </section>
+
+        <section class="workspace-section dashboard-tools-section">
+            <div class="section-heading-row"><div><p class="eyebrow">Your tools</p><h2>Choose what you want to work on</h2><p>Each tool creates guidance or drafts you can review before taking action.</p></div><a href="/build_center" class="secondary-button">View full roadmap</a></div>
+            <div class="workspace-tool-grid">
+                <a href="/ai_store_agent" class="workspace-tool-card recommended"><span class="workspace-tool-icon">✦</span><span><strong>AI Store Agent</strong><small>Create and review store-building tasks.</small></span><b>Recommended</b></a>
+                <a href="/product_finder" class="workspace-tool-card"><span class="workspace-tool-icon">⌕</span><span><strong>Product Finder</strong><small>Find products, positioning, and sourcing paths.</small></span><b>Available</b></a>
+                <a href="/supplier_finder" class="workspace-tool-card"><span class="workspace-tool-icon">S</span><span><strong>Supplier Finder</strong><small>Compare safer, cheaper, and professional options.</small></span><b>Available</b></a>
+                <a href="/pricing_advisor" class="workspace-tool-card"><span class="workspace-tool-icon">%</span><span><strong>Pricing Advisor</strong><small>Plan margins and three pricing levels.</small></span><b>Available</b></a>
+                <a href="/payment_guide" class="workspace-tool-card"><span class="workspace-tool-icon">R</span><span><strong>Payment Guide</strong><small>Compare checkout and payment methods safely.</small></span><b>Available</b></a>
+                <a href="/domain_helper" class="workspace-tool-card"><span class="workspace-tool-icon">.co</span><span><strong>Domain Helper</strong><small>Choose a domain and understand DNS setup.</small></span><b>Available</b></a>
+                <a href="/email_marketing" class="workspace-tool-card"><span class="workspace-tool-icon">@</span><span><strong>Email Marketing</strong><small>Draft campaigns, subject lines, and follow-ups.</small></span><b>{{ "Available" if pro_package else "Pro" }}</b></a>
+                <a href="/business_workflow" class="workspace-tool-card"><span class="workspace-tool-icon">✓</span><span><strong>Business Workflow</strong><small>Complete the details that power every draft.</small></span><b>Foundation</b></a>
+                <a href="/build_center" class="workspace-tool-card"><span class="workspace-tool-icon">12</span><span><strong>Build Center</strong><small>Follow your launch roadmap step by step.</small></span><b>Progress</b></a>
+                <a href="/support" class="workspace-tool-card"><span class="workspace-tool-icon">?</span><span><strong>Support</strong><small>Get help with your account, tools, or output.</small></span><b>Help</b></a>
+            </div>
+        </section>
+
+        <section class="workspace-section dashboard-integrations-section">
+            <div class="section-heading-row"><div><p class="eyebrow">Connections</p><h2>Shopify and Canva</h2><p>Connections are optional. Guidance and drafts still work without them.</p></div><a href="/settings" class="secondary-button">Manage integrations</a></div>
+            <div class="integration-status-row">
+                <article><span class="integration-logo shopify-logo">S</span><div><strong>Shopify</strong><small>{{ "Connected and ready for supported draft actions" if shopify_connection and shopify_connection.status == "connected" else "Not connected" }}</small></div><a href="/shopify_settings" class="{{ 'secondary-button' if shopify_connection and shopify_connection.status == 'connected' else 'primary-button' }}">{{ "Manage" if shopify_connection and shopify_connection.status == "connected" else "Connect Shopify" }}</a></article>
+                <article><span class="integration-logo canva-logo">C</span><div><strong>Canva</strong><small>{{ "Connected through official authorization" if canva_connection and canva_connection.status == "connected" else "Not connected" }}</small></div><a href="/canva_settings" class="{{ 'secondary-button' if canva_connection and canva_connection.status == 'connected' else 'primary-button' }}">{{ "Manage" if canva_connection and canva_connection.status == "connected" else "Connect Canva" }}</a></article>
             </div>
         </section>
 

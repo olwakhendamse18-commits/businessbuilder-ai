@@ -47,7 +47,7 @@
             <p class="form-notice">Pricing advice could not be generated. Please try again.</p>
         {% endif %}
 
-        <section class="project-form">
+        <section class="project-form" id="pricingForm">
             <h2>Generate Pricing Advice</h2>
             <p class="form-help">Use estimates only. Verify costs, fees, taxes, packaging, shipping, refunds, and competitor positioning before selling.</p>
             <form method="POST" action="/generate_pricing_advice">
@@ -119,6 +119,7 @@
                     <article class="card empty-card">
                         <h3>No pricing advice yet</h3>
                         <p>Generate your first pricing recommendation before choosing payment methods or store drafts.</p>
+                        <a href="#pricingForm" class="primary-button">Create Pricing Advice</a>
                     </article>
                 {% endfor %}
             </div>

@@ -43,9 +43,9 @@
         {% include "_settings_menu.html" %}
 
         <div class="dashboard-header">
-            <p class="eyebrow">Shopify + Canva Command Center</p>
+            <p class="eyebrow">Your safe store-building workspace</p>
             <h1>AI Store Agent</h1>
-            <p>Get advice, generate drafts, then apply only safe approved changes. BusinessBuilder AI never publishes your store, buys domains, charges you externally, or handles banking details.</p>
+            <p>Generate, review, approve, and apply store-building tasks safely. BusinessBuilder AI never publishes your store, buys domains, spends money, or handles banking details.</p>
             <p class="plan-access-line"><strong>{{ current_package }}</strong> plan · Starter includes limited drafts, Pro unlocks supported store/Canva actions, and Premium unlocks advanced app connection drafts.</p>
         </div>
 
@@ -76,6 +76,19 @@
                 <a href="/pricing_advisor" class="secondary-button">Get Pricing Advice</a>
                 <a href="/payment_guide" class="secondary-button">Plan Payments</a>
                 <a href="/launch_readiness" class="secondary-button">View Launch Checklist</a>
+            </div>
+        </section>
+
+        <section class="workspace-section agent-quick-start">
+            <div class="section-heading-row"><div><p class="eyebrow">Create a task</p><h2>What should the agent prepare?</h2><p>Choose one focused draft. You can review and edit it before approval.</p></div><a href="/store_builder" class="primary-button">Generate Full Store Draft</a></div>
+            <div class="agent-quick-grid">
+                <a href="/generate_store_agent_task/homepage_design"><span>01</span><strong>Homepage design</strong><small>Sections, CTA copy, trust, FAQ, and banner brief.</small></a>
+                <a href="/generate_store_agent_task/products"><span>02</span><strong>Shopify product drafts</strong><small>Reviewable products created as drafts after approval.</small></a>
+                <a href="/generate_store_agent_task/canva_branding"><span>03</span><strong>Canva branding brief</strong><small>Logo, colors, typography, banners, and visual direction.</small></a>
+                <a href="/generate_store_agent_task/shipping_zones"><span>04</span><strong>Shipping plan</strong><small>Recommendations and manual setup guidance.</small></a>
+                <a href="/payment_guide"><span>05</span><strong>Payment checklist</strong><small>Compare safe checkout and payment options.</small></a>
+                <a href="/domain_helper"><span>06</span><strong>Domain checklist</strong><small>Domain, provider, DNS, SSL, and connection guidance.</small></a>
+                <a href="/generate_store_agent_task/launch_checklist"><span>07</span><strong>Launch checklist</strong><small>Review what remains before going live.</small></a>
             </div>
         </section>
 
@@ -159,8 +172,8 @@
             </div>
         </section>
 
-        <section>
-            <h2>Store Agent Tasks</h2>
+        <section class="workspace-section agent-task-section">
+            <div class="section-heading-row"><div><p class="eyebrow">Draft workspace</p><h2>Store Agent Tasks</h2></div><span class="workspace-plan-badge">{{ current_package }}</span></div>
             <p>The AI generates drafts and applies safe approved changes only after user approval. Unsupported or sensitive actions stay as guidance for you to complete manually.</p>
 
             <div class="agent-task-grid">

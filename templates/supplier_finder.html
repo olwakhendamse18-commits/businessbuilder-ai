@@ -52,7 +52,7 @@
             <p>BusinessBuilder AI does not scrape Amazon, Alibaba, AliExpress, Takealot, or supplier websites. It does not claim live prices, stock, delivery times, or availability. Verify suppliers, shipping, customs, returns, product quality, fees, samples, and platform rules yourself.</p>
         </section>
 
-        <section class="project-form">
+        <section class="project-form" id="supplierForm">
             <h2>Generate Supplier Recommendations</h2>
             <form method="POST" action="/generate_supplier_recommendations">
                 <label>Business/store idea</label>
@@ -130,6 +130,7 @@
                     <article class="card empty-card">
                         <h3>No supplier recommendations yet</h3>
                         <p>Generate supplier/platform guidance before buying inventory or choosing fulfillment.</p>
+                        <a href="#supplierForm" class="primary-button">Compare Suppliers</a>
                     </article>
                 {% endfor %}
             </div>

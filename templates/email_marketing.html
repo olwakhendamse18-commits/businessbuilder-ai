@@ -45,7 +45,7 @@
             <p class="form-notice">The email campaign could not be generated. Please try again.</p>
         {% endif %}
 
-        <section class="project-form tool-form-card">
+        <section class="project-form tool-form-card" id="emailCampaignForm">
             <h2>Create an email campaign draft</h2>
             <form method="POST" action="/generate_email_campaign">
                 <label for="business_name">Business name</label>
@@ -110,7 +110,7 @@
                         <a href="/email_campaign/{{ campaign[0] }}" class="primary-button">View Campaign</a>
                     </article>
                 {% else %}
-                    <article class="card empty-card"><h3>No campaigns yet</h3><p>Complete the form to create your first reviewable email draft.</p></article>
+                    <article class="card empty-card"><h3>No campaigns yet</h3><p>Complete the form to create your first reviewable email draft.</p><a href="#emailCampaignForm" class="primary-button">Draft First Campaign</a></article>
                 {% endfor %}
             </div>
         </section>

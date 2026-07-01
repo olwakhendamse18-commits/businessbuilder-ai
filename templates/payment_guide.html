@@ -51,7 +51,7 @@
             <p>Do not enter card numbers, bank passwords, ID numbers, private banking credentials, API keys, or payment account secrets in BusinessBuilder AI. Payment accounts must be created directly with the provider.</p>
         </section>
 
-        <section class="project-form">
+        <section class="project-form" id="paymentForm">
             <h2>Generate Payment Setup Guidance</h2>
             <form method="POST" action="/generate_payment_guide">
                 <label>Country</label>
@@ -120,6 +120,7 @@
                     <article class="card empty-card">
                         <h3>No payment guide yet</h3>
                         <p>Generate payment setup guidance before configuring checkout, bank transfers, or store payments.</p>
+                        <a href="#paymentForm" class="primary-button">Compare Payment Options</a>
                     </article>
                 {% endfor %}
             </div>
