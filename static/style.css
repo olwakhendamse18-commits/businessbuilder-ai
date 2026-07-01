@@ -5258,37 +5258,124 @@ a {
     }
 }
 
-/* Keep mascot geometry above legacy assistant rules. */
-.bb-ai-assistant { bottom: 24px; right: 24px; z-index: 900; }
-.bb-mascot-launcher.bb-ai-toggle {
-    background: transparent;
-    border: 0;
-    border-radius: 28px;
-    bottom: 24px;
-    box-shadow: none;
-    height: 88px;
-    min-height: 88px;
-    overflow: visible;
-    padding: 0;
-    right: 24px;
-    width: 88px;
+/* Final mascot contract: isolate it from legacy assistant and global button rules. */
+.bb-ai-assistant {
+    bottom: 24px !important;
+    height: 84px;
+    inset-inline: 24px auto !important;
+    isolation: isolate;
+    overflow: visible !important;
+    pointer-events: none;
+    position: fixed !important;
+    width: 84px;
+    z-index: 9999 !important;
 }
-.bb-ai-panel { bottom: 122px; z-index: 3; }
+
+.bb-ai-assistant,
+.bb-ai-assistant * {
+    box-sizing: border-box;
+}
+
+.bb-mascot-launcher.bb-ai-toggle {
+    align-items: center !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 26px !important;
+    bottom: 24px !important;
+    box-shadow: none !important;
+    display: grid !important;
+    height: 84px !important;
+    inset-inline: 24px auto !important;
+    justify-content: center !important;
+    min-height: 84px !important;
+    min-width: 84px !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    pointer-events: auto;
+    position: fixed !important;
+    transform-origin: 50% 100%;
+    visibility: visible !important;
+    width: 84px !important;
+    z-index: 10001 !important;
+}
+
+.bb-mascot-launcher .bb-mascot {
+    display: block !important;
+    height: 84px !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    position: relative !important;
+    visibility: visible !important;
+    width: 84px !important;
+}
+
+.bb-mascot-launcher .bb-mascot-head,
+.bb-mascot-launcher .bb-mascot-face,
+.bb-mascot-launcher .bb-mascot-eye,
+.bb-mascot-launcher .bb-mascot-mouth,
+.bb-mascot-launcher .bb-mascot-antenna,
+.bb-mascot-launcher .bb-mascot-ear,
+.bb-mascot-launcher .bb-mascot-body,
+.bb-mascot-launcher .bb-mascot-core,
+.bb-mascot-launcher .bb-mascot-arm,
+.bb-mascot-launcher .bb-mascot-shadow {
+    opacity: 1;
+    visibility: visible;
+}
+
+.bb-mascot-bubble {
+    bottom: 91px !important;
+    inset-inline: 96px auto !important;
+    z-index: 10002 !important;
+}
+
+.bb-mascot-bubble::after {
+    left: 17px;
+    right: auto;
+}
+
+.bb-ai-panel {
+    bottom: 120px !important;
+    left: 24px !important;
+    max-height: 70vh !important;
+    right: auto !important;
+    width: min(400px, calc(100vw - 48px)) !important;
+    z-index: 10000 !important;
+}
 
 @media (max-width: 760px) {
-    .bb-ai-assistant { bottom: max(16px, env(safe-area-inset-bottom)); right: 16px; }
-    .bb-mascot-launcher.bb-ai-toggle {
-        bottom: max(16px, env(safe-area-inset-bottom));
-        height: 70px;
-        min-height: 70px;
-        right: 16px;
-        width: 70px;
+    .bb-ai-assistant {
+        bottom: max(16px, env(safe-area-inset-bottom)) !important;
+        height: 68px;
+        inset-inline: 16px auto !important;
+        width: 68px;
     }
+
+    .bb-mascot-launcher.bb-ai-toggle {
+        bottom: max(16px, env(safe-area-inset-bottom)) !important;
+        height: 68px !important;
+        inset-inline: 16px auto !important;
+        min-height: 68px !important;
+        min-width: 68px !important;
+        width: 68px !important;
+    }
+
+    .bb-mascot-launcher .bb-mascot {
+        height: 84px !important;
+        transform-origin: 0 100%;
+        width: 84px !important;
+    }
+
+    .bb-mascot-bubble {
+        display: none !important;
+    }
+
     .bb-ai-panel {
-        bottom: 12px;
-        left: 12px;
-        max-height: 80vh;
-        right: 12px;
-        width: calc(100% - 24px);
+        bottom: 96px !important;
+        left: 12px !important;
+        max-height: 80vh !important;
+        right: 12px !important;
+        width: calc(100% - 24px) !important;
     }
 }

@@ -1,4 +1,4 @@
-const CACHE_NAME = "businessbuilder-ai-v1";
+const CACHE_NAME = "businessbuilder-ai-v3";
 const CORE_ASSETS = [
   "/landing",
   "/pricing",
@@ -38,8 +38,24 @@ self.addEventListener("fetch", (event) => {
 
   const isStatic = url.pathname.startsWith("/static/");
   const isPublicPage = ["/landing", "/pricing"].includes(url.pathname);
+  const isCodeAsset = url.pathname.endsWith(".css") || url.pathname.endsWith(".js");
 
   if (!isStatic && !isPublicPage) {
+    return;
+  }
+
+  if (isCodeAsset) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response && response.status === 200 && response.type === "basic") {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
     return;
   }
 
