@@ -3229,6 +3229,413 @@ html[data-theme="light"] .business-plan-document-header h2 {
     }
 }
 
+/* Animated BusinessBuilder mascot launcher */
+.bb-ai-assistant {
+    bottom: 24px;
+    pointer-events: none;
+    position: fixed;
+    right: 24px;
+    z-index: 900;
+}
+
+.bb-mascot-launcher.bb-ai-toggle {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-radius: 28px;
+    bottom: 24px;
+    box-shadow: none;
+    cursor: pointer;
+    display: block;
+    height: 88px;
+    min-height: 88px;
+    overflow: visible;
+    padding: 0;
+    pointer-events: auto;
+    position: fixed;
+    right: 24px;
+    width: 88px;
+}
+
+.bb-mascot-launcher:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--accent) 80%, #ffffff);
+    outline-offset: 5px;
+}
+
+.bb-mascot-launcher:active {
+    transform: scale(.92);
+}
+
+.bb-mascot {
+    display: block;
+    height: 86px;
+    position: relative;
+    transform-origin: 50% 90%;
+    width: 86px;
+    animation: bb-mascot-float 3.8s ease-in-out infinite;
+}
+
+.bb-mascot-head {
+    background: linear-gradient(145deg, color-mix(in srgb, var(--primary) 72%, #ffffff), var(--secondary));
+    border: 2px solid rgba(255,255,255,.75);
+    border-radius: 24px 24px 20px 20px;
+    box-shadow: 0 12px 30px color-mix(in srgb, var(--primary) 30%, transparent), inset 0 1px 8px rgba(255,255,255,.35);
+    display: block;
+    height: 48px;
+    left: 11px;
+    position: absolute;
+    top: 11px;
+    width: 64px;
+    z-index: 3;
+}
+
+.bb-mascot-face {
+    background: #071936;
+    border: 1px solid rgba(255,255,255,.15);
+    border-radius: 15px;
+    inset: 8px 7px 7px;
+    position: absolute;
+}
+
+.bb-mascot-eye {
+    background: #71f3e8;
+    border-radius: 999px;
+    box-shadow: 0 0 8px rgba(83,238,226,.8);
+    height: 7px;
+    position: absolute;
+    top: 9px;
+    transform-origin: center;
+    width: 9px;
+    animation: bb-mascot-blink 5.2s ease-in-out infinite;
+}
+
+.bb-mascot-eye.left { left: 10px; }
+.bb-mascot-eye.right { right: 10px; }
+
+.bb-mascot-mouth {
+    border-bottom: 2px solid #71f3e8;
+    border-radius: 0 0 10px 10px;
+    bottom: 6px;
+    height: 5px;
+    left: 50%;
+    position: absolute;
+    transform: translateX(-50%);
+    transition: .2s ease;
+    width: 15px;
+}
+
+.bb-mascot-antenna {
+    background: color-mix(in srgb, var(--primary) 60%, #ffffff);
+    border-radius: 99px;
+    height: 13px;
+    left: 42px;
+    position: absolute;
+    top: 1px;
+    transform-origin: 50% 100%;
+    width: 3px;
+    z-index: 2;
+}
+
+.bb-mascot-antenna i {
+    background: var(--accent);
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 70%, transparent);
+    height: 10px;
+    left: -4px;
+    position: absolute;
+    top: -7px;
+    width: 10px;
+}
+
+.bb-mascot-ear {
+    background: var(--primary);
+    border: 2px solid rgba(255,255,255,.8);
+    border-radius: 8px;
+    height: 20px;
+    position: absolute;
+    top: 25px;
+    width: 10px;
+    z-index: 2;
+}
+
+.bb-mascot-ear.left { left: 5px; }
+.bb-mascot-ear.right { right: 5px; }
+
+.bb-mascot-body {
+    background: linear-gradient(145deg, var(--primary), var(--secondary));
+    border: 2px solid rgba(255,255,255,.8);
+    border-radius: 14px 14px 18px 18px;
+    bottom: 8px;
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 28%, transparent);
+    height: 30px;
+    left: 23px;
+    position: absolute;
+    width: 40px;
+    z-index: 2;
+}
+
+.bb-mascot-core {
+    align-items: center;
+    background: rgba(4,18,48,.7);
+    border-radius: 50%;
+    color: #71f3e8;
+    display: flex;
+    font-size: 10px;
+    font-style: normal;
+    height: 18px;
+    justify-content: center;
+    left: 9px;
+    position: absolute;
+    top: 5px;
+    width: 18px;
+}
+
+.bb-mascot-arm {
+    background: linear-gradient(180deg, var(--primary), var(--secondary));
+    border: 2px solid rgba(255,255,255,.75);
+    border-radius: 99px;
+    height: 29px;
+    position: absolute;
+    right: 8px;
+    top: 48px;
+    transform: rotate(-28deg);
+    transform-origin: 50% 90%;
+    width: 10px;
+    z-index: 1;
+}
+
+.bb-mascot-shadow {
+    background: rgba(8,24,55,.2);
+    border-radius: 50%;
+    bottom: 0;
+    filter: blur(4px);
+    height: 8px;
+    left: 15px;
+    position: absolute;
+    width: 56px;
+    z-index: 0;
+    animation: bb-mascot-shadow 3.8s ease-in-out infinite;
+}
+
+.bb-mascot-launcher:hover .bb-mascot,
+.bb-mascot-launcher:focus-visible .bb-mascot {
+    filter: drop-shadow(0 10px 13px color-mix(in srgb, var(--accent) 35%, transparent));
+}
+
+.bb-mascot-launcher:hover .bb-mascot-arm,
+.bb-mascot-launcher:focus-visible .bb-mascot-arm {
+    animation: bb-mascot-wave .65s ease-in-out 2;
+}
+
+.bb-mascot-launcher:hover .bb-mascot-antenna,
+.bb-mascot-launcher:focus-visible .bb-mascot-antenna {
+    animation: bb-mascot-wiggle .7s ease-in-out;
+}
+
+.bb-mascot-thinking .bb-mascot-eye {
+    height: 5px;
+    width: 11px;
+}
+
+.bb-mascot-thinking .bb-mascot-mouth {
+    border: 2px solid #71f3e8;
+    border-radius: 50%;
+    height: 5px;
+    width: 5px;
+}
+
+.bb-mascot-thinking .bb-mascot-antenna {
+    transform: rotate(10deg);
+}
+
+.bb-mascot-success .bb-mascot-head {
+    box-shadow: 0 12px 34px color-mix(in srgb, var(--success) 45%, transparent), inset 0 1px 8px rgba(255,255,255,.4);
+}
+
+.bb-mascot-success .bb-mascot-eye {
+    background: #b9ff9e;
+    box-shadow: 0 0 9px rgba(185,255,158,.85);
+    transform: rotate(8deg);
+}
+
+.bb-mascot-success .bb-mascot-mouth {
+    border-bottom-width: 3px;
+    width: 20px;
+}
+
+.bb-mascot-bubble {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    bottom: 96px;
+    box-shadow: var(--shadow);
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    font-size: .76rem;
+    font-weight: 850;
+    opacity: 0;
+    padding: 9px 12px;
+    pointer-events: none;
+    position: fixed;
+    right: 31px;
+    transform: translateY(6px) scale(.96);
+    transition: opacity .18s ease, transform .18s ease;
+    white-space: nowrap;
+}
+
+.bb-mascot-bubble:after {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    bottom: -5px;
+    content: "";
+    height: 9px;
+    position: absolute;
+    right: 24px;
+    transform: rotate(45deg);
+    width: 9px;
+}
+
+.bb-ai-assistant:hover .bb-mascot-bubble,
+.bb-ai-assistant:focus-within .bb-mascot-bubble,
+.bb-ai-assistant.is-open .bb-mascot-bubble {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+}
+
+.bb-ai-assistant.is-open .bb-mascot-bubble {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.bb-panel-bot {
+    align-items: center;
+    background: linear-gradient(145deg, var(--primary), var(--secondary));
+    border: 2px solid color-mix(in srgb, var(--surface) 80%, #ffffff);
+    border-radius: 13px;
+    display: flex;
+    flex: 0 0 42px;
+    gap: 7px;
+    height: 38px;
+    justify-content: center;
+    position: relative;
+    width: 42px;
+}
+
+.bb-panel-bot-eye {
+    background: #71f3e8;
+    border-radius: 50%;
+    box-shadow: 0 0 6px rgba(83,238,226,.7);
+    height: 6px;
+    width: 6px;
+}
+
+.bb-ai-panel {
+    bottom: 122px;
+    max-height: 70vh;
+    overflow: hidden auto;
+    z-index: 3;
+}
+
+@keyframes bb-mascot-float {
+    0%, 100% { transform: translateY(0) rotate(-1deg); }
+    50% { transform: translateY(-7px) rotate(1deg); }
+}
+
+@keyframes bb-mascot-shadow {
+    0%, 100% { opacity: .22; transform: scaleX(1); }
+    50% { opacity: .12; transform: scaleX(.78); }
+}
+
+@keyframes bb-mascot-blink {
+    0%, 45%, 49%, 100% { transform: scaleY(1); }
+    47% { transform: scaleY(.12); }
+}
+
+@keyframes bb-mascot-wave {
+    0%, 100% { transform: rotate(-28deg); }
+    50% { transform: rotate(-70deg); }
+}
+
+@keyframes bb-mascot-wiggle {
+    0%, 100% { transform: rotate(0); }
+    35% { transform: rotate(-13deg); }
+    70% { transform: rotate(12deg); }
+}
+
+@media (max-width: 760px) {
+    .bb-ai-assistant {
+        bottom: max(16px, env(safe-area-inset-bottom));
+        right: 16px;
+    }
+
+    .bb-mascot-launcher.bb-ai-toggle {
+        bottom: max(16px, env(safe-area-inset-bottom));
+        height: 70px;
+        min-height: 70px;
+        right: 16px;
+        transform-origin: bottom right;
+        width: 70px;
+    }
+
+    .bb-mascot {
+        animation-name: bb-mascot-float-mobile;
+        height: 70px;
+        transform-origin: top left;
+        width: 70px;
+    }
+
+    .bb-mascot-bubble {
+        bottom: 82px;
+        display: none;
+        right: 18px;
+    }
+
+    .bb-ai-panel {
+        bottom: 12px;
+        left: 12px;
+        max-height: 80vh;
+        overflow-x: hidden;
+        overflow-y: auto;
+        right: 12px;
+        width: calc(100% - 24px);
+    }
+
+    .bb-assistant-chip,
+    .bb-assistant-result {
+        min-height: 44px;
+    }
+}
+
+@keyframes bb-mascot-float-mobile {
+    0%, 100% { transform: scale(.8) translateY(0) rotate(-1deg); }
+    50% { transform: scale(.8) translateY(-6px) rotate(1deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .bb-mascot,
+    .bb-mascot-eye,
+    .bb-mascot-shadow,
+    .bb-mascot-arm,
+    .bb-mascot-antenna {
+        animation: none !important;
+    }
+
+    .bb-mascot { transform: none; }
+
+    .bb-mascot-launcher,
+    .bb-mascot-bubble {
+        transition: none !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) and (max-width: 760px) {
+    .bb-mascot { transform: scale(.8); }
+}
+
 /* Modern BusinessBuilder AI theme refresh */
 :root {
     --primary: #2563eb;
@@ -4799,5 +5206,40 @@ a {
     .agent-form-grid button {
         min-width: 0;
         width: 100%;
+    }
+}
+
+/* Keep mascot geometry above legacy assistant rules. */
+.bb-ai-assistant { bottom: 24px; right: 24px; z-index: 900; }
+.bb-mascot-launcher.bb-ai-toggle {
+    background: transparent;
+    border: 0;
+    border-radius: 28px;
+    bottom: 24px;
+    box-shadow: none;
+    height: 88px;
+    min-height: 88px;
+    overflow: visible;
+    padding: 0;
+    right: 24px;
+    width: 88px;
+}
+.bb-ai-panel { bottom: 122px; z-index: 3; }
+
+@media (max-width: 760px) {
+    .bb-ai-assistant { bottom: max(16px, env(safe-area-inset-bottom)); right: 16px; }
+    .bb-mascot-launcher.bb-ai-toggle {
+        bottom: max(16px, env(safe-area-inset-bottom));
+        height: 70px;
+        min-height: 70px;
+        right: 16px;
+        width: 70px;
+    }
+    .bb-ai-panel {
+        bottom: 12px;
+        left: 12px;
+        max-height: 80vh;
+        right: 12px;
+        width: calc(100% - 24px);
     }
 }

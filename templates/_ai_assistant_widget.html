@@ -9,9 +9,8 @@
     >
         <header class="bb-assistant-header">
             <div class="bb-assistant-identity">
-                <span class="bb-assistant-avatar bb-ai-avatar small" aria-hidden="true">
-                    <img src="/static/favicon.png" alt="">
-                    <span class="bb-assistant-spark">✦</span>
+                <span class="bb-panel-bot" aria-hidden="true">
+                    <span class="bb-panel-bot-eye"></span><span class="bb-panel-bot-eye"></span>
                 </span>
                 <div>
                     <p class="eyebrow">BusinessBuilder AI</p>
@@ -21,14 +20,14 @@
             <button type="button" class="bb-assistant-close" data-bb-assistant-close aria-label="Close AI assistant">×</button>
         </header>
 
-        <p class="bb-assistant-intro">Search tools, ask for help, or jump to your next business step.</p>
+        <p class="bb-assistant-intro">Search tools, find pages, or jump to your next business step.</p>
 
         <label class="bb-assistant-search" for="bbAssistantSearch">
             <span aria-hidden="true">⌕</span>
             <input
                 id="bbAssistantSearch"
                 type="search"
-                placeholder="Try Shopify, pricing, products..."
+                placeholder="Search Shopify, Canva, products, pricing…"
                 autocomplete="off"
                 aria-label="Search BusinessBuilder AI tools"
                 aria-controls="bbAssistantResults"
@@ -60,19 +59,31 @@
         </footer>
     </section>
 
+    <button type="button" class="bb-mascot-bubble" data-bb-mascot-bubble aria-label="Open AI assistant">
+        <span data-bb-mascot-message>Need help?</span>
+    </button>
+
     <button
         type="button"
-        class="bb-assistant-toggle bb-ai-toggle"
+        class="bb-assistant-toggle bb-ai-toggle bb-mascot-launcher bb-mascot-happy"
         data-bb-assistant-toggle
-        aria-label="Ask BusinessBuilder"
+        aria-label="Open AI assistant"
         aria-controls="bbAssistantPanel"
         aria-expanded="false"
     >
-        <span class="bb-assistant-avatar bb-ai-avatar" aria-hidden="true">
-            <img src="/static/favicon.png" alt="">
-            <span class="bb-assistant-spark">✦</span>
+        <span class="bb-mascot" aria-hidden="true">
+            <span class="bb-mascot-antenna"><i></i></span>
+            <span class="bb-mascot-ear left"></span><span class="bb-mascot-ear right"></span>
+            <span class="bb-mascot-head">
+                <span class="bb-mascot-face">
+                    <i class="bb-mascot-eye left"></i><i class="bb-mascot-eye right"></i>
+                    <i class="bb-mascot-mouth"></i>
+                </span>
+            </span>
+            <span class="bb-mascot-body"><i class="bb-mascot-core">✦</i></span>
+            <span class="bb-mascot-arm"></span>
+            <span class="bb-mascot-shadow"></span>
         </span>
-        <span class="bb-assistant-toggle-label">Ask BusinessBuilder</span>
     </button>
 </div>
 
@@ -87,31 +98,56 @@
         const closeButton = root.querySelector("[data-bb-assistant-close]");
         const search = root.querySelector("#bbAssistantSearch");
         const results = root.querySelector("#bbAssistantResults");
+        const quickChips = root.querySelector(".bb-assistant-chips");
+        const bubble = root.querySelector("[data-bb-mascot-bubble]");
+        const bubbleMessage = root.querySelector("[data-bb-mascot-message]");
         const currentPath = window.location.pathname;
+
+        const defaultContext = {
+            bubble: "Need help?",
+            chips: [["Dashboard", "dashboard"], ["Generate My Store", "generate store"], ["Find Products", "products"], ["Support", "support"]]
+        };
+        const routeContexts = {
+            "/dashboard": { bubble: "Ready to build?", chips: [["Generate My Store", "generate store"], ["Continue Building", "business workflow"], ["Find Products", "products"], ["Check Launch Readiness", "launch"]] },
+            "/build_center": { bubble: "Follow the roadmap", chips: [["Continue roadmap", "business workflow"], ["Product research", "product finder"], ["Pricing", "pricing"], ["Launch readiness", "launch"]] },
+            "/ai_store_agent": { bubble: "Want me to draft your store?", chips: [["Create store task", "AI Store Agent"], ["Review drafts", "AI Store Agent"], ["Generate products", "Shopify products"], ["Launch checklist", "launch"]] },
+            "/product_finder": { bubble: "Let’s find products", chips: [["Find suppliers", "supplier"], ["Pricing advisor", "pricing"], ["Product ideas", "products"], ["Store draft", "generate store"]] },
+            "/supplier_finder": { bubble: "Need suppliers?", chips: [["Compare suppliers", "supplier"], ["Pricing advisor", "pricing"], ["Product Finder", "products"], ["Launch plan", "launch"]] },
+            "/pricing_advisor": { bubble: "Price it smartly", chips: [["Calculate pricing", "pricing"], ["Payment guide", "payment"], ["Supplier costs", "supplier"], ["Launch readiness", "launch"]] },
+            "/payment_guide": { bubble: "Set up payments", chips: [["Paystack help", "paystack"], ["PayPal help", "paypal"], ["Shopify payments", "shopify payment"], ["Payment checklist", "payment"]] },
+            "/domain_helper": { bubble: "Find your domain", chips: [["Buy domain safely", "buy domain"], ["DNS setup", "DNS"], ["Connect domain", "connect domain"], ["Business email", "business email"]] },
+            "/domain_buying_assistant": { bubble: "Find your domain", chips: [["Buy domain safely", "buy domain"], ["DNS setup", "DNS"], ["Connect domain", "connect domain"], ["Business email", "business email"]] },
+            "/business_setup_agent": { bubble: "Set up your business", chips: [["Domain", "buy domain"], ["Business email", "business email"], ["Payments", "payment"], ["Launch checklist", "launch"]] },
+            "/shopify_settings": { bubble: "Connect Shopify?", chips: [["Token guide", "shopify token"], ["Test connection", "connect Shopify"], ["Create draft products", "Shopify products"], ["Store setup", "generate store"]] },
+            "/canva_settings": { bubble: "Connect Canva?", chips: [["Canva OAuth help", "connect Canva"], ["Branding brief", "Canva branding"], ["Design assets", "Canva design"], ["Marketing design", "Canva marketing"]] },
+            "/settings": { bubble: "Manage your account", chips: [["Plan and billing", "pricing plan"], ["Integrations", "app connection"], ["Theme", "settings theme"], ["Support", "support"]] },
+            "/pricing": { bubble: "Choose a plan", chips: [["Compare plans", "pricing plan"], ["Starter", "Starter plan"], ["Pro", "Pro plan"], ["Premium", "Premium plan"]] },
+            "/support": { bubble: "Need support?", chips: [["Billing help", "billing help"], ["Shopify help", "shopify support"], ["Canva help", "canva support"], ["Contact support", "support"]] }
+        };
 
         const tools = [
             { name: "Dashboard", description: "See your plan, progress, and recommended next step.", route: "/dashboard", category: "Workspace", plan: "Starter" },
             { name: "Build Center", description: "Track every step from business idea to launch.", route: "/build_center", category: "Workspace", plan: "Starter" },
-            { name: "AI Store Agent", description: "Generate, review, edit, approve, or delete store drafts.", route: "/ai_store_agent", category: "Store", plan: "Starter / Pro" },
-            { name: "Generate My Store", description: "Create a complete reviewable store package from your workflow.", route: "/store_builder", category: "Store", plan: "Pro" },
-            { name: "Product Finder", description: "Research product ideas, positioning, and sourcing paths.", route: "/product_finder", category: "Research", plan: "Starter" },
-            { name: "Supplier Finder", description: "Compare supplier types and platforms before buying inventory.", route: "/supplier_finder", category: "Research", plan: "Starter" },
-            { name: "Pricing Advisor", description: "Create low, standard, and premium pricing guidance.", route: "/pricing_advisor", category: "Planning", plan: "Starter" },
-            { name: "Payment Guide", description: "Compare Paystack, PayPal, EFT, cards, and other payment options.", route: "/payment_guide", category: "Planning", plan: "Starter" },
+            { name: "AI Store Agent", description: "Generate, review, edit, approve, or delete store drafts.", route: "/ai_store_agent", category: "Store", plan: "Starter / Pro", keywords: "shopify store products draft generate store" },
+            { name: "Generate My Store", description: "Create a complete reviewable store package from your workflow.", route: "/store_builder", category: "Store", plan: "Pro", keywords: "build store shopify website" },
+            { name: "Product Finder", description: "Research product ideas, positioning, and sourcing paths.", route: "/product_finder", category: "Research", plan: "Starter", keywords: "products sell product ideas" },
+            { name: "Supplier Finder", description: "Compare supplier types and platforms before buying inventory.", route: "/supplier_finder", category: "Research", plan: "Starter", keywords: "supplier shipping costs inventory" },
+            { name: "Pricing Advisor", description: "Create low, standard, and premium pricing guidance.", route: "/pricing_advisor", category: "Planning", plan: "Starter", keywords: "price plan upgrade cost margin" },
+            { name: "Payment Guide", description: "Compare Paystack, PayPal, EFT, cards, and other payment options.", route: "/payment_guide", category: "Planning", plan: "Starter", keywords: "payments money receive money checkout shopify payments" },
             { name: "Email Marketing Assistant", description: "Draft campaigns, subject lines, calls to action, and follow-ups.", route: "/email_marketing", category: "Marketing", plan: "Pro" },
             { name: "Domain Buying Assistant", description: "Find domain names, compare providers, review renewal risks, and create a safe buying checklist.", route: "/domain_buying_assistant", category: "Website", plan: "Starter / Pro", keywords: "buy domain domain name website name register domain availability provider renewal DNS connect domain" },
             { name: "Domain/DNS Helper", description: "Choose a domain and understand DNS connection steps.", route: "/domain_helper", category: "Website", plan: "Starter" },
             { name: "Business Setup Agent", description: "Plan business name, email, domain, branding, payments, shipping, admin, tax reminders, and launch tasks.", route: "/business_setup_agent", category: "Planning", plan: "Starter / Premium", keywords: "register business business setup business email legal tax SARS shipping payments admin checklist" },
-            { name: "App Connection Agent", description: "Find approved apps, connection guides, and approval drafts.", route: "/app_connection_agent", category: "Integrations", plan: "Pro / Premium" },
+            { name: "App Connection Agent", description: "Find approved apps, connection guides, and approval drafts.", route: "/app_connection_agent", category: "Integrations", plan: "Pro / Premium", keywords: "connect app integration automation" },
             { name: "Business Workflow", description: "Save the business details used by plans and AI drafts.", route: "/business_workflow", category: "Planning", plan: "Starter" },
             { name: "Business Plans", description: "Create and review business plans from saved workflow answers.", route: "/business_workflow", category: "Planning", plan: "Starter" },
             { name: "Launch Readiness", description: "Check what is complete and what is still missing before launch.", route: "/launch_readiness", category: "Launch", plan: "Starter" },
             { name: "Launch Package", description: "Bring strategy, drafts, branding, and launch steps together.", route: "/launch_package", category: "Launch", plan: "Pro" },
-            { name: "Shopify Settings", description: "Connect or test your Shopify store connection.", route: "/shopify_settings", category: "Integrations", plan: "Pro" },
-            { name: "Canva Settings", description: "Connect Canva through the official authorization flow.", route: "/canva_settings", category: "Integrations", plan: "Pro" },
+            { name: "Shopify Settings", description: "Connect or test your Shopify store connection.", route: "/shopify_settings", category: "Integrations", plan: "Pro", keywords: "shopify token store products payments connect" },
+            { name: "Canva Settings", description: "Connect Canva through the official authorization flow.", route: "/canva_settings", category: "Integrations", plan: "Pro", keywords: "canva logo design branding marketing assets oauth" },
             { name: "Settings", description: "Manage your account, plan, integrations, theme, and security.", route: "/settings", category: "Account", plan: "Starter" },
-            { name: "Pricing", description: "Compare Starter, Pro, and Premium Build packages.", route: "/pricing", category: "Account", plan: "Public" },
-            { name: "Support", description: "Get help with billing, integrations, AI output, or your account.", route: "/support", category: "Help", plan: "Starter" },
+            { name: "Pricing", description: "Compare Starter, Pro, and Premium Build packages.", route: "/pricing", category: "Account", plan: "Public", keywords: "plan upgrade starter pro premium billing" },
+            { name: "Support", description: "Get help with billing, integrations, AI output, or your account.", route: "/support", category: "Help", plan: "Starter", keywords: "help contact billing shopify canva" },
             { name: "Examples", description: "View sample BusinessBuilder AI outputs.", route: "/examples", category: "Help", plan: "Public" },
             { name: "Projects", description: "Organize and revisit your business projects.", route: "/projects", category: "Workspace", plan: "Starter" },
             { name: "Onboarding", description: "Update your business idea, market, budget, and goals.", route: "/onboarding", category: "Workspace", plan: "Starter" }
@@ -137,10 +173,37 @@
             "/supplier_finder": ["Product Finder", "Pricing Advisor", "Payment Guide", "Build Center"],
             "/pricing_advisor": ["Supplier Finder", "Payment Guide", "AI Store Agent", "Build Center"],
             "/payment_guide": ["Pricing Advisor", "Shopify Settings", "Settings", "Support"],
-            "/settings": ["Shopify Settings", "Canva Settings", "Pricing", "Support"]
-            ,"/domain_buying_assistant": ["Domain/DNS Helper", "Business Setup Agent", "Shopify Settings", "Support"]
-            ,"/business_setup_agent": ["Domain Buying Assistant", "Payment Guide", "Canva Settings", "Launch Readiness"]
+            "/settings": ["Shopify Settings", "Canva Settings", "Pricing", "Support"],
+            "/domain_buying_assistant": ["Domain/DNS Helper", "Business Setup Agent", "Shopify Settings", "Support"],
+            "/business_setup_agent": ["Domain Buying Assistant", "Payment Guide", "Canva Settings", "Launch Readiness"]
         };
+
+        let moodTimer = null;
+
+        function setMood(mood, temporary) {
+            toggle.classList.remove("bb-mascot-happy", "bb-mascot-thinking", "bb-mascot-success");
+            toggle.classList.add("bb-mascot-" + mood);
+            if (moodTimer) window.clearTimeout(moodTimer);
+            if (temporary) {
+                moodTimer = window.setTimeout(function() {
+                    setMood(panel.hidden ? "happy" : "thinking", false);
+                }, 650);
+            }
+        }
+
+        function applyPageContext() {
+            const context = routeContexts[currentPath] || defaultContext;
+            bubbleMessage.textContent = context.bubble;
+            quickChips.replaceChildren();
+            context.chips.forEach(function(item) {
+                const chip = document.createElement("button");
+                chip.type = "button";
+                chip.className = "bb-assistant-chip";
+                chip.setAttribute("data-bb-assistant-query", item[1]);
+                chip.textContent = item[0];
+                quickChips.appendChild(chip);
+            });
+        }
 
         function normalize(value) {
             return (value || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, " ");
@@ -160,6 +223,7 @@
             meta.className = "bb-assistant-result-meta";
             meta.textContent = item.category + " · " + item.plan;
             link.append(copy, meta);
+            link.addEventListener("click", function() { setMood("success", true); });
             return link;
         }
 
@@ -226,6 +290,7 @@
             panel.hidden = !open;
             toggle.setAttribute("aria-expanded", open ? "true" : "false");
             root.classList.toggle("is-open", open);
+            setMood(open ? "thinking" : "happy", false);
             if (open) {
                 render(search.value);
                 window.setTimeout(function() { search.focus(); }, 30);
@@ -234,13 +299,19 @@
             }
         }
 
+        applyPageContext();
         toggle.addEventListener("click", function() { setOpen(panel.hidden); });
+        bubble.addEventListener("click", function() { setOpen(true); });
         closeButton.addEventListener("click", function() { setOpen(false); });
-        search.addEventListener("input", function() { render(search.value); });
+        search.addEventListener("input", function() {
+            setMood(search.value || !panel.hidden ? "thinking" : "happy", false);
+            render(search.value);
+        });
         root.querySelectorAll("[data-bb-assistant-query]").forEach(function(chip) {
             chip.addEventListener("click", function() {
                 search.value = chip.getAttribute("data-bb-assistant-query");
                 render(search.value);
+                setMood("success", true);
                 search.focus();
             });
         });
