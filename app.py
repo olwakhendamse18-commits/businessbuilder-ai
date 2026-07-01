@@ -569,6 +569,38 @@ def init_db():
     """)
 
     execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS domain_buying_plans (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            business_name TEXT,
+            business_type TEXT,
+            target_country TEXT,
+            preferred_extension TEXT,
+            budget TEXT,
+            platform TEXT,
+            notes TEXT,
+            result TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS business_setup_plans (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            business_name TEXT,
+            business_type TEXT,
+            country TEXT,
+            budget TEXT,
+            platform TEXT,
+            current_stage TEXT,
+            notes TEXT,
+            result TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS app_recommendations (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -674,6 +706,16 @@ def init_db():
     cur.execute(sql("""
         CREATE INDEX IF NOT EXISTS idx_domain_guides_user
         ON domain_guides (user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_domain_buying_plans_user
+        ON domain_buying_plans (user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_business_setup_plans_user
+        ON business_setup_plans (user_id)
     """))
 
     cur.execute(sql("""
@@ -2266,6 +2308,128 @@ def get_domain_guide(user_id, guide_id):
     return row
 
 
+def save_domain_buying_plan(user_id, data, result):
+    conn = db()
+    cur = conn.cursor()
+    values = (
+        user_id, data.get("business_name", ""), data.get("business_type", ""),
+        data.get("target_country", ""), data.get("preferred_extension", ""),
+        data.get("budget", ""), data.get("platform", ""),
+        data.get("notes", ""), result
+    )
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO domain_buying_plans (
+                user_id, business_name, business_type, target_country,
+                preferred_extension, budget, platform, notes, result
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """), values)
+        plan_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO domain_buying_plans (
+                user_id, business_name, business_type, target_country,
+                preferred_extension, budget, platform, notes, result
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """), values)
+        plan_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return plan_id
+
+
+def get_domain_buying_plans(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, business_name, business_type, target_country,
+               preferred_extension, budget, platform, notes, result, created_at
+        FROM domain_buying_plans
+        WHERE user_id = ?
+        ORDER BY id DESC
+    """), (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_domain_buying_plan(user_id, plan_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, business_name, business_type, target_country,
+               preferred_extension, budget, platform, notes, result, created_at
+        FROM domain_buying_plans
+        WHERE user_id = ? AND id = ?
+        LIMIT 1
+    """), (user_id, plan_id))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def save_business_setup_plan(user_id, data, result):
+    conn = db()
+    cur = conn.cursor()
+    values = (
+        user_id, data.get("business_name", ""), data.get("business_type", ""),
+        data.get("country", ""), data.get("budget", ""),
+        data.get("platform", ""), data.get("current_stage", ""),
+        data.get("notes", ""), result
+    )
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO business_setup_plans (
+                user_id, business_name, business_type, country, budget,
+                platform, current_stage, notes, result
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """), values)
+        plan_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO business_setup_plans (
+                user_id, business_name, business_type, country, budget,
+                platform, current_stage, notes, result
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """), values)
+        plan_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return plan_id
+
+
+def get_business_setup_plans(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, business_name, business_type, country, budget,
+               platform, current_stage, notes, result, created_at
+        FROM business_setup_plans
+        WHERE user_id = ?
+        ORDER BY id DESC
+    """), (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_business_setup_plan(user_id, plan_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, business_name, business_type, country, budget,
+               platform, current_stage, notes, result, created_at
+        FROM business_setup_plans
+        WHERE user_id = ? AND id = ?
+        LIMIT 1
+    """), (user_id, plan_id))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
 def save_app_recommendation(user_id, data, content):
     conn = db()
     cur = conn.cursor()
@@ -2608,6 +2772,8 @@ def get_launch_readiness(user_id):
     canva_briefs = get_canva_design_briefs(user_id)
     ai_store_builds = get_ai_store_builds(user_id)
     domain_guides = get_domain_guides(user_id)
+    domain_buying_plans = get_domain_buying_plans(user_id)
+    business_setup_plans = get_business_setup_plans(user_id)
     email_campaigns = get_email_campaigns(user_id)
 
     checks = [
@@ -2690,6 +2856,22 @@ def get_launch_readiness(user_id):
             "description": "Create a payment setup checklist.",
             "url": "/generate_store_agent_task/payments_setup",
             "action": "Create Payment Checklist"
+        },
+        {
+            "title": "Business setup roadmap created",
+            "complete": bool(business_setup_plans),
+            "description": "Create an optional roadmap for name, email, domain, payments, shipping, admin, and launch tasks.",
+            "url": "/business_setup_agent",
+            "action": "Create Setup Roadmap",
+            "optional": True
+        },
+        {
+            "title": "Domain buying plan created",
+            "complete": bool(domain_buying_plans),
+            "description": "Create an optional shortlist, provider comparison, renewal warning, and safe buying checklist.",
+            "url": "/domain_buying_assistant",
+            "action": "Plan Domain Purchase",
+            "optional": True
         },
         {
             "title": "Domain setup guidance created",
@@ -5720,6 +5902,8 @@ def build_center():
     pricing_advice_list = get_pricing_advice_list(user_id)
     payment_guides = get_payment_guides(user_id)
     domain_guides = get_domain_guides(user_id)
+    domain_buying_plans = get_domain_buying_plans(user_id)
+    business_setup_plans = get_business_setup_plans(user_id)
     email_campaigns = get_email_campaigns(user_id)
     app_recommendations = get_app_recommendations(user_id)
     connected_apps = get_connected_app_summaries(user_id)
@@ -6105,6 +6289,14 @@ def build_center():
         },
         {
             "number": "02",
+            "title": "Business Setup Agent",
+            "status": status_for(business_setup_plans, workflow_started),
+            "description": "Plan your business name, email, domain, store, payments, shipping, suppliers, admin reminders, and launch tasks.",
+            "url": "/business_setup_agent",
+            "action": "Create Setup Roadmap"
+        },
+        {
+            "number": "03",
             "title": "Product Finder",
             "status": status_for(product_research_list, workflow_started),
             "description": "Research product ideas, sourcing paths, competitor examples, and price angles.",
@@ -6112,7 +6304,7 @@ def build_center():
             "action": "Find Products"
         },
         {
-            "number": "03",
+            "number": "04",
             "title": "Supplier Finder",
             "status": status_for(supplier_recommendations, bool(product_research_list)),
             "description": "Compare supplier and platform options before buying inventory or choosing a fulfillment path.",
@@ -6120,7 +6312,7 @@ def build_center():
             "action": "Compare Suppliers"
         },
         {
-            "number": "04",
+            "number": "05",
             "title": "Pricing Advisor",
             "status": status_for(pricing_advice_list, bool(product_research_list or supplier_recommendations)),
             "description": "Estimate price ranges, margins, break-even points, and a first price to test.",
@@ -6128,7 +6320,7 @@ def build_center():
             "action": "Get Pricing Advice"
         },
         {
-            "number": "05",
+            "number": "06",
             "title": "Payment Guide",
             "status": status_for(payment_guides, bool(pricing_advice_list or workflow_started)),
             "description": "Plan PayPal, Paystack, Shopify, EFT, card, COD, mobile money, and international payment setup.",
@@ -6136,15 +6328,23 @@ def build_center():
             "action": "Choose Payments"
         },
         {
-            "number": "06",
-            "title": "Domain Helper",
-            "status": status_for(domain_guides, bool(payment_guides or workflow_started)),
-            "description": "Choose a domain and prepare safe DNS, SSL, Shopify, and custom-domain connection steps.",
-            "url": "/domain_helper",
-            "action": "Create Domain Guide"
+            "number": "07",
+            "title": "Domain Buying Assistant",
+            "status": status_for(domain_buying_plans, bool(payment_guides or workflow_started)),
+            "description": "Choose a business domain, compare providers, review renewal risks, and prepare a safe buying checklist.",
+            "url": "/domain_buying_assistant",
+            "action": "Plan Domain Purchase"
         },
         {
-            "number": "07",
+            "number": "08",
+            "title": "Connect Domain",
+            "status": status_for(domain_guides, bool(domain_buying_plans)),
+            "description": "Prepare DNS, SSL, root/www redirect, Shopify, Render, or custom website connection steps.",
+            "url": "/domain_helper",
+            "action": "Create DNS Guide"
+        },
+        {
+            "number": "09",
             "title": "Store Draft",
             "status": status_for(ai_store_builds or store_agent_tasks, product_research_list),
             "description": "Generate reviewable store drafts and AI Store Agent tasks before applying anything.",
@@ -6152,7 +6352,7 @@ def build_center():
             "action": "Open Agent"
         },
         {
-            "number": "08",
+            "number": "10",
             "title": "Shopify Assets",
             "status": status_for(shopify_products or shopify_collections or shopify_pages, shopify_connected),
             "description": "Create supported draft products, collections, pages, and setup guidance after approval.",
@@ -6160,7 +6360,7 @@ def build_center():
             "action": "Manage Shopify" if not shopify_connected else "View Assets"
         },
         {
-            "number": "09",
+            "number": "11",
             "title": "Canva Branding",
             "status": status_for(canva_branding_packages or canva_design_briefs or canva_designs, canva_connected),
             "description": "Create brand direction, logo briefs, social ideas, and marketing asset briefs.",
@@ -6168,7 +6368,7 @@ def build_center():
             "action": "Manage Canva" if not canva_connected else "Create Branding"
         },
         {
-            "number": "10",
+            "number": "12",
             "title": "Email Marketing",
             "status": status_for(email_campaigns, bool(ai_store_builds or canva_branding_packages)),
             "description": "Create a reviewable launch, welcome, newsletter, promotion, or ecommerce email campaign draft.",
@@ -6176,7 +6376,7 @@ def build_center():
             "action": "Create Campaign"
         },
         {
-            "number": "11",
+            "number": "13",
             "title": "App Recommendations",
             "status": status_for(app_recommendations, workflow_started),
             "description": "Choose suitable platforms based on budget, market, business type, goals, and skill level.",
@@ -6184,7 +6384,7 @@ def build_center():
             "action": "Recommend Apps"
         },
         {
-            "number": "12",
+            "number": "14",
             "title": "App Connections",
             "status": status_for(connected_apps, bool(app_recommendations)),
             "description": "Connect supported platforms with permission or use guidance-only setup paths.",
@@ -6192,7 +6392,7 @@ def build_center():
             "action": "Manage Connections"
         },
         {
-            "number": "13",
+            "number": "15",
             "title": "Marketing Drafts",
             "status": status_for(marketing_app_drafts, bool(app_recommendations or connected_apps)),
             "description": "Prepare email and advertising drafts without sending, publishing, or spending.",
@@ -6200,7 +6400,7 @@ def build_center():
             "action": "Create Marketing Draft"
         },
         {
-            "number": "14",
+            "number": "16",
             "title": "Design Drafts",
             "status": status_for(design_app_drafts, bool(canva_branding_packages or connected_apps)),
             "description": "Prepare Canva-ready design briefs for review and approval.",
@@ -6208,7 +6408,7 @@ def build_center():
             "action": "Create Design Draft"
         },
         {
-            "number": "15",
+            "number": "17",
             "title": "Website/Store Drafts",
             "status": status_for(website_store_app_drafts, bool(ai_store_builds or app_recommendations)),
             "description": "Prepare website copy, page plans, automation plans, and draft store assets.",
@@ -6216,7 +6416,7 @@ def build_center():
             "action": "Create Website/Store Draft"
         },
         {
-            "number": "16",
+            "number": "18",
             "title": "Launch Readiness",
             "status": status_for(launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
             "description": "Check completed and missing launch items before you go live.",
@@ -6224,7 +6424,7 @@ def build_center():
             "action": "Check Score"
         },
         {
-            "number": "17",
+            "number": "19",
             "title": "Launch Package",
             "status": status_for(user_package_at_least(user_id, "Pro") and launch_readiness["score"] >= 80, launch_readiness["score"] > 0),
             "description": "Bundle strategy, research, store assets, branding, and next steps into one package.",
@@ -8391,6 +8591,212 @@ def domain_guide(guide_id):
         return redirect("/domain_helper")
 
     return render_template("domain_guide.html", guide=guide)
+
+
+@app.route("/domain_buying_assistant")
+def domain_buying_assistant():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    return render_template(
+        "domain_buying_assistant.html",
+        onboarding=get_user_onboarding(user_id),
+        plans=get_domain_buying_plans(user_id),
+        current_package=get_user_package(user_id) or "Starter",
+        pro_package=user_package_at_least(user_id, "Pro")
+    )
+
+
+@app.route("/generate_domain_buying_plan", methods=["GET", "POST"])
+def generate_domain_buying_plan():
+    if "user_id" not in session:
+        return redirect("/login")
+    if request.method == "GET":
+        return redirect("/domain_buying_assistant")
+
+    user_id = session["user_id"]
+    data = {
+        "business_name": request.form.get("business_name", "").strip(),
+        "business_type": request.form.get("business_type", "").strip(),
+        "target_country": request.form.get("target_country", "").strip(),
+        "preferred_extension": request.form.get("preferred_extension", "").strip(),
+        "budget": request.form.get("budget", "").strip(),
+        "platform": request.form.get("platform", "").strip(),
+        "notes": request.form.get("notes", "").strip()
+    }
+    if not data["business_name"] or not data["target_country"]:
+        return redirect("/domain_buying_assistant?domain_buying_error=missing")
+
+    prompt = f"""
+Create a practical, beginner-friendly Domain Buying Plan.
+
+Non-negotiable safety rules:
+- Never claim live domain availability or live/current pricing. Say: "Check availability with the provider before buying."
+- Never buy, register, renew, transfer, reserve, or charge for a domain.
+- Never ask for card details, banking details, registrar passwords, API keys, identity documents, or account secrets.
+- The user must pay directly on the provider website or separately approve an official checkout if one is ever supported.
+- Be honest about uncertainty. Explain that first-year and renewal prices, taxes, privacy fees, and transfer terms can change.
+
+Include clearly labelled sections:
+1. Best domain name ideas (at least 8 concise options)
+2. Domain quality checklist: spelling, length, pronunciation, trademark risk, social handles, and future flexibility
+3. Extension guide for .com, .co.za, .site, .store, .ai, .co, and .online
+4. Recommended top 3: best professional option, cheapest likely option, and best South African option when relevant
+5. Provider comparison covering GoDaddy, Namecheap, Cloudflare Registrar, Domains.co.za, Shopify Domains, and Hostinger
+6. Best provider for beginners, lower renewal cost, Shopify users, and advanced DNS control
+7. General cost categories only, with renewal and optional-fee warnings
+8. Step-by-step buying checklist: choose, check spelling, check renewal, create provider account, pay directly, optionally enable auto-renew, connect DNS, test SSL, and configure root/www redirect
+9. DNS concepts in plain language: A record, CNAME, nameservers, SSL, root-to-www redirect, and propagation time
+10. Connection guide for Shopify, Render custom domains, BusinessBuilder AI landing pages, and a custom website. Tell users to confirm exact target records with their hosting provider or BusinessBuilder AI support before changing DNS.
+11. Business email credibility guidance
+12. Approval and safety summary explaining what the AI helps with and what the user must do
+
+Business name: {data['business_name']}
+Business type: {data['business_type']}
+Target country: {data['target_country']}
+Preferred extension: {data['preferred_extension'] or 'Not sure'}
+Budget: {data['budget']}
+Website platform: {data['platform']}
+Notes: {data['notes'] or 'None'}
+
+{build_project_context(user_id)}
+"""
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ]
+        )
+    except Exception:
+        return redirect("/domain_buying_assistant?domain_buying_error=ai_response")
+
+    plan_id = save_domain_buying_plan(
+        user_id, data, response.choices[0].message.content.strip()
+    )
+    return redirect(f"/domain_buying_plan/{plan_id}?domain_buying_notice=created")
+
+
+@app.route("/domain_buying_plan/<int:plan_id>")
+def domain_buying_plan(plan_id):
+    if "user_id" not in session:
+        return redirect("/login")
+    plan = get_domain_buying_plan(session["user_id"], plan_id)
+    if not plan:
+        return redirect("/domain_buying_assistant")
+    return render_template("domain_buying_plan.html", plan=plan)
+
+
+@app.route("/business_setup_agent")
+def business_setup_agent():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    return render_template(
+        "business_setup_agent.html",
+        onboarding=get_user_onboarding(user_id),
+        plans=get_business_setup_plans(user_id),
+        current_package=get_user_package(user_id) or "Starter",
+        premium_build=user_package_at_least(user_id, "Premium Build")
+    )
+
+
+@app.route("/generate_business_setup_plan", methods=["GET", "POST"])
+def generate_business_setup_plan():
+    if "user_id" not in session:
+        return redirect("/login")
+    if request.method == "GET":
+        return redirect("/business_setup_agent")
+
+    user_id = session["user_id"]
+    data = {
+        "business_name": request.form.get("business_name", "").strip(),
+        "business_type": request.form.get("business_type", "").strip(),
+        "country": request.form.get("country", "").strip(),
+        "budget": request.form.get("budget", "").strip(),
+        "platform": request.form.get("platform", "").strip(),
+        "current_stage": request.form.get("current_stage", "").strip(),
+        "notes": request.form.get("notes", "").strip()
+    }
+    if not data["business_name"] or not data["country"]:
+        return redirect("/business_setup_agent?setup_error=missing")
+
+    prompt = f"""
+Create a beginner-friendly Business Setup Roadmap for this user.
+
+Safety, legal, and approval rules:
+- Give general educational guidance only. Do not claim to be a lawyer, accountant, tax adviser, government official, or registration agent.
+- Do not register a business, submit legal/tax documents, open accounts, buy domains, spend money, or make final purchases.
+- Never ask for card details, banking passwords, identity numbers, tax credentials, API keys, or platform passwords.
+- Tell the user to check official local requirements and qualified professionals for registration, tax, legal, employment, privacy, and consumer compliance.
+- For South Africa, mention general areas to verify such as business registration, SARS/tax obligations, business banking, payment-provider requirements, and consumer/refund obligations, without presenting final legal advice.
+- Draft first. Clearly mark what the user must review, approve, or complete directly.
+
+Cover these categories:
+1. Business name selection
+2. Domain purchase guidance
+3. Professional email setup (Google Workspace, Zoho Mail, and provider/domain email options)
+4. Logo and branding through a Canva brief
+5. Store platform choice
+6. Payment provider setup
+7. Shipping setup
+8. Supplier setup
+9. Basic legal/admin checklist
+10. Tax/admin reminder
+11. Social media account setup
+12. Launch checklist
+
+For each category include:
+- Priority and recommended order
+- Specific checklist
+- Tools needed
+- Estimated difficulty
+- Cost category: Free, Low cost, Medium cost, or Paid/depends
+- What BusinessBuilder AI can help draft or explain
+- What the user must do themselves
+- What requires approval
+- Next recommended action
+
+Finish with a 7-day priority plan and a clear approval-first safety summary.
+
+Business name: {data['business_name']}
+Business type: {data['business_type']}
+Country: {data['country']}
+Budget: {data['budget']}
+Platform: {data['platform']}
+Current stage: {data['current_stage']}
+Notes: {data['notes'] or 'None'}
+
+{build_project_context(user_id)}
+"""
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ]
+        )
+    except Exception:
+        return redirect("/business_setup_agent?setup_error=ai_response")
+
+    plan_id = save_business_setup_plan(
+        user_id, data, response.choices[0].message.content.strip()
+    )
+    return redirect(f"/business_setup_plan/{plan_id}?setup_notice=created")
+
+
+@app.route("/business_setup_plan/<int:plan_id>")
+def business_setup_plan(plan_id):
+    if "user_id" not in session:
+        return redirect("/login")
+    plan = get_business_setup_plan(session["user_id"], plan_id)
+    if not plan:
+        return redirect("/business_setup_agent")
+    return render_template("business_setup_plan.html", plan=plan)
 
 
 @app.route("/launch_readiness")

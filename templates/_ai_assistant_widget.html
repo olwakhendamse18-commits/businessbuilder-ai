@@ -46,6 +46,8 @@
             <button type="button" class="bb-assistant-chip" data-bb-assistant-query="find supplier">Supplier Finder</button>
             <button type="button" class="bb-assistant-chip" data-bb-assistant-query="email marketing">Email Marketing</button>
             <button type="button" class="bb-assistant-chip" data-bb-assistant-query="domain">Domain Helper</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="buy domain">Buy a Domain</button>
+            <button type="button" class="bb-assistant-chip" data-bb-assistant-query="business setup">Business Setup</button>
             <button type="button" class="bb-assistant-chip" data-bb-assistant-query="launch">Launch Readiness</button>
             <button type="button" class="bb-assistant-chip" data-bb-assistant-query="support">Support</button>
         </div>
@@ -97,7 +99,9 @@
             { name: "Pricing Advisor", description: "Create low, standard, and premium pricing guidance.", route: "/pricing_advisor", category: "Planning", plan: "Starter" },
             { name: "Payment Guide", description: "Compare Paystack, PayPal, EFT, cards, and other payment options.", route: "/payment_guide", category: "Planning", plan: "Starter" },
             { name: "Email Marketing Assistant", description: "Draft campaigns, subject lines, calls to action, and follow-ups.", route: "/email_marketing", category: "Marketing", plan: "Pro" },
+            { name: "Domain Buying Assistant", description: "Find domain names, compare providers, review renewal risks, and create a safe buying checklist.", route: "/domain_buying_assistant", category: "Website", plan: "Starter / Pro", keywords: "buy domain domain name website name register domain availability provider renewal DNS connect domain" },
             { name: "Domain/DNS Helper", description: "Choose a domain and understand DNS connection steps.", route: "/domain_helper", category: "Website", plan: "Starter" },
+            { name: "Business Setup Agent", description: "Plan business name, email, domain, branding, payments, shipping, admin, tax reminders, and launch tasks.", route: "/business_setup_agent", category: "Planning", plan: "Starter / Premium", keywords: "register business business setup business email legal tax SARS shipping payments admin checklist" },
             { name: "App Connection Agent", description: "Find approved apps, connection guides, and approval drafts.", route: "/app_connection_agent", category: "Integrations", plan: "Pro / Premium" },
             { name: "Business Workflow", description: "Save the business details used by plans and AI drafts.", route: "/business_workflow", category: "Planning", plan: "Starter" },
             { name: "Business Plans", description: "Create and review business plans from saved workflow answers.", route: "/business_workflow", category: "Planning", plan: "Starter" },
@@ -120,6 +124,8 @@
             { terms: ["receive money", "payment", "paystack", "paypal"], text: "Use Payment Guide to compare Paystack, PayPal, EFT, card payments, and Shopify payment options.", label: "Open Payment Guide", route: "/payment_guide" },
             { terms: ["find supplier", "supplier", "alibaba", "aliexpress"], text: "Use Supplier Finder to compare Amazon-style research, local suppliers, Alibaba, AliExpress, print-on-demand, and other options.", label: "Open Supplier Finder", route: "/supplier_finder" },
             { terms: ["launch", "ready to launch", "launch checklist"], text: "Use Launch Readiness to check what is missing before launch.", label: "Open Launch Readiness", route: "/launch_readiness" },
+            { terms: ["buy domain", "domain name", "website name", "connect domain", "dns"], text: "Use Domain Buying Assistant to shortlist names, compare providers, understand renewal risks, and prepare safe DNS steps. Check availability with the provider before buying.", label: "Open Domain Buying Assistant", route: "/domain_buying_assistant" },
+            { terms: ["register business", "business setup", "business email", "legal", "tax", "sars", "shipping"], text: "Use Business Setup Agent for a general setup roadmap. Verify registration, tax, legal, and compliance requirements with official local sources and qualified professionals.", label: "Open Business Setup Agent", route: "/business_setup_agent" },
             { terms: ["support", "help account", "billing help"], text: "You can contact support for billing, Shopify, Canva, AI output, or account help.", label: "Open Support", route: "/support" }
         ];
 
@@ -132,6 +138,8 @@
             "/pricing_advisor": ["Supplier Finder", "Payment Guide", "AI Store Agent", "Build Center"],
             "/payment_guide": ["Pricing Advisor", "Shopify Settings", "Settings", "Support"],
             "/settings": ["Shopify Settings", "Canva Settings", "Pricing", "Support"]
+            ,"/domain_buying_assistant": ["Domain/DNS Helper", "Business Setup Agent", "Shopify Settings", "Support"]
+            ,"/business_setup_agent": ["Domain Buying Assistant", "Payment Guide", "Canva Settings", "Launch Readiness"]
         };
 
         function normalize(value) {
@@ -192,7 +200,7 @@
 
             const words = normalized.split(" ").filter(Boolean);
             const matches = tools.filter(function(item) {
-                const haystack = normalize(item.name + " " + item.description + " " + item.category);
+                const haystack = normalize(item.name + " " + item.description + " " + item.category + " " + (item.keywords || ""));
                 return words.every(function(word) { return haystack.includes(word); });
             }).slice(0, 6);
 

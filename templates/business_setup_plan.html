@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Business Setup Plan - BusinessBuilder AI</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" type="image/png" href="/static/favicon.png">{% include "_pwa_head.html" %}</head>
+<body><div class="dashboard">
+<aside class="sidebar"><div class="brand"><img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image"><div><h2>BusinessBuilder AI</h2><p>Setup roadmap</p></div></div><a href="/dashboard">Dashboard</a><a href="/business_setup_agent">Business Setup Agent</a><a href="/domain_buying_assistant">Domain Buying Assistant</a><a href="/launch_readiness">Launch Readiness</a><a href="/support">Support</a></aside>
+<main class="dashboard-main">{% include "_settings_menu.html" %}<div class="dashboard-header"><p class="eyebrow">{{ plan[6]|title }}</p><h1>{{ plan[1] }} setup roadmap</h1><p>{{ plan[2] or "Business" }} · {{ plan[3] }} · {{ plan[5] }}</p></div>
+{% if request.args.get("setup_notice") == "created" %}<p class="success-notice">Your business setup roadmap was generated and saved.</p>{% endif %}
+<section class="project-form result-document"><div class="security-warning"><strong>General guidance only.</strong>Verify registration, tax, legal, banking, consumer, privacy, employment, and industry requirements with official local sources and qualified professionals. The AI does not submit documents or complete paid actions.</div><pre class="business-plan-output tool-output">{{ plan[8] }}</pre><div class="generator-actions"><a href="/business_setup_agent" class="primary-button">Create Another Roadmap</a><a href="/build_center" class="secondary-button">Open Build Center</a><a href="/launch_readiness" class="secondary-button">Check Launch Readiness</a></div></section>
+</main></div>{% include "_app_scripts.html" %}</body></html>

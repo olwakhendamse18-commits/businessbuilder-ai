@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Business Setup Agent - BusinessBuilder AI</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" type="image/png" href="/static/favicon.png">{% include "_pwa_head.html" %}</head>
+<body><div class="dashboard">
+<aside class="sidebar"><div class="brand"><img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image"><div><h2>BusinessBuilder AI</h2><p>Business setup</p></div></div><a href="/dashboard">Dashboard</a><a href="/build_center">Build Center</a><a href="/business_setup_agent">Business Setup Agent</a><a href="/domain_buying_assistant">Domain Buying Assistant</a><a href="/payment_guide">Payment Guide</a><a href="/launch_readiness">Launch Readiness</a><a href="/support">Support</a><a href="/settings">Settings</a></aside>
+<main class="dashboard-main">{% include "_settings_menu.html" %}
+<div class="dashboard-header agent-feature-header"><div class="workspace-heading-row"><div><p class="eyebrow">A practical path from idea to launch</p><h1>Business Setup Agent</h1><p>Organize the name, domain, email, branding, store, payments, shipping, suppliers, admin reminders, social accounts, and launch tasks your business needs.</p></div><span class="workspace-plan-badge">{{ current_package }}{{ " · Advanced" if premium_build else "" }}</span></div></div>
+{% if request.args.get("setup_error") == "missing" %}<p class="form-notice">Enter your business name and country.</p>{% elif request.args.get("setup_error") == "ai_response" %}<p class="form-notice">The setup roadmap could not be generated. Please try again.</p>{% endif %}
+<section class="approval-warning agent-safety-banner"><div class="safety-icon">i</div><div><h2>Guidance—not legal, tax, or accounting advice</h2><p>The agent creates a general checklist. It does not register businesses, submit documents, open accounts, or act as a lawyer, accountant, tax adviser, or government official. Check official local requirements and qualified professionals.</p></div></section>
+<section class="setup-category-strip"><span>Business name</span><span>Domain</span><span>Email</span><span>Canva branding</span><span>Store</span><span>Payments</span><span>Shipping</span><span>Suppliers</span><span>Admin</span><span>Launch</span></section>
+<section class="project-form tool-form-card" id="businessSetupForm"><p class="eyebrow">Build your roadmap</p><h2>What stage is the business at?</h2><p class="form-help">Do not enter passwords, card details, tax credentials, identity numbers, or confidential documents.</p>
+<form method="POST" action="/generate_business_setup_plan" class="agent-form-grid">
+<label>Business name<input name="business_name" required value="{{ onboarding[1] if onboarding else '' }}" placeholder="Example: Cape Glow"></label>
+<label>Business type<input name="business_type" placeholder="Example: Online skincare store"></label>
+<label>Country<input name="country" required value="{{ onboarding[2] if onboarding else '' }}" placeholder="Example: South Africa"></label>
+<label>Budget<select name="budget"><option>Very low</option><option>Low</option><option>Medium</option><option>High</option></select></label>
+<label>Platform<select name="platform"><option>Not sure</option><option>Shopify</option><option>BusinessBuilder AI</option><option>Custom website</option><option>Social media only</option><option>Marketplace</option></select></label>
+<label>Current stage<select name="current_stage"><option>Idea only</option><option>Planning</option><option>Building store</option><option>Ready to launch</option></select></label>
+<label class="agent-form-wide">Notes<textarea name="notes" placeholder="What is already done? What feels confusing or urgent?"></textarea></label>
+<div class="agent-form-wide"><button type="submit">Generate Business Setup Roadmap</button><p class="form-help">The AI creates guidance and drafts. You review and complete official actions yourself.</p></div>
+</form></section>
+<section class="workspace-section"><div class="section-heading-row"><div><p class="eyebrow">Saved roadmaps</p><h2>Your business setup plans</h2></div><a href="/domain_buying_assistant" class="secondary-button">Plan a Domain</a></div><div class="cards">
+{% for plan in plans %}<article class="card advisor-output-card"><p class="eyebrow">{{ plan[6]|title }}</p><h3>{{ plan[1] }}</h3><p>{{ plan[2] or "Business type not set" }} · {{ plan[3] }}</p><a href="/business_setup_plan/{{ plan[0] }}" class="primary-button">View Setup Roadmap</a></article>
+{% else %}<article class="card empty-card"><h3>No business setup plans yet</h3><p>Create a priority roadmap for the tasks between idea and launch.</p><a href="#businessSetupForm" class="primary-button">Create Setup Roadmap</a></article>{% endfor %}
+</div></section>
+</main></div>{% include "_app_scripts.html" %}</body></html>

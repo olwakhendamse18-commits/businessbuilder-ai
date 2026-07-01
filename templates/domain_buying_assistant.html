@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Domain Buying Assistant - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+<body>
+<div class="dashboard">
+    <aside class="sidebar">
+        <div class="brand"><img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image"><div><h2>BusinessBuilder AI</h2><p>Domain buying</p></div></div>
+        <a href="/dashboard">Dashboard</a><a href="/build_center">Build Center</a><a href="/business_setup_agent">Business Setup Agent</a><a href="/domain_buying_assistant">Domain Buying Assistant</a><a href="/domain_helper">Domain/DNS Helper</a><a href="/shopify_settings">Shopify Settings</a><a href="/support">Support</a><a href="/settings">Settings</a>
+    </aside>
+    <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
+        <div class="dashboard-header agent-feature-header">
+            <div class="workspace-heading-row"><div><p class="eyebrow">Choose and connect a domain safely</p><h1>Domain Buying Assistant</h1><p>Find professional domain ideas, compare providers, understand renewal risks, and get a step-by-step buying and DNS checklist.</p></div><span class="workspace-plan-badge">{{ current_package }} · {{ "Full plan" if pro_package else "Basic guidance" }}</span></div>
+        </div>
+
+        {% if request.args.get("domain_buying_error") == "missing" %}<p class="form-notice">Enter your business name and target country.</p>{% elif request.args.get("domain_buying_error") == "ai_response" %}<p class="form-notice">The domain buying plan could not be generated. Please try again.</p>{% endif %}
+
+        <section class="approval-warning agent-safety-banner"><div class="safety-icon">✓</div><div><h2>You make the purchase</h2><p>BusinessBuilder AI does not check live availability, collect card details, buy domains, or change DNS automatically. Check availability with the provider before buying and pay directly on the provider website.</p></div></section>
+
+        <section class="agent-benefit-grid">
+            <article><span>01</span><h3>Name ideas</h3><p>Professional, local, alternative, and extension-based options.</p></article>
+            <article><span>02</span><h3>Provider comparison</h3><p>GoDaddy, Namecheap, Cloudflare, Domains.co.za, Shopify, and Hostinger.</p></article>
+            <article><span>03</span><h3>Connection guide</h3><p>Shopify, Render, BusinessBuilder AI landing pages, and custom websites.</p></article>
+        </section>
+
+        <section class="project-form tool-form-card" id="domainBuyingForm">
+            <div class="section-heading-row"><div><p class="eyebrow">Create your plan</p><h2>Tell us about the business</h2><p class="form-help">Do not enter registrar passwords, payment information, identity documents, or API keys.</p></div><a href="/domain_helper" class="secondary-button">Already own a domain?</a></div>
+            <form method="POST" action="/generate_domain_buying_plan" class="agent-form-grid">
+                <label>Business name<input name="business_name" required value="{{ onboarding[1] if onboarding else '' }}" placeholder="Example: Cape Glow"></label>
+                <label>Business type<input name="business_type" placeholder="Example: Natural skincare store"></label>
+                <label>Target country<input name="target_country" required value="{{ onboarding[2] if onboarding else '' }}" placeholder="Example: South Africa"></label>
+                <label>Preferred extension<select name="preferred_extension"><option value="Not sure">Not sure</option><option>.com</option><option>.co.za</option><option>.store</option><option>.site</option><option>.ai</option><option>.co</option><option>.online</option></select></label>
+                <label>Budget<select name="budget"><option>Very low</option><option>Low</option><option>Medium</option><option>High</option></select></label>
+                <label>Website platform<select name="platform"><option>Not sure</option><option>Shopify</option><option>Render website</option><option>BusinessBuilder AI landing page</option><option>Custom website</option></select></label>
+                <label class="agent-form-wide">Notes<textarea name="notes" placeholder="Words to include or avoid, preferred style, audience, or existing name ideas"></textarea></label>
+                <div class="agent-form-wide"><button type="submit">Generate Safe Domain Buying Plan</button><p class="form-help">AI runs only after you submit this form. It does not contact a registrar.</p></div>
+            </form>
+        </section>
+
+        <section class="workspace-section"><div class="section-heading-row"><div><p class="eyebrow">Saved plans</p><h2>Your domain buying plans</h2></div><a href="/business_setup_agent" class="secondary-button">Open Business Setup Agent</a></div><div class="cards">
+            {% for plan in plans %}<article class="card advisor-output-card"><p class="eyebrow">{{ plan[3] or "Country not set" }}</p><h3>{{ plan[1] }}</h3><p>{{ plan[4] or "Any extension" }} · {{ plan[6] or "Platform not set" }}</p><a href="/domain_buying_plan/{{ plan[0] }}" class="primary-button">View Buying Plan</a></article>
+            {% else %}<article class="card empty-card"><h3>No domain buying plans yet</h3><p>Create your first safe shortlist and buying checklist.</p><a href="#domainBuyingForm" class="primary-button">Start Domain Plan</a></article>{% endfor %}
+        </div></section>
+    </main>
+</div>
+{% include "_app_scripts.html" %}
+</body>
+</html>

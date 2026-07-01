@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Domain Buying Plan - BusinessBuilder AI</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" type="image/png" href="/static/favicon.png">{% include "_pwa_head.html" %}</head>
+<body><div class="dashboard">
+<aside class="sidebar"><div class="brand"><img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image"><div><h2>BusinessBuilder AI</h2><p>Domain buying plan</p></div></div><a href="/dashboard">Dashboard</a><a href="/domain_buying_assistant">Domain Buying Assistant</a><a href="/domain_helper">Domain/DNS Helper</a><a href="/support">Support</a></aside>
+<main class="dashboard-main">{% include "_settings_menu.html" %}<div class="dashboard-header"><p class="eyebrow">{{ plan[3] }}</p><h1>{{ plan[1] }} domain buying plan</h1><p>{{ plan[2] or "Business" }} · {{ plan[4] or "Any extension" }} · {{ plan[6] }}</p></div>
+{% if request.args.get("domain_buying_notice") == "created" %}<p class="success-notice">Your domain buying plan was generated and saved.</p>{% endif %}
+<section class="project-form result-document"><div class="security-warning"><strong>Check availability with the provider before buying.</strong>Prices and availability are not live. Verify spelling, first-year price, renewal cost, privacy fees, taxes, and terms. Pay directly with the provider and never share card or registrar credentials with the AI.</div><pre class="business-plan-output tool-output">{{ plan[8] }}</pre><div class="generator-actions"><a href="/domain_buying_assistant" class="primary-button">Create Another Plan</a><a href="/domain_helper" class="secondary-button">Open DNS Helper</a><a href="/support" class="secondary-button">Get Connection Help</a></div></section>
+</main></div>{% include "_app_scripts.html" %}</body></html>

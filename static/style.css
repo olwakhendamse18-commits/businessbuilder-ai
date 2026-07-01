@@ -4657,3 +4657,147 @@ a {
     .settings-toggle { min-height: 44px; width: 100%; }
     .settings-dropdown { left: 0; max-width: none; right: 0; width: 100%; }
 }
+
+/* Domain Buying Assistant and Business Setup Agent */
+.agent-feature-header {
+    background:
+        radial-gradient(circle at 88% 15%, rgba(65, 224, 210, .2), transparent 30%),
+        linear-gradient(135deg, #081d48, #293086);
+}
+
+.agent-safety-banner {
+    align-items: flex-start;
+    background: #f0f7ff;
+    border: 1px solid #cdddf7;
+    border-radius: 20px;
+    display: flex;
+    gap: 15px;
+    margin-bottom: 24px;
+    padding: 20px;
+}
+
+.agent-safety-banner h2 {
+    color: var(--text);
+    font-size: 1.08rem;
+    margin: 0 0 5px;
+}
+
+.agent-safety-banner p {
+    color: var(--muted);
+    line-height: 1.6;
+    margin: 0;
+}
+
+.safety-icon {
+    align-items: center;
+    background: #dceaff;
+    border-radius: 50%;
+    color: var(--primary-dark);
+    display: flex;
+    flex: 0 0 36px;
+    font-weight: 900;
+    height: 36px;
+    justify-content: center;
+}
+
+.agent-benefit-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(3, minmax(0,1fr));
+    margin-bottom: 24px;
+}
+
+.agent-benefit-grid article {
+    background: #fff;
+    border: 1px solid #e1e8f2;
+    border-radius: 18px;
+    padding: 21px;
+}
+
+.agent-benefit-grid span {
+    color: var(--primary);
+    font-size: .72rem;
+    font-weight: 900;
+}
+
+.agent-benefit-grid h3 {
+    color: var(--text);
+    margin: 12px 0 6px;
+}
+
+.agent-benefit-grid p {
+    color: var(--muted);
+    line-height: 1.55;
+    margin: 0;
+}
+
+.agent-form-grid {
+    display: grid;
+    gap: 2px 18px;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+}
+
+.agent-form-grid label {
+    min-width: 0;
+}
+
+.agent-form-grid label input,
+.agent-form-grid label select,
+.agent-form-grid label textarea {
+    margin-top: 8px;
+}
+
+.agent-form-wide {
+    grid-column: 1 / -1;
+}
+
+.agent-form-grid button {
+    min-width: 260px;
+}
+
+.setup-category-strip {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 24px;
+    overflow-x: auto;
+    padding: 2px 0 10px;
+    scrollbar-width: thin;
+}
+
+.setup-category-strip span {
+    background: #fff;
+    border: 1px solid #dce4f1;
+    border-radius: 999px;
+    color: var(--muted);
+    flex: 0 0 auto;
+    font-size: .76rem;
+    font-weight: 800;
+    padding: 8px 12px;
+}
+
+.result-document {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 1040px;
+}
+
+.result-document .tool-output {
+    line-height: 1.75;
+    white-space: pre-wrap;
+}
+
+@media (max-width: 850px) {
+    .agent-benefit-grid,
+    .agent-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .agent-form-wide {
+        grid-column: 1;
+    }
+
+    .agent-form-grid button {
+        min-width: 0;
+        width: 100%;
+    }
+}
