@@ -5260,9 +5260,9 @@ a {
 
 /* Final mascot contract: isolate it from legacy assistant and global button rules. */
 .bb-ai-assistant {
-    bottom: 24px !important;
+    bottom: 120px !important;
     height: 84px;
-    inset-inline: 24px auto !important;
+    inset-inline: auto 28px !important;
     isolation: isolate;
     overflow: visible !important;
     pointer-events: none;
@@ -5281,11 +5281,11 @@ a {
     background: transparent !important;
     border: 0 !important;
     border-radius: 26px !important;
-    bottom: 24px !important;
+    bottom: 120px !important;
     box-shadow: none !important;
     display: grid !important;
     height: 84px !important;
-    inset-inline: 24px auto !important;
+    inset-inline: auto 28px !important;
     justify-content: center !important;
     min-height: 84px !important;
     min-width: 84px !important;
@@ -5325,37 +5325,37 @@ a {
 }
 
 .bb-mascot-bubble {
-    bottom: 91px !important;
-    inset-inline: 96px auto !important;
+    bottom: 187px !important;
+    inset-inline: auto 100px !important;
     z-index: 10002 !important;
 }
 
 .bb-mascot-bubble::after {
-    left: 17px;
-    right: auto;
+    left: auto;
+    right: 17px;
 }
 
 .bb-ai-panel {
-    bottom: 120px !important;
-    left: 24px !important;
+    bottom: 215px !important;
+    left: auto !important;
     max-height: 70vh !important;
-    right: auto !important;
+    right: 24px !important;
     width: min(400px, calc(100vw - 48px)) !important;
     z-index: 10000 !important;
 }
 
 @media (max-width: 760px) {
     .bb-ai-assistant {
-        bottom: max(16px, env(safe-area-inset-bottom)) !important;
+        bottom: max(96px, calc(80px + env(safe-area-inset-bottom))) !important;
         height: 68px;
-        inset-inline: 16px auto !important;
+        inset-inline: auto 16px !important;
         width: 68px;
     }
 
     .bb-mascot-launcher.bb-ai-toggle {
-        bottom: max(16px, env(safe-area-inset-bottom)) !important;
+        bottom: max(96px, calc(80px + env(safe-area-inset-bottom))) !important;
         height: 68px !important;
-        inset-inline: 16px auto !important;
+        inset-inline: auto 16px !important;
         min-height: 68px !important;
         min-width: 68px !important;
         width: 68px !important;
@@ -5363,7 +5363,7 @@ a {
 
     .bb-mascot-launcher .bb-mascot {
         height: 84px !important;
-        transform-origin: 0 100%;
+        transform-origin: 100% 100%;
         width: 84px !important;
     }
 
@@ -5372,10 +5372,103 @@ a {
     }
 
     .bb-ai-panel {
-        bottom: 96px !important;
+        bottom: 174px !important;
         left: 12px !important;
-        max-height: 80vh !important;
+        max-height: 75vh !important;
         right: 12px !important;
         width: calc(100% - 24px) !important;
     }
+}
+
+/* Default logged-in workspace stays dark; explicit light and colour themes remain available. */
+html[data-theme="default"] .dashboard,
+html[data-theme="default"] .app {
+    --background: #061126;
+    --surface: #101a33;
+    --surface-soft: #111f3a;
+    --text: #e5edf9;
+    --muted: #94a3b8;
+    --border: rgba(148, 163, 184, 0.18);
+    --card-background: #10182f;
+    --shadow: 0 20px 50px rgba(0, 0, 0, 0.34);
+    background:
+        radial-gradient(circle at 86% 8%, rgba(80, 105, 230, .16), transparent 32rem),
+        linear-gradient(145deg, #061126 0%, #08142b 56%, #07152d 100%) !important;
+    color: var(--text);
+}
+
+html[data-theme="default"] body:has(.dashboard),
+html[data-theme="default"] body:has(.app) {
+    background: #061126;
+    color: #e5edf9;
+}
+
+html[data-theme="default"] .dashboard-main,
+html[data-theme="default"] .chat-area {
+    background: transparent;
+    color: var(--text);
+}
+
+html[data-theme="default"] .dashboard-main h1,
+html[data-theme="default"] .dashboard-main h2,
+html[data-theme="default"] .dashboard-main h3,
+html[data-theme="default"] .dashboard-main strong,
+html[data-theme="default"] .chat-area h1,
+html[data-theme="default"] .chat-area h2,
+html[data-theme="default"] .chat-area h3 {
+    color: var(--text);
+}
+
+html[data-theme="default"] .dashboard .card,
+html[data-theme="default"] .dashboard .project-form,
+html[data-theme="default"] .dashboard .workspace-tool-card,
+html[data-theme="default"] .dashboard .integration-status-row article,
+html[data-theme="default"] .dashboard .agent-quick-start,
+html[data-theme="default"] .dashboard .agent-quick-grid a,
+html[data-theme="default"] .dashboard .settings-jump-nav,
+html[data-theme="default"] .dashboard .roadmap-step,
+html[data-theme="default"] .dashboard .launch-command-center,
+html[data-theme="default"] .dashboard .result-document {
+    background: rgba(16, 24, 47, .94);
+    border-color: var(--border);
+    box-shadow: 0 16px 38px rgba(0, 0, 0, .18);
+    color: var(--text);
+}
+
+html[data-theme="default"] .dashboard .workspace-tool-card.recommended,
+html[data-theme="default"] .dashboard .launch-roadmap .roadmap-active,
+html[data-theme="default"] .dashboard .next-action-card {
+    background: linear-gradient(135deg, rgba(37, 99, 235, .18), rgba(124, 58, 237, .13)), #10182f;
+    border-color: rgba(96, 165, 250, .35);
+    color: var(--text);
+}
+
+html[data-theme="default"] .dashboard .workspace-tool-card b,
+html[data-theme="default"] .dashboard .workspace-tool-icon,
+html[data-theme="default"] .dashboard .integration-logo,
+html[data-theme="default"] .dashboard .launch-roadmap .roadmap-icon {
+    background: rgba(59, 130, 246, .16);
+    color: #93c5fd;
+}
+
+html[data-theme="default"] .dashboard input,
+html[data-theme="default"] .dashboard textarea,
+html[data-theme="default"] .dashboard select {
+    background: #0b1630;
+    border-color: var(--border);
+    color: var(--text);
+}
+
+html[data-theme="default"] .dashboard input::placeholder,
+html[data-theme="default"] .dashboard textarea::placeholder {
+    color: #7f8da5;
+}
+
+html[data-theme="default"] .bb-ai-panel,
+html[data-theme="default"] .bb-mascot-bubble {
+    --surface: #101a33;
+    --surface-soft: #111f3a;
+    --text: #e5edf9;
+    --muted: #a7b4c8;
+    --border: rgba(148, 163, 184, .22);
 }
