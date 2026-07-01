@@ -601,6 +601,77 @@ def init_db():
     """)
 
     execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS business_launch_plans (
+            id {id_type}, user_id INTEGER NOT NULL, business_name TEXT,
+            business_idea TEXT, business_type TEXT, country TEXT, budget TEXT,
+            target_customer TEXT, selling_platform TEXT, product_type TEXT,
+            stage TEXT, notes TEXT, result TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS idea_validations (
+            id {id_type}, user_id INTEGER NOT NULL, business_idea TEXT,
+            target_customer TEXT, country TEXT, notes TEXT, result TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS startup_cost_plans (
+            id {id_type}, user_id INTEGER NOT NULL, business_type TEXT,
+            country TEXT, budget TEXT, product_type TEXT, platform TEXT,
+            marketing_budget TEXT, needs TEXT, result TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS brand_plans (
+            id {id_type}, user_id INTEGER NOT NULL, business_name TEXT,
+            business_type TEXT, country TEXT, target_customer TEXT, style TEXT,
+            notes TEXT, result TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS registration_tax_guides (
+            id {id_type}, user_id INTEGER NOT NULL, country TEXT,
+            business_type TEXT, business_structure TEXT, stage TEXT, notes TEXT,
+            result TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS shipping_setup_plans (
+            id {id_type}, user_id INTEGER NOT NULL, product_type TEXT,
+            country TEXT, shipping_scope TEXT, delivery_area TEXT,
+            product_details TEXT, fulfillment_method TEXT, result TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS store_content_outputs (
+            id {id_type}, user_id INTEGER NOT NULL, business_name TEXT,
+            business_type TEXT, content_type TEXT, target_customer TEXT,
+            tone TEXT, notes TEXT, result TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS marketing_launch_plans (
+            id {id_type}, user_id INTEGER NOT NULL, business_name TEXT,
+            business_type TEXT, country TEXT, target_customer TEXT,
+            launch_goal TEXT, budget TEXT, channels TEXT, result TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS app_recommendations (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -717,6 +788,16 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_business_setup_plans_user
         ON business_setup_plans (user_id)
     """))
+
+    for table_name in (
+        "business_launch_plans", "idea_validations", "startup_cost_plans",
+        "brand_plans", "registration_tax_guides", "shipping_setup_plans",
+        "store_content_outputs", "marketing_launch_plans"
+    ):
+        cur.execute(sql(f"""
+            CREATE INDEX IF NOT EXISTS idx_{table_name}_user
+            ON {table_name} (user_id)
+        """))
 
     cur.execute(sql("""
         CREATE INDEX IF NOT EXISTS idx_app_recommendations_user
@@ -2430,6 +2511,173 @@ def get_business_setup_plan(user_id, plan_id):
     return row
 
 
+LAUNCH_TOOL_CONFIG = {
+    "business_launch_assistant": {
+        "title": "Business Launch Assistant",
+        "subtitle": "Turn your idea into a calm, practical path from first decision to launch.",
+        "table": "business_launch_plans",
+        "generate_route": "/generate_business_launch_plan",
+        "result_route": "business_launch_plan",
+        "plan": "Starter",
+        "fields": [
+            ("business_name", "Business name", "text", True, "Your business or working name", []),
+            ("business_idea", "Business idea", "textarea", True, "What will you sell and why?", []),
+            ("business_type", "Business type", "text", True, "Ecommerce, consulting, local service…", []),
+            ("country", "Country or market", "text", True, "South Africa", []),
+            ("budget", "Starting budget", "text", True, "Example: R5,000 or very low", []),
+            ("target_customer", "Target customer", "text", True, "Who should buy from you?", []),
+            ("selling_platform", "Selling platform", "select", True, "", ["Shopify", "Custom website", "Social media", "Marketplace", "Not sure"]),
+            ("product_type", "Product or service type", "select", True, "", ["Physical product", "Digital product", "Service", "Print-on-demand", "Dropshipping", "Local business"]),
+            ("stage", "Current stage", "select", True, "", ["Idea only", "Validating", "Planning", "Building", "Ready to launch"]),
+            ("notes", "Anything else the AI should know?", "textarea", False, "Constraints, goals, deadlines, or questions", [])
+        ],
+        "sections": ["Business readiness summary", "Next best steps", "Business idea validation checklist", "Market research checklist", "Competitor research checklist", "Product or service setup checklist", "Supplier or fulfillment checklist", "Branding checklist", "Domain and website checklist", "Payment setup checklist", "Shipping and delivery checklist", "Legal, admin, and tax reminders", "Marketing launch checklist", "Tools needed", "What the AI can draft", "What the user must do manually", "What requires approval", "Estimated cost categories", "Estimated difficulty", "Suggested timeline", "Next recommended action"],
+        "safety": "The AI prepares guidance and drafts. It never buys, registers, submits, publishes, charges, or makes final business decisions for you."
+    },
+    "idea_validation": {
+        "title": "Idea Validation Agent", "subtitle": "Test the logic behind your idea before spending heavily.",
+        "table": "idea_validations", "generate_route": "/generate_idea_validation", "result_route": "idea_validation", "plan": "Starter",
+        "fields": [
+            ("business_idea", "Business idea", "textarea", True, "Describe the problem, offer, and how it may earn money", []),
+            ("target_customer", "Target customer", "text", True, "Who has this problem?", []),
+            ("country", "Country or market", "text", True, "South Africa", []),
+            ("notes", "Evidence or assumptions", "textarea", False, "Customer feedback, competitors, experience, or uncertainties", [])
+        ],
+        "sections": ["Problem the business solves", "Target customers", "Why customers may buy", "Possible demand signals", "Competitor types", "Main risks", "Low-cost validation tests", "Customer interview questions", "MVP recommendation", "Go/no-go score with reasoning", "Next step"],
+        "safety": "No idea is guaranteed to succeed. Demand, market size, and scores are reasoned estimates unless you provide verified data."
+    },
+    "startup_cost_planner": {
+        "title": "Startup Cost Planner", "subtitle": "Separate must-haves from nice-to-haves and build within your real budget.",
+        "table": "startup_cost_plans", "generate_route": "/generate_startup_cost_plan", "result_route": "startup_cost_plan", "plan": "Starter",
+        "fields": [
+            ("business_type", "Business type", "text", True, "Online store, salon, consulting…", []),
+            ("country", "Country", "text", True, "South Africa", []),
+            ("budget", "Starting budget", "text", True, "Your maximum comfortable starting budget", []),
+            ("product_type", "Product or service type", "text", True, "Physical, digital, service, POD…", []),
+            ("platform", "Platform", "select", True, "", ["Shopify", "Custom website", "Social media", "Marketplace", "Not sure"]),
+            ("marketing_budget", "Marketing budget", "text", False, "Monthly amount or none", []),
+            ("needs", "What might you need?", "textarea", False, "Domain, logo, Shopify, Canva, packaging, inventory, ads", [])
+        ],
+        "sections": ["One-time startup costs", "Monthly costs", "Optional costs", "Must-have costs", "Wait-until-later costs", "Low-budget launch plan", "Medium-budget launch plan", "Budget warning", "Break-even basics", "Next action"],
+        "safety": "Cost bands are planning estimates—not live quotes. Verify current prices, taxes, contracts, and renewal fees with providers."
+    },
+    "brand_agent": {
+        "title": "Business Name & Brand Agent", "subtitle": "Create a memorable direction you can verify before committing.",
+        "table": "brand_plans", "generate_route": "/generate_brand_plan", "result_route": "brand_plan", "plan": "Starter",
+        "fields": [
+            ("business_name", "Existing or working name", "text", False, "Leave blank if you want fresh names", []),
+            ("business_type", "Business type", "text", True, "What will the business offer?", []),
+            ("country", "Country or market", "text", True, "South Africa", []),
+            ("target_customer", "Target customer", "text", True, "Who should the brand appeal to?", []),
+            ("style", "Desired style", "text", False, "Modern, warm, premium, bold, playful…", []),
+            ("notes", "Words or ideas to include or avoid", "textarea", False, "Preferences and constraints", [])
+        ],
+        "sections": ["Business name ideas", "Tagline ideas", "Brand personality", "Colour direction", "Canva logo brief", "Social handle ideas", "Domain name ideas", "Brand safety checklist", "Name availability reminder", "CIPC reminder for South Africa", "Trademark reminder", "Next action"],
+        "safety": "Names, domains, handles, CIPC records, and trademarks are not checked live. Verify them with the relevant official service before using a name."
+    },
+    "registration_tax_guide": {
+        "title": "Registration & Tax Guide", "subtitle": "Understand the admin questions to verify with official sources and professionals.",
+        "table": "registration_tax_guides", "generate_route": "/generate_registration_tax_guide", "result_route": "registration_tax_plan", "plan": "Pro",
+        "fields": [
+            ("country", "Country", "text", True, "South Africa", []),
+            ("business_type", "Business type", "text", True, "Online store, freelancer, local service…", []),
+            ("business_structure", "Possible structure", "select", False, "", ["Sole proprietor", "Company", "Partnership", "Not sure"]),
+            ("stage", "Current stage", "select", True, "", ["Idea only", "Trading informally", "Preparing to register", "Already registered"]),
+            ("notes", "Questions or circumstances", "textarea", False, "Do not enter ID, tax, banking, or confidential numbers", [])
+        ],
+        "sections": ["Business structure overview", "Registration checklist", "Tax and admin checklist", "Record-keeping checklist", "Documents you may need", "What the AI can help draft", "What you must do yourself", "Official-source reminder", "Next action"],
+        "safety": "General educational guidance only—not legal or tax advice. The AI does not register businesses, submit forms, or collect identity or tax credentials."
+    },
+    "shipping_setup": {
+        "title": "Shipping Setup Agent", "subtitle": "Plan delivery, fulfilment, packaging, and customer communication without guesswork.",
+        "table": "shipping_setup_plans", "generate_route": "/generate_shipping_setup_plan", "result_route": "shipping_setup_plan", "plan": "Starter",
+        "fields": [
+            ("product_type", "Product type", "text", True, "What are you delivering?", []),
+            ("country", "Country", "text", True, "South Africa", []),
+            ("shipping_scope", "Shipping scope", "select", True, "", ["Local only", "National", "International", "Local and international", "Not sure"]),
+            ("delivery_area", "Delivery area", "text", False, "City, province, country, or regions", []),
+            ("product_details", "Size and weight if known", "text", False, "Example: small parcel under 1kg", []),
+            ("fulfillment_method", "Fulfilment method", "select", True, "", ["Self-delivery", "Courier", "Supplier/dropshipping", "Print-on-demand", "Digital delivery", "Not sure"])
+        ],
+        "sections": ["Shipping method recommendation", "Local delivery option", "Courier option", "Pickup option", "International shipping warning", "Packaging checklist", "Returns and refunds checklist", "Shopify shipping setup steps", "Customer communication templates", "Next action"],
+        "safety": "Courier pricing and delivery times are estimates unless you provide verified quotes. Confirm rates, prohibited goods, insurance, and service areas directly."
+    },
+    "store_content_generator": {
+        "title": "Store Content Generator", "subtitle": "Create reviewable website copy and policy drafts in one place.",
+        "table": "store_content_outputs", "generate_route": "/generate_store_content", "result_route": "store_content", "plan": "Pro",
+        "fields": [
+            ("business_name", "Business name", "text", True, "Your store or brand name", []),
+            ("business_type", "Business type", "text", True, "What do you sell?", []),
+            ("content_type", "Content to create", "select", True, "", ["Complete store content pack", "About Us", "Contact page", "FAQ", "Shipping policy", "Refund/returns policy", "Privacy policy", "Terms summary", "Product page copy", "Homepage sections", "Announcement bar"]),
+            ("target_customer", "Target customer", "text", True, "Who is the copy for?", []),
+            ("tone", "Tone", "select", True, "", ["Friendly", "Professional", "Premium", "Simple", "Bold", "Playful"]),
+            ("notes", "Important business details", "textarea", False, "Shipping regions, return window, contact method, product facts", [])
+        ],
+        "sections": ["Requested store content", "Facts and assumptions to verify", "Policy review checklist", "Suggested placement", "Next action"],
+        "safety": "Policy and legal wording is a draft, not legal advice. Review it for your actual operations and local requirements before publishing."
+    },
+    "marketing_launch_agent": {
+        "title": "Marketing Launch Agent", "subtitle": "Prepare a focused launch campaign across the channels your customers use.",
+        "table": "marketing_launch_plans", "generate_route": "/generate_marketing_launch_plan", "result_route": "marketing_launch_plan", "plan": "Pro",
+        "fields": [
+            ("business_name", "Business name", "text", True, "Your brand name", []),
+            ("business_type", "Business type", "text", True, "What are you launching?", []),
+            ("country", "Country or market", "text", True, "South Africa", []),
+            ("target_customer", "Target customer", "text", True, "Who should respond?", []),
+            ("launch_goal", "Launch goal", "text", True, "First sales, leads, awareness, pre-orders…", []),
+            ("budget", "Marketing budget", "text", False, "None, organic only, or a comfortable amount", []),
+            ("channels", "Preferred channels", "text", False, "Instagram, TikTok, email, WhatsApp…", [])
+        ],
+        "sections": ["Launch campaign plan", "Social media bio", "7-day launch content plan", "Email campaign", "WhatsApp message draft", "Instagram and TikTok ideas", "Ad copy draft", "Influencer outreach message", "First customer offer", "Launch checklist", "Next action"],
+        "safety": "The AI creates drafts only. It does not post, send mass messages, publish ads, or spend marketing money without an official integration and explicit approval."
+    }
+}
+
+
+def save_launch_tool_output(tool_key, user_id, data, result):
+    config = LAUNCH_TOOL_CONFIG[tool_key]
+    columns = [field[0] for field in config["fields"]]
+    values = [user_id] + [data.get(column, "") for column in columns] + [result]
+    placeholders = ", ".join(["?"] * len(values))
+    query = f"INSERT INTO {config['table']} (user_id, {', '.join(columns)}, result) VALUES ({placeholders})"
+    if using_postgres():
+        query += " RETURNING id"
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql(query), tuple(values))
+    output_id = cur.fetchone()[0] if using_postgres() else cur.lastrowid
+    conn.commit()
+    conn.close()
+    return output_id
+
+
+def get_launch_tool_outputs(tool_key, user_id, output_id=None):
+    config = LAUNCH_TOOL_CONFIG[tool_key]
+    columns = [field[0] for field in config["fields"]]
+    query = f"SELECT id, {', '.join(columns)}, result, created_at FROM {config['table']} WHERE user_id = ?"
+    params = [user_id]
+    if output_id is not None:
+        query += " AND id = ?"
+        params.append(output_id)
+    query += " ORDER BY id DESC"
+    if output_id is not None:
+        query += " LIMIT 1"
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql(query), tuple(params))
+    rows = cur.fetchone() if output_id is not None else cur.fetchall()
+    conn.close()
+    return rows
+
+
+def launch_tool_record(tool_key, row):
+    if not row:
+        return None
+    config = LAUNCH_TOOL_CONFIG[tool_key]
+    keys = ["id"] + [field[0] for field in config["fields"]] + ["result", "created_at"]
+    return dict(zip(keys, row))
+
+
 def save_app_recommendation(user_id, data, content):
     conn = db()
     cur = conn.cursor()
@@ -2775,6 +3023,17 @@ def get_launch_readiness(user_id):
     domain_buying_plans = get_domain_buying_plans(user_id)
     business_setup_plans = get_business_setup_plans(user_id)
     email_campaigns = get_email_campaigns(user_id)
+    supplier_guides = get_supplier_recommendations(user_id)
+    pricing_guides = get_pricing_advice_list(user_id)
+    payment_guides = get_payment_guides(user_id)
+    launch_plans = get_launch_tool_outputs("business_launch_assistant", user_id)
+    idea_validations = get_launch_tool_outputs("idea_validation", user_id)
+    startup_cost_plans = get_launch_tool_outputs("startup_cost_planner", user_id)
+    brand_plans = get_launch_tool_outputs("brand_agent", user_id)
+    registration_guides = get_launch_tool_outputs("registration_tax_guide", user_id)
+    shipping_plans = get_launch_tool_outputs("shipping_setup", user_id)
+    store_content = get_launch_tool_outputs("store_content_generator", user_id)
+    marketing_plans = get_launch_tool_outputs("marketing_launch_agent", user_id)
 
     checks = [
         {
@@ -2810,28 +3069,32 @@ def get_launch_readiness(user_id):
             "complete": bool(shopify_connection and shopify_connection[3] == "connected"),
             "description": "Connect Shopify for approved draft store actions.",
             "url": "/shopify_settings",
-            "action": "Connect Shopify"
+            "action": "Connect Shopify",
+            "optional": True
         },
         {
             "title": "Canva connected",
             "complete": bool(canva_connection and canva_connection[2] == "connected"),
             "description": "Connect Canva for editable design drafts.",
             "url": "/canva_settings",
-            "action": "Connect Canva"
+            "action": "Connect Canva",
+            "optional": True
         },
         {
             "title": "Shopify draft products created",
             "complete": bool(shopify_products),
             "description": "Create draft Shopify products for review.",
             "url": "/build_approval?action=shopify_products",
-            "action": "Create Products"
+            "action": "Create Products",
+            "optional": True
         },
         {
             "title": "Canva branding or brief created",
             "complete": bool(canva_branding or canva_briefs or latest_tasks.get("canva_branding")),
             "description": "Generate branding direction or Canva design briefs.",
             "url": "/ai_store_agent",
-            "action": "Create Branding"
+            "action": "Create Branding",
+            "optional": True
         },
         {
             "title": "Homepage/store draft approved",
@@ -2841,20 +3104,21 @@ def get_launch_readiness(user_id):
             ),
             "description": "Approve a homepage or store draft before applying safe changes.",
             "url": "/ai_store_agent",
-            "action": "Review Store Drafts"
+            "action": "Review Store Drafts",
+            "optional": True
         },
         {
             "title": "Shipping plan created",
-            "complete": bool(latest_tasks.get("shipping_zones")),
-            "description": "Create shipping zone guidance.",
-            "url": "/generate_store_agent_task/shipping_zones",
+            "complete": bool(shipping_plans or latest_tasks.get("shipping_zones")),
+            "description": "Plan delivery, fulfilment, packaging, returns, and customer updates.",
+            "url": "/shipping_setup",
             "action": "Create Shipping Plan"
         },
         {
             "title": "Payment setup checklist created",
-            "complete": bool(latest_tasks.get("payments_setup")),
-            "description": "Create a payment setup checklist.",
-            "url": "/generate_store_agent_task/payments_setup",
+            "complete": bool(payment_guides or latest_tasks.get("payments_setup")),
+            "description": "Choose payment methods and create a verification and checkout-testing checklist.",
+            "url": "/payment_guide",
             "action": "Create Payment Checklist"
         },
         {
@@ -2890,6 +3154,70 @@ def get_launch_readiness(user_id):
             "optional": True
         },
         {
+            "title": "Business launch plan created",
+            "complete": bool(launch_plans),
+            "description": "Create your personalised path from idea to launch.",
+            "url": "/business_launch_assistant",
+            "action": "Create Launch Plan"
+        },
+        {
+            "title": "Business idea validated",
+            "complete": bool(idea_validations),
+            "description": "Test demand assumptions, risks, and a low-cost first version.",
+            "url": "/idea_validation",
+            "action": "Validate Idea"
+        },
+        {
+            "title": "Startup costs planned",
+            "complete": bool(startup_cost_plans),
+            "description": "Separate must-have, monthly, optional, and later-stage costs.",
+            "url": "/startup_cost_planner",
+            "action": "Plan Startup Costs"
+        },
+        {
+            "title": "Supplier or fulfilment path chosen",
+            "complete": bool(supplier_guides),
+            "description": "Compare supplier, fulfilment, or service-delivery options.",
+            "url": "/supplier_finder",
+            "action": "Find Suppliers"
+        },
+        {
+            "title": "Pricing plan created",
+            "complete": bool(pricing_guides),
+            "description": "Check costs, margins, positioning, and prices to test.",
+            "url": "/pricing_advisor",
+            "action": "Plan Pricing"
+        },
+        {
+            "title": "Business name and brand direction created",
+            "complete": bool(brand_plans),
+            "description": "Prepare name ideas, positioning, visual direction, and checks.",
+            "url": "/brand_agent",
+            "action": "Create Brand Plan"
+        },
+        {
+            "title": "Registration and tax questions reviewed",
+            "complete": bool(registration_guides),
+            "description": "Create a general checklist to verify with official sources.",
+            "url": "/registration_tax_guide",
+            "action": "Review Admin Guide",
+            "optional": True
+        },
+        {
+            "title": "Store content and policy drafts created",
+            "complete": bool(store_content),
+            "description": "Draft key pages and policies, then review them for your operations.",
+            "url": "/store_content_generator",
+            "action": "Draft Store Content"
+        },
+        {
+            "title": "Marketing launch plan created",
+            "complete": bool(marketing_plans or email_campaigns),
+            "description": "Prepare launch messages, content, email, and offers without publishing automatically.",
+            "url": "/marketing_launch_agent",
+            "action": "Plan Marketing"
+        },
+        {
             "title": "Launch package generated/downloaded",
             "complete": bool(ai_store_builds and latest_tasks.get("launch_checklist")),
             "description": "Generate your launch checklist and package.",
@@ -2914,13 +3242,25 @@ def get_launch_readiness(user_id):
             "action": "View Launch Package"
         }
     )
+    next_actions = [check for check in checks if not check["complete"]][:3]
+    high_risk_titles = {
+        "Business idea validated", "Startup costs planned", "Pricing plan created",
+        "Payment setup checklist created", "Shipping plan created",
+        "Store content and policy drafts created"
+    }
+    high_risk_items = [
+        check for check in checks
+        if not check["complete"] and check["title"] in high_risk_titles
+    ]
 
     return {
         "score": score,
         "completed": completed,
         "total": len(checks),
         "checks": checks,
-        "next_action": next_action
+        "next_action": next_action,
+        "next_actions": next_actions,
+        "high_risk_items": high_risk_items
     }
 
 
@@ -5727,6 +6067,10 @@ def dashboard():
     onboarding = get_user_onboarding(user_id)
     active_project = get_active_business_project(user_id)
     launch_readiness = get_launch_readiness(user_id)
+    launch_tool_summary = {
+        key: len(get_launch_tool_outputs(key, user_id))
+        for key in LAUNCH_TOOL_CONFIG
+    }
 
     if not paid:
         next_action = {
@@ -5838,6 +6182,7 @@ def dashboard():
         onboarding=onboarding,
         active_project=active_project,
         launch_readiness=launch_readiness,
+        launch_tool_summary=launch_tool_summary,
         usage_limit_message=get_usage_limit_message(
             request.args.get("usage_limit"),
             user_id
@@ -5906,6 +6251,14 @@ def build_center():
     business_setup_plans = get_business_setup_plans(user_id)
     email_campaigns = get_email_campaigns(user_id)
     app_recommendations = get_app_recommendations(user_id)
+    launch_plans = get_launch_tool_outputs("business_launch_assistant", user_id)
+    idea_validations = get_launch_tool_outputs("idea_validation", user_id)
+    startup_cost_plans = get_launch_tool_outputs("startup_cost_planner", user_id)
+    brand_plans = get_launch_tool_outputs("brand_agent", user_id)
+    registration_guides = get_launch_tool_outputs("registration_tax_guide", user_id)
+    shipping_plans = get_launch_tool_outputs("shipping_setup", user_id)
+    store_content_outputs = get_launch_tool_outputs("store_content_generator", user_id)
+    marketing_launch_plans = get_launch_tool_outputs("marketing_launch_agent", user_id)
     connected_apps = get_connected_app_summaries(user_id)
     app_action_drafts = get_app_action_drafts(user_id)
     marketing_app_drafts = [draft for draft in app_action_drafts if draft[2] in {"email_campaign", "social_ad_draft"}]
@@ -6433,11 +6786,35 @@ def build_center():
         }
     ]
 
+    # Keep one clear beginner journey even as the Build Center's detailed tools grow.
+    roadmap_steps = [
+        {"number": "01", "title": "Choose Business Idea", "status": status_for(launch_plans or workflow_started), "description": "Describe the problem, offer, customer, and business model you want to explore.", "url": "/business_launch_assistant", "action": "Plan My Business"},
+        {"number": "02", "title": "Validate Idea", "status": status_for(idea_validations, bool(launch_plans)), "description": "Test assumptions, risks, demand signals, and a low-cost MVP before spending heavily.", "url": "/idea_validation", "action": "Validate Idea"},
+        {"number": "03", "title": "Choose Customer", "status": status_for(bool(workflow_answers), bool(idea_validations)), "description": "Define the customer, their problem, buying reason, and the first segment to reach.", "url": "/business_workflow", "action": "Define Customer"},
+        {"number": "04", "title": "Plan Budget", "status": status_for(startup_cost_plans, workflow_started), "description": "Separate must-have, monthly, optional, and wait-until-later startup costs.", "url": "/startup_cost_planner", "action": "Plan Startup Costs"},
+        {"number": "05", "title": "Choose Business Name", "status": status_for(brand_plans, bool(idea_validations)), "description": "Create name and tagline ideas, then verify domain, social, CIPC, and trademark availability.", "url": "/brand_agent", "action": "Create Brand Plan"},
+        {"number": "06", "title": "Plan Registration / Tax / Admin", "status": status_for(registration_guides, workflow_started), "description": "Create a general checklist and verify the final requirements with official sources.", "url": "/registration_tax_guide", "action": "Review Admin Guide"},
+        {"number": "07", "title": "Find Products / Services", "status": status_for(product_research_list, workflow_started), "description": "Research suitable products, services, positioning, competitors, and first offers.", "url": "/product_finder", "action": "Find Products"},
+        {"number": "08", "title": "Find Suppliers / Fulfilment", "status": status_for(supplier_recommendations, bool(product_research_list)), "description": "Compare sourcing, fulfilment, local supplier, POD, and service-delivery paths.", "url": "/supplier_finder", "action": "Compare Options"},
+        {"number": "09", "title": "Set Pricing", "status": status_for(pricing_advice_list, bool(product_research_list)), "description": "Estimate margins, break-even basics, positioning, and prices to test.", "url": "/pricing_advisor", "action": "Plan Pricing"},
+        {"number": "10", "title": "Choose Platform", "status": status_for(ai_store_builds or shopify_plans, workflow_started), "description": "Choose Shopify, a custom website, social selling, or a marketplace based on your needs.", "url": "/app_connection_agent", "action": "Choose Platform"},
+        {"number": "11", "title": "Buy Domain Safely", "status": status_for(domain_buying_plans, workflow_started), "description": "Shortlist domains, compare providers and renewals, then purchase directly when ready.", "url": "/domain_buying_assistant", "action": "Plan Domain"},
+        {"number": "12", "title": "Create Branding", "status": status_for(brand_plans or canva_branding_packages or canva_design_briefs, bool(domain_buying_plans)), "description": "Prepare brand personality, colour direction, logo brief, and Canva-ready assets.", "url": "/brand_agent", "action": "Create Branding"},
+        {"number": "13", "title": "Create Store Content", "status": status_for(store_content_outputs, bool(brand_plans or ai_store_builds)), "description": "Draft homepage copy, key pages, product copy, FAQs, and policies for review.", "url": "/store_content_generator", "action": "Draft Store Content"},
+        {"number": "14", "title": "Set Up Payments", "status": status_for(payment_guides, bool(pricing_advice_list)), "description": "Choose payment methods and prepare verification, refund, security, and checkout tests.", "url": "/payment_guide", "action": "Plan Payments"},
+        {"number": "15", "title": "Set Up Shipping", "status": status_for(shipping_plans, bool(product_research_list)), "description": "Plan delivery, fulfilment, packaging, returns, and customer communication.", "url": "/shipping_setup", "action": "Plan Shipping"},
+        {"number": "16", "title": "Create Marketing Launch Plan", "status": status_for(marketing_launch_plans or email_campaigns, bool(store_content_outputs)), "description": "Prepare a launch campaign, seven-day content plan, email, WhatsApp, and social drafts.", "url": "/marketing_launch_agent", "action": "Plan Marketing"},
+        {"number": "17", "title": "Check Launch Readiness", "status": status_for(launch_readiness["score"] >= 75, launch_readiness["score"] > 0), "description": "See completed items, missing items, risks, and the next three useful actions.", "url": "/launch_readiness", "action": "Check Readiness"},
+        {"number": "18", "title": "Generate Launch Package", "status": status_for(user_package_at_least(user_id, "Pro") and launch_readiness["score"] >= 75, launch_readiness["score"] > 0), "description": "Bring strategy, research, drafts, checks, and next actions into one reviewable package.", "url": "/launch_package", "action": "Open Launch Package"}
+    ]
+
     roadmap_requirements = {
         "Store Draft": "Pro", "Shopify Assets": "Pro", "Canva Branding": "Pro",
         "Email Marketing": "Pro", "App Recommendations": "Pro", "Launch Package": "Pro",
         "App Connections": "Premium Build", "Marketing Drafts": "Premium Build",
-        "Design Drafts": "Premium Build", "Website/Store Drafts": "Premium Build"
+        "Design Drafts": "Premium Build", "Website/Store Drafts": "Premium Build",
+        "Create Store Content": "Pro", "Create Marketing Launch Plan": "Pro",
+        "Generate Launch Package": "Pro", "Plan Registration / Tax / Admin": "Pro"
     }
     for step in roadmap_steps:
         required_plan = roadmap_requirements.get(step["title"], "Starter")
@@ -8608,6 +8985,156 @@ def domain_buying_assistant():
     )
 
 
+def render_launch_tool(tool_key):
+    if "user_id" not in session:
+        return redirect("/login")
+    user_id = session["user_id"]
+    config = LAUNCH_TOOL_CONFIG[tool_key]
+    outputs = [launch_tool_record(tool_key, row) for row in get_launch_tool_outputs(tool_key, user_id)]
+    return render_template(
+        "launch_tool.html", tool_key=tool_key, tool=config, outputs=outputs,
+        onboarding=get_user_onboarding(user_id), active_project=get_active_business_project(user_id),
+        current_package=get_user_package(user_id) or "Starter",
+        plan_available=user_package_at_least(user_id, config["plan"])
+    )
+
+
+def generate_launch_tool(tool_key):
+    if "user_id" not in session:
+        return redirect("/login")
+    config = LAUNCH_TOOL_CONFIG[tool_key]
+    if request.method == "GET":
+        return redirect(f"/{tool_key}")
+    data = {field[0]: request.form.get(field[0], "").strip() for field in config["fields"]}
+    required = [field[0] for field in config["fields"] if field[3]]
+    if any(not data.get(key) for key in required):
+        return redirect(f"/{tool_key}?tool_error=missing")
+    user_id = session["user_id"]
+    details = "\n".join(f"{field[1]}: {data.get(field[0]) or 'Not provided'}" for field in config["fields"])
+    sections = "\n".join(f"{index}. {title}" for index, title in enumerate(config["sections"], 1))
+    south_africa = data.get("country", "").strip().lower() in {"south africa", "za", "rsa"}
+    local_guidance = """
+For this South African user, include practical general reminders where relevant: verify CIPC registration choices, SARS obligations, VAT/turnover-tax rules, record keeping, POPIA/consumer duties, payment-provider verification, and employer obligations. Clearly direct the user to official CIPC and SARS sources or a qualified professional. Do not present this as final legal or tax advice.
+""" if south_africa else "Explain that country-specific rules must be verified with official local sources."
+    prompt = f"""
+Create a beginner-friendly {config['title']} output for a BusinessBuilder AI user.
+
+Core safety rules:
+- Give practical guidance, checklists, assumptions, and drafts. Never promise success.
+- Never spend money, buy domains, register a business, submit legal or tax forms, open accounts, publish a store, send mass emails, post content, or make final decisions.
+- Never request card numbers, banking passwords, tax credentials, identity numbers, API keys, platform passwords, or sensitive documents.
+- Do not claim live availability, demand, market size, prices, fees, or legal requirements unless the user supplied verified data. Clearly label estimates.
+- Legal, tax, policy, registration, and compliance content is general educational guidance. Tell the user to verify official requirements.
+- Make approval boundaries explicit: what the AI drafts, what the user reviews, and what the user must complete directly.
+- Use concise headings, checklists, short explanations, and a calm practical tone. Avoid overwhelming the beginner.
+
+Tool-specific safety note: {config['safety']}
+{local_guidance}
+
+User details:
+{details}
+
+Saved project context:
+{build_project_context(user_id) or 'No additional saved project context.'}
+
+Return these clearly labelled sections:
+{sections}
+"""
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+        )
+        result = response.choices[0].message.content.strip()
+    except Exception:
+        return redirect(f"/{tool_key}?tool_error=ai_response")
+    output_id = save_launch_tool_output(tool_key, user_id, data, result)
+    return redirect(f"/{config['result_route']}/{output_id}?tool_notice=created")
+
+
+def render_launch_tool_result(tool_key, output_id):
+    if "user_id" not in session:
+        return redirect("/login")
+    config = LAUNCH_TOOL_CONFIG[tool_key]
+    output = launch_tool_record(tool_key, get_launch_tool_outputs(tool_key, session["user_id"], output_id))
+    if not output:
+        return redirect(f"/{tool_key}")
+    return render_template("launch_tool_result.html", tool_key=tool_key, tool=config, output=output)
+
+
+@app.route("/business_launch_assistant")
+def business_launch_assistant(): return render_launch_tool("business_launch_assistant")
+
+@app.route("/generate_business_launch_plan", methods=["GET", "POST"])
+def generate_business_launch_plan(): return generate_launch_tool("business_launch_assistant")
+
+@app.route("/business_launch_plan/<int:output_id>")
+def business_launch_plan(output_id): return render_launch_tool_result("business_launch_assistant", output_id)
+
+@app.route("/idea_validation")
+def idea_validation(): return render_launch_tool("idea_validation")
+
+@app.route("/generate_idea_validation", methods=["GET", "POST"])
+def generate_idea_validation(): return generate_launch_tool("idea_validation")
+
+@app.route("/idea_validation/<int:output_id>")
+def idea_validation_result(output_id): return render_launch_tool_result("idea_validation", output_id)
+
+@app.route("/startup_cost_planner")
+def startup_cost_planner(): return render_launch_tool("startup_cost_planner")
+
+@app.route("/generate_startup_cost_plan", methods=["GET", "POST"])
+def generate_startup_cost_plan(): return generate_launch_tool("startup_cost_planner")
+
+@app.route("/startup_cost_plan/<int:output_id>")
+def startup_cost_plan(output_id): return render_launch_tool_result("startup_cost_planner", output_id)
+
+@app.route("/brand_agent")
+def brand_agent(): return render_launch_tool("brand_agent")
+
+@app.route("/generate_brand_plan", methods=["GET", "POST"])
+def generate_brand_plan(): return generate_launch_tool("brand_agent")
+
+@app.route("/brand_plan/<int:output_id>")
+def brand_plan(output_id): return render_launch_tool_result("brand_agent", output_id)
+
+@app.route("/registration_tax_guide")
+def registration_tax_guide(): return render_launch_tool("registration_tax_guide")
+
+@app.route("/generate_registration_tax_guide", methods=["GET", "POST"])
+def generate_registration_tax_guide(): return generate_launch_tool("registration_tax_guide")
+
+@app.route("/registration_tax_plan/<int:output_id>")
+def registration_tax_plan(output_id): return render_launch_tool_result("registration_tax_guide", output_id)
+
+@app.route("/shipping_setup")
+def shipping_setup(): return render_launch_tool("shipping_setup")
+
+@app.route("/generate_shipping_setup_plan", methods=["GET", "POST"])
+def generate_shipping_setup_plan(): return generate_launch_tool("shipping_setup")
+
+@app.route("/shipping_setup_plan/<int:output_id>")
+def shipping_setup_plan(output_id): return render_launch_tool_result("shipping_setup", output_id)
+
+@app.route("/store_content_generator")
+def store_content_generator(): return render_launch_tool("store_content_generator")
+
+@app.route("/generate_store_content", methods=["GET", "POST"])
+def generate_store_content(): return generate_launch_tool("store_content_generator")
+
+@app.route("/store_content/<int:output_id>")
+def store_content(output_id): return render_launch_tool_result("store_content_generator", output_id)
+
+@app.route("/marketing_launch_agent")
+def marketing_launch_agent(): return render_launch_tool("marketing_launch_agent")
+
+@app.route("/generate_marketing_launch_plan", methods=["GET", "POST"])
+def generate_marketing_launch_plan(): return generate_launch_tool("marketing_launch_agent")
+
+@app.route("/marketing_launch_plan/<int:output_id>")
+def marketing_launch_plan(output_id): return render_launch_tool_result("marketing_launch_agent", output_id)
+
+
 @app.route("/generate_domain_buying_plan", methods=["GET", "POST"])
 def generate_domain_buying_plan():
     if "user_id" not in session:
@@ -9069,19 +9596,20 @@ Safety and compliance rules:
 - Tell the user to verify everything directly with the payment provider, Shopify, bank, accountant, and local regulations.
 
 Include:
-1. Best payment methods for the user's country and business type
+1. Recommended payment setup for the user's country, business type, and platform
 2. PayPal setup guidance
 3. Paystack setup guidance
 4. Shopify payment setup guidance
 5. EFT/bank transfer guidance
-6. Cash on Delivery pros/cons
-7. International payment notes
-8. Fees/cost considerations in general terms
-9. Required documents checklist
-10. Fraud prevention tips
-11. Best low-budget option
-12. Best professional setup option
-13. Step-by-step setup checklist
+6. Card payments, Cash on Delivery, and mobile money where relevant
+7. South Africa notes where relevant, including card, EFT/bank methods, Capitec Pay availability to verify, and PayPal for suitable international use
+8. Account requirements and verification checklist
+9. Website policy requirements, refund-policy reminder, and checkout testing checklist
+10. Payout timing and reserve/hold warning
+11. Fees and costs in general categories only
+12. Fraud prevention and security notes
+13. Best low-budget and professional setup options
+14. Step-by-step setup checklist and next action
 
 Country: {data["country"]}
 Business type: {data["business_type"]}

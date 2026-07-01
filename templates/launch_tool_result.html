@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>{{ tool.title }} Result - BusinessBuilder AI</title><link rel="stylesheet" href="/static/style.css"><link rel="icon" type="image/png" href="/static/favicon.png">{% include "_pwa_head.html" %}</head>
+<body><div class="dashboard">
+<aside class="sidebar"><div class="brand"><img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image"><div><h2>BusinessBuilder AI</h2><p>Saved launch plan</p></div></div><a href="/dashboard">Dashboard</a><a href="/{{ tool_key }}">{{ tool.title }}</a><a href="/build_center">Build Center</a><a href="/launch_readiness">Launch Readiness</a><a href="/support">Support</a></aside>
+<main class="dashboard-main">{% include "_settings_menu.html" %}
+    <header class="dashboard-header"><p class="eyebrow">Saved {{ output.created_at }}</p><h1>{{ output.business_name or output.business_idea or output.business_type or tool.title }}</h1><p>{{ tool.subtitle }}</p></header>
+    {% if request.args.get("tool_notice") == "created" %}<p class="success-notice">Your plan was generated and saved. Review every assumption before taking action.</p>{% endif %}
+    <section class="project-form result-document">
+        <div class="security-warning"><strong>Draft guidance—not an automatic action.</strong> {{ tool.safety }} Verify official requirements, provider prices, availability, and professional advice where relevant.</div>
+        <pre class="business-plan-output tool-output">{{ output.result }}</pre>
+        <div class="generator-actions"><a href="/{{ tool_key }}" class="primary-button">Create Another</a><a href="/launch_readiness" class="secondary-button">Check Launch Readiness</a><a href="/build_center" class="secondary-button">Continue Roadmap</a></div>
+    </section>
+</main></div>{% include "_app_scripts.html" %}</body></html>

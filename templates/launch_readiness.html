@@ -33,6 +33,7 @@
             <p class="eyebrow">Launch Checklist</p>
             <h1>{{ readiness["score"] }}% Launch Ready</h1>
             <p>{{ readiness["completed"] }} of {{ readiness["total"] }} launch readiness items are complete{% if active_project %} for {{ active_project[1] }}{% endif %}.</p>
+            <div class="readiness-meter" role="progressbar" aria-label="Launch readiness" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ readiness['score'] }}"><span style="width: {{ readiness['score'] }}%"></span></div>
         </div>
 
         <section class="next-action-card">
@@ -41,6 +42,15 @@
             <p>{{ readiness["next_action"]["description"] }}</p>
             <a href="{{ readiness['next_action']['url'] }}" class="primary-button">{{ readiness["next_action"]["action"] }}</a>
         </section>
+
+        <section class="workspace-section readiness-priority-section">
+            <div class="section-heading-row"><div><p class="eyebrow">Keep moving</p><h2>Your next three actions</h2><p>You do not need every optional integration to launch. Focus on the decisions that reduce risk first.</p></div><a href="/business_launch_assistant" class="secondary-button">Review Launch Plan</a></div>
+            <div class="cards readiness-priority-grid">
+                {% for check in readiness["next_actions"] %}<article class="card"><span class="workspace-tool-icon">{{ loop.index }}</span><h3>{{ check.title }}</h3><p>{{ check.description }}</p><a href="{{ check.url }}" class="primary-button">{{ check.action }}</a></article>{% endfor %}
+            </div>
+        </section>
+
+        {% if readiness["high_risk_items"] %}<section class="approval-warning"><div class="safety-icon">!</div><div><h2>Important gaps to review</h2><p>{{ readiness["high_risk_items"]|length }} planning {{ "item needs" if readiness["high_risk_items"]|length == 1 else "items need" }} attention. These are guidance checks—not a judgement that your business cannot launch.</p></div></section>{% endif %}
 
         <section class="cards readiness-grid">
             {% for check in readiness["checks"] %}

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ tool.title }} - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
+</head>
+<body>
+<div class="dashboard">
+    <aside class="sidebar">
+        <div class="brand"><img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image"><div><h2>BusinessBuilder AI</h2><p>Launch workspace</p></div></div>
+        <a href="/dashboard">Dashboard</a><a href="/build_center">Build Center</a><a href="/business_launch_assistant">Launch Assistant</a><a href="/idea_validation">Validate Idea</a><a href="/startup_cost_planner">Plan Budget</a><a href="/brand_agent">Name & Brand</a><a href="/launch_readiness">Launch Readiness</a><a href="/settings">Settings</a>
+    </aside>
+    <main class="dashboard-main">
+        {% include "_settings_menu.html" %}
+        <header class="dashboard-header agent-feature-header">
+            <div class="workspace-heading-row"><div><p class="eyebrow">Guided business launch tool</p><h1>{{ tool.title }}</h1><p>{{ tool.subtitle }}</p></div><span class="workspace-plan-badge">{{ tool.plan }} · {{ "Included" if plan_available else "Preview access" }}</span></div>
+        </header>
+
+        {% if request.args.get("tool_error") == "missing" %}<p class="form-notice">Complete the required fields so the AI can create a useful plan.</p>{% elif request.args.get("tool_error") == "ai_response" %}<p class="form-notice">The plan could not be generated just now. Your information was not lost—please try again.</p>{% endif %}
+
+        <section class="approval-warning agent-safety-banner"><div class="safety-icon">✓</div><div><h2>Guidance first, approval always</h2><p>{{ tool.safety }}</p></div></section>
+
+        <section class="agent-benefit-grid launch-tool-benefits">
+            <article><span>01</span><h3>Tell us the basics</h3><p>Share only normal business context—never passwords, card details, tax credentials, or identity numbers.</p></article>
+            <article><span>02</span><h3>Get a practical plan</h3><p>The AI turns your answers into checklists, drafts, assumptions, and a recommended next step.</p></article>
+            <article><span>03</span><h3>Review and decide</h3><p>You verify costs and official requirements, edit the output, and approve every real-world action.</p></article>
+        </section>
+
+        <section class="project-form tool-form-card" id="launchToolForm">
+            <div class="section-heading-row"><div><p class="eyebrow">Create your output</p><h2>A few details make the advice useful</h2><p class="form-help">Examples are included to help beginners. Avoid sensitive personal or financial information.</p></div></div>
+            <form method="POST" action="{{ tool.generate_route }}" class="agent-form-grid">
+                {% for name, label, field_type, required, placeholder, options in tool.fields %}
+                    <label class="{{ 'agent-form-wide' if field_type == 'textarea' else '' }}">{{ label }}
+                        {% if field_type == "textarea" %}<textarea name="{{ name }}" {% if required %}required{% endif %} placeholder="{{ placeholder }}"></textarea>
+                        {% elif field_type == "select" %}<select name="{{ name }}" {% if required %}required{% endif %}>{% for option in options %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select>
+                        {% else %}<input type="{{ field_type }}" name="{{ name }}" {% if required %}required{% endif %} placeholder="{{ placeholder }}">{% endif %}
+                    </label>
+                {% endfor %}
+                <div class="agent-form-wide"><button type="submit">Generate {{ tool.title }} Plan</button><p class="form-help">The AI runs only after you submit. Nothing is purchased, published, registered, or sent.</p></div>
+            </form>
+        </section>
+
+        <section class="workspace-section">
+            <div class="section-heading-row"><div><p class="eyebrow">Saved work</p><h2>Your previous outputs</h2></div><a href="/build_center" class="secondary-button">View Launch Roadmap</a></div>
+            <div class="cards launch-output-grid">
+                {% for output in outputs %}<article class="card advisor-output-card"><p class="eyebrow">Saved {{ output.created_at }}</p><h3>{{ output.business_name or output.business_idea or output.business_type or tool.title }}</h3><p>Review the plan, assumptions, safety reminders, and next action.</p><a href="/{{ tool.result_route }}/{{ output.id }}" class="primary-button">View Saved Output</a></article>
+                {% else %}<article class="card empty-card"><h3>No saved output yet</h3><p>Complete the guided form to create your first practical plan.</p><a href="#launchToolForm" class="primary-button">Start Here</a></article>{% endfor %}
+            </div>
+        </section>
+    </main>
+</div>
+{% include "_app_scripts.html" %}
+</body>
+</html>
