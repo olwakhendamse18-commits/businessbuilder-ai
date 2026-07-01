@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>BusinessBuilder AI | Build Your Business with AI</title>
+    <title>Create Account | BusinessBuilder AI</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -19,25 +19,33 @@
     {% include "_pwa_head.html" %}
 </head>
 <body class="auth-body">
-    <div class="auth-card">
+    <main class="auth-shell">
+    <section class="auth-aside">
+        <a href="/landing" class="auth-brand"><img src="/static/favicon.png" alt="" class="brand-image"><span>BusinessBuilder AI</span></a>
+        <div><p class="eyebrow">Build with clarity</p><h2>Give your business idea a practical path forward.</h2><p>Start with your details, choose the right plan, and use guided AI tools to prepare your launch.</p></div>
+        <ul class="auth-benefits"><li><span>✓</span> Beginner-friendly, guided workflow</li><li><span>✓</span> Draft-first Shopify and Canva assets</li><li><span>✓</span> You approve important actions</li></ul>
+    </section>
+    <section class="auth-card">
         <a href="/landing" class="auth-brand">
             <img src="/static/logo.png" alt="BusinessBuilder AI logo" class="brand-image">
             <span>BusinessBuilder AI</span>
         </a>
-        <p class="eyebrow">Start Your Build</p>
+        <p class="eyebrow">Start your build</p>
         <h1>Create your workspace</h1>
         <p>Set up your account, choose the right package, and follow the guided workflow.</p>
         {% if message %}
             <p class="form-notice">{{ message }}</p>
         {% endif %}
-        <form method="POST">
-            <input name="email" type="email" placeholder="Email" required>
-            <input name="password" type="password" placeholder="Password" required>
-            <button type="submit">Sign Up</button>
+        <form method="POST" class="auth-form">
+            <label for="signupEmail">Email address</label><input id="signupEmail" name="email" type="email" placeholder="you@example.com" autocomplete="email" required>
+            <label for="signupPassword">Create a password</label><input id="signupPassword" name="password" type="password" placeholder="Choose a secure password" autocomplete="new-password" required>
+            <button type="submit">Create Account <span aria-hidden="true">→</span></button>
         </form>
-        <p>Already have an account? <a href="/login">Log in</a></p>
-        <p><a href="/pricing">Compare package options</a></p>
-    </div>
+        <p class="auth-terms">By creating an account, you agree to our <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p>
+        <p class="auth-switch">Already have an account? <a href="/login">Log in</a></p>
+        <p class="auth-back"><a href="/pricing">Compare plan options</a></p>
+    </section>
+    </main>
 {% include "_app_scripts.html" %}
 </body>
 </html>

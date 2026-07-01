@@ -5,6 +5,7 @@
     <title>Support - BusinessBuilder AI</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
+    <meta name="description" content="Get help with BusinessBuilder AI billing, Shopify, Canva, product sourcing, payment setup, pricing, AI output, and account questions.">
     {% include "_pwa_head.html" %}
 </head>
 <body class="landing-body">
@@ -24,7 +25,14 @@
     <section class="pricing-intro">
         <p class="eyebrow">Support</p>
         <h1>How can we help?</h1>
-        <p>Send a billing, Shopify, Canva, product sourcing, payment setup, pricing, AI output, account, or general support request. Free and paid users can contact support.</p>
+        <p>Choose a topic, tell us what happened, and we’ll help you find the clearest next step.</p>
+        <span class="support-access-note">Free and paid users can contact support.</span>
+    </section>
+
+    <section class="support-category-grid" aria-label="Support categories">
+        {% for icon, title in [("R", "Billing problem"), ("S", "Shopify help"), ("C", "Canva help"), ("P", "Product sourcing help"), ("$", "Payment setup help"), ("%", "Pricing help"), ("AI", "AI output problem"), ("@", "Account problem"), ("?", "General question")] %}
+            <button type="button" class="support-category-card" data-support-category="{{ title }}"><span>{{ icon }}</span><strong>{{ title }}</strong></button>
+        {% endfor %}
     </section>
 
     {% if submitted %}
@@ -34,13 +42,15 @@
         <p class="form-notice">Complete all support fields with a valid email.</p>
     {% endif %}
 
-    <section class="project-form settings-panel">
+    <section class="support-form-shell">
+        <div class="support-form-copy"><p class="eyebrow">Send a request</p><h2>Tell us how we can help</h2><p>Include what you were trying to do, what you expected, and any error message you saw. Never include passwords, API keys, tokens, or banking details.</p><div class="support-response-note"><strong>Clear details help us help faster.</strong><span>Use the category cards above to preselect the right team.</span></div></div>
+        <div class="project-form support-form-panel">
         <form method="POST" action="/submit_support">
-            <label>Email</label>
-            <input name="email" type="email" required value="{{ email }}">
+            <label for="supportEmail">Email</label>
+            <input id="supportEmail" name="email" type="email" required value="{{ email }}" placeholder="you@example.com">
 
-            <label>Category</label>
-            <select name="category" required>
+            <label for="supportCategory">Category</label>
+            <select id="supportCategory" name="category" required>
                 <option>Billing problem</option>
                 <option>Shopify help</option>
                 <option>Canva help</option>
@@ -52,16 +62,28 @@
                 <option>General question</option>
             </select>
 
-            <label>Subject</label>
-            <input name="subject" required placeholder="Short summary">
+            <label for="supportSubject">Subject</label>
+            <input id="supportSubject" name="subject" required placeholder="A short summary of the issue">
 
-            <label>Message</label>
-            <textarea name="message" required placeholder="Tell us what you need help with."></textarea>
+            <label for="supportMessage">Message</label>
+            <textarea id="supportMessage" name="message" required placeholder="What happened, and what would you like help with?"></textarea>
 
-            <button type="submit">Submit Support Request</button>
+            <button type="submit">Send Support Request <span aria-hidden="true">→</span></button>
         </form>
+        </div>
     </section>
 </main>
+<script>
+document.querySelectorAll("[data-support-category]").forEach(function(button) {
+    button.addEventListener("click", function() {
+        var select = document.getElementById("supportCategory");
+        select.value = button.getAttribute("data-support-category");
+        document.querySelectorAll("[data-support-category]").forEach(function(item) { item.classList.remove("selected"); });
+        button.classList.add("selected");
+        select.focus();
+    });
+});
+</script>
 {% include "_app_scripts.html" %}
 </body>
 </html>

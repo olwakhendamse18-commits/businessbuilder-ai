@@ -5,6 +5,7 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Preview personalized business plans, product research, Shopify drafts, Canva briefs, launch packages, and AI Store Agent tasks from BusinessBuilder AI.">
     {% include "_pwa_head.html" %}
 </head>
 <body class="landing-body">
@@ -28,7 +29,7 @@
         <p>These examples show the type of draft work paid users can create, review, edit, approve, download, and use as launch preparation.</p>
     </section>
 
-    <section class="cards sample-output-grid">
+    <section class="sample-output-grid">
         {% set samples = [
             ("Sample business plan", "Executive summary, target customer, offer, pricing, marketing, Shopify setup, Canva branding, and 30-day launch plan."),
             ("Sample product research report", "Product ideas, sourcing suggestions, competitor research prompts, pricing ideas, difficulty notes, and next steps."),
@@ -38,14 +39,18 @@
             ("Sample AI Store Agent task", "A reviewable draft for theme, homepage, shipping, payment, domain, Canva, or launch checklist work.")
         ] %}
         {% for title, copy in samples %}
-            <article class="card">
-                <p class="eyebrow">Preview</p>
+            <article class="sample-card">
+                <div class="sample-card-visual"><span>{{ "%02d"|format(loop.index) }}</span><small>BusinessBuilder AI</small></div>
+                <p class="sample-badge">Preview</p>
                 <h3>{{ title }}</h3>
                 <p>{{ copy }}</p>
-                <p class="form-help">Paid users can generate personalized versions from their own workflow and project answers.</p>
+                <div class="sample-deliverable"><strong>What you get</strong><span>A structured, editable draft built from your answers—not a generic template.</span></div>
+                <div class="sample-actions"><a href="/signup" class="primary-button">Start Building</a><a href="/pricing" class="text-button">View Pricing →</a></div>
             </article>
         {% endfor %}
     </section>
+
+    <section class="examples-note"><span aria-hidden="true">✦</span><p><strong>Personalized to your business</strong>Examples are previews. Paid users generate personalized versions from their own business details.</p></section>
 
     <section class="landing-pricing-cta">
         <div>
