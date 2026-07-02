@@ -49,7 +49,7 @@
         <div class="dashboard-header">
             <p class="eyebrow">Your guided launch roadmap</p>
             <h1>Build Center</h1>
-            <p>Follow your step-by-step business launch roadmap. Start with the foundation, then move toward store drafts, branding, marketing, and launch readiness.</p>
+            <p>Follow the 16 steps from your first idea to a reviewable launch package. The highlighted step is the best place to continue.</p>
             <p class="plan-access-line">{{ current_plan_details.get("best_for", "Your plan controls generation limits and advanced actions.") }}</p>
         </div>
 
@@ -102,31 +102,16 @@
         <p class="form-help integration-guidance">You can still generate guidance and reviewable drafts without these connections. Connections are needed only for supported actions in Shopify or Canva.</p>
 
         <section class="next-action-card">
-            <p class="eyebrow">Main Recommended Action</p>
-            <h2>{{ "Generate My Store" if pro_package else "Build Your Launch Foundation" }}</h2>
-            <p>
-                {% if pro_package %}
-                    Use AI Store Builder and AI Store Agent to generate, review, approve, and apply supported safe Shopify and Canva store assets.
-                {% else %}
-                    Starter includes business plans, basic product research, and limited AI Store Agent drafts. Upgrade to Pro when you are ready to create Shopify draft assets.
-                {% endif %}
-                Product Finder is the recommended step before store creation because it helps choose what to sell before the AI builds product and page drafts.
-            </p>
+            <p class="eyebrow">Your Next Best Action</p>
+            <h2>{{ next_recommended_action["title"] }}</h2>
+            <p>{{ next_recommended_action["description"] }}</p>
 
             <div class="generator-actions">
-                <a href="/ai_store_agent" class="primary-button">Open AI Store Agent</a>
-                <a href="/product_finder" class="secondary-button">Find Products</a>
-                <a href="/supplier_finder" class="secondary-button">Compare Suppliers</a>
-                <a href="/pricing_advisor" class="secondary-button">Pricing Advisor</a>
-                <a href="/payment_guide" class="secondary-button">Payment Guide</a>
-                {% if pro_package %}
-                    <a href="/store_builder" class="secondary-button">Generate My Store</a>
-                {% else %}
-                    <a href="/pricing" class="secondary-button">Upgrade to Pro for Store Builder</a>
-                {% endif %}
-                <a href="{{ next_recommended_action['url'] }}" class="secondary-button">
+                <a href="{{ next_recommended_action['url'] }}" class="primary-button">
                     {{ next_recommended_action["action"] }}
                 </a>
+                <a href="/business_launch_assistant" class="secondary-button">Review Launch Plan</a>
+                <a href="/launch_readiness" class="secondary-button">Check Readiness</a>
             </div>
         </section>
 

@@ -34,9 +34,10 @@
             <form method="POST" action="{{ tool.generate_route }}" class="agent-form-grid">
                 {% for name, label, field_type, required, placeholder, options in tool.fields %}
                     <label class="{{ 'agent-form-wide' if field_type == 'textarea' else '' }}">{{ label }}
-                        {% if field_type == "textarea" %}<textarea name="{{ name }}" {% if required %}required{% endif %} placeholder="{{ placeholder }}"></textarea>
-                        {% elif field_type == "select" %}<select name="{{ name }}" {% if required %}required{% endif %}>{% for option in options %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select>
-                        {% else %}<input type="{{ field_type }}" name="{{ name }}" {% if required %}required{% endif %} placeholder="{{ placeholder }}">{% endif %}
+                        {% set saved_value = field_defaults.get(name, '') %}
+                        {% if field_type == "textarea" %}<textarea name="{{ name }}" {% if required %}required{% endif %} placeholder="{{ placeholder }}">{{ saved_value }}</textarea>
+                        {% elif field_type == "select" %}<select name="{{ name }}" {% if required %}required{% endif %}>{% for option in options %}<option value="{{ option }}" {{ 'selected' if saved_value and saved_value|lower == option|lower else '' }}>{{ option }}</option>{% endfor %}</select>
+                        {% else %}<input type="{{ field_type }}" name="{{ name }}" {% if required %}required{% endif %} placeholder="{{ placeholder }}" value="{{ saved_value }}">{% endif %}
                     </label>
                 {% endfor %}
                 <div class="agent-form-wide"><button type="submit">Generate {{ tool.title }} Plan</button><p class="form-help">The AI runs only after you submit. Nothing is purchased, published, registered, or sent.</p></div>

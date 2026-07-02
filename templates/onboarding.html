@@ -55,54 +55,65 @@
         </section>
 
         <section class="project-form">
-            <form method="POST" action="/save_onboarding">
-                <label>What business do you want to start?</label>
-                <input name="business_idea" required placeholder="Example: A skincare store for students" value="{{ onboarding[1] if onboarding else '' }}">
+            <form method="POST" action="/save_onboarding" class="onboarding-form">
+                <div class="onboarding-section">
+                    <p class="eyebrow">Step 1 · Your idea</p>
+                    <label>What is your business idea?
+                        <textarea name="business_idea" required placeholder="Example: An affordable skincare store for university students">{{ onboarding_data.get('business_idea', '') }}</textarea>
+                    </label>
+                    <div class="agent-form-grid">
+                        <label>What country are you in?
+                            <input name="country" required placeholder="Example: South Africa" value="{{ onboarding_data.get('country', '') }}">
+                        </label>
+                        <label>What is your comfortable starting budget?
+                            <input name="budget" required placeholder="Example: R2,000 or very low" value="{{ onboarding_data.get('budget', '') }}">
+                        </label>
+                        <label>What type of business are you starting?
+                            <select name="business_type" required>{% for option in ['physical products', 'digital products', 'service business', 'print-on-demand', 'dropshipping', 'local business', 'not sure'] %}<option value="{{ option }}" {{ 'selected' if onboarding_data.get('business_type', onboarding_data.get('product_type', '')) == option else '' }}>{{ option|title }}</option>{% endfor %}</select>
+                        </label>
+                        <label>Who is your target customer?
+                            <input name="target_customer" required placeholder="Example: Students aged 18–25 in Johannesburg" value="{{ onboarding_data.get('target_customer', '') }}">
+                        </label>
+                    </div>
+                </div>
 
-                <label>What country are you selling in?</label>
-                <input name="country" placeholder="Example: South Africa" value="{{ onboarding[2] if onboarding else '' }}">
+                <div class="onboarding-section">
+                    <p class="eyebrow">Step 2 · Where you want to build</p>
+                    <div class="agent-form-grid">
+                        <label>What platform do you want to use?
+                            <select name="platform" required>{% for option in ['Shopify', 'custom website', 'social media', 'marketplace', 'not sure'] %}<option value="{{ option }}" {{ 'selected' if onboarding_data.get('platform', '')|lower == option|lower else '' }}>{{ option|title }}</option>{% endfor %}</select>
+                        </label>
+                        <label>What stage are you at?
+                            <select name="current_stage" required>{% for option in ['idea only', 'validating', 'planning', 'building store', 'ready to launch'] %}<option value="{{ option }}" {{ 'selected' if onboarding_data.get('current_stage', '') == option else '' }}>{{ option|title }}</option>{% endfor %}</select>
+                        </label>
+                        <label>Do you already have a Shopify store?
+                            <select name="has_shopify">{% for option in ['No', 'Yes', 'Not sure'] %}<option value="{{ option }}" {{ 'selected' if onboarding_data.get('has_shopify', 'No') == option else '' }}>{{ option }}</option>{% endfor %}</select>
+                        </label>
+                        <label>Do you already use Canva?
+                            <select name="has_canva">{% for option in ['No', 'Yes', 'Not sure'] %}<option value="{{ option }}" {{ 'selected' if onboarding_data.get('has_canva', 'No') == option else '' }}>{{ option }}</option>{% endfor %}</select>
+                        </label>
+                    </div>
+                </div>
 
-                <label>What is your budget?</label>
-                <input name="budget" placeholder="Example: R2,000" value="{{ onboarding[3] if onboarding else '' }}">
+                <div class="onboarding-section">
+                    <p class="eyebrow">Step 3 · What you already have</p>
+                    <p class="form-help">Choose the honest answer. “Not sure” is completely fine.</p>
+                    <div class="onboarding-check-grid">
+                        {% for name, label in [('has_business_name', 'Business name'), ('has_domain', 'Domain'), ('has_products', 'Products or services'), ('has_suppliers', 'Suppliers or fulfilment'), ('has_branding', 'Logo or brand direction'), ('has_payment_provider', 'Payment provider'), ('has_shipping_plan', 'Shipping or delivery plan')] %}
+                            <label>{{ label }}<select name="{{ name }}">{% for option in ['No', 'Yes', 'Not sure'] %}<option value="{{ option }}" {{ 'selected' if onboarding_data.get(name, 'No') == option else '' }}>{{ option }}</option>{% endfor %}</select></label>
+                        {% endfor %}
+                    </div>
+                </div>
 
-                <label>Do you already have a Shopify store?</label>
-                <select name="has_shopify">
-                    <option value="No" {{ "selected" if onboarding and onboarding[4] == "No" else "" }}>No</option>
-                    <option value="Yes" {{ "selected" if onboarding and onboarding[4] == "Yes" else "" }}>Yes</option>
-                    <option value="Not sure" {{ "selected" if onboarding and onboarding[4] == "Not sure" else "" }}>Not sure</option>
-                </select>
+                <div class="onboarding-section">
+                    <p class="eyebrow">Step 4 · Your main goal</p>
+                    <label>What would you most like help with first?
+                        <select name="main_goal" required>{% for option in ['create business plan', 'find products', 'build online store', 'create branding', 'set up payments', 'launch business', 'not sure'] %}<option value="{{ option }}" {{ 'selected' if onboarding_data.get('main_goal', onboarding_data.get('business_goal', '')) == option else '' }}>{{ option|title }}</option>{% endfor %}</select>
+                    </label>
+                    <div class="security-warning"><strong>Your information stays practical.</strong> Do not enter passwords, card numbers, banking logins, tax credentials, or identity numbers. The AI guides and drafts; you approve and complete real-world actions.</div>
+                </div>
 
-                <label>Do you already use Canva?</label>
-                <select name="has_canva">
-                    <option value="No" {{ "selected" if onboarding and onboarding[5] == "No" else "" }}>No</option>
-                    <option value="Yes" {{ "selected" if onboarding and onboarding[5] == "Yes" else "" }}>Yes</option>
-                    <option value="Not sure" {{ "selected" if onboarding and onboarding[5] == "Not sure" else "" }}>Not sure</option>
-                </select>
-
-                <label>What do you want to sell?</label>
-                <select name="product_type">
-                    <option value="physical products" {{ "selected" if onboarding and onboarding[6] == "physical products" else "" }}>Physical products</option>
-                    <option value="digital products" {{ "selected" if onboarding and onboarding[6] == "digital products" else "" }}>Digital products</option>
-                    <option value="services" {{ "selected" if onboarding and onboarding[6] == "services" else "" }}>Services</option>
-                    <option value="affiliate products" {{ "selected" if onboarding and onboarding[6] == "affiliate products" else "" }}>Affiliate products</option>
-                    <option value="print-on-demand" {{ "selected" if onboarding and onboarding[6] == "print-on-demand" else "" }}>Print-on-demand</option>
-                    <option value="not sure" {{ "selected" if not onboarding or onboarding[6] == "not sure" else "" }}>Not sure</option>
-                </select>
-
-                <label>Who is your target customer?</label>
-                <input name="target_customer" placeholder="Example: Students aged 18-25" value="{{ onboarding[7] if onboarding else '' }}">
-
-                <label>What is your main goal?</label>
-                <select name="business_goal">
-                    <option value="find products" {{ "selected" if onboarding and onboarding[8] == "find products" else "" }}>Find products</option>
-                    <option value="create business plan" {{ "selected" if onboarding and onboarding[8] == "create business plan" else "" }}>Create business plan</option>
-                    <option value="build Shopify store" {{ "selected" if onboarding and onboarding[8] == "build Shopify store" else "" }}>Build Shopify store</option>
-                    <option value="create Canva branding" {{ "selected" if onboarding and onboarding[8] == "create Canva branding" else "" }}>Create Canva branding</option>
-                    <option value="launch my business" {{ "selected" if onboarding and onboarding[8] == "launch my business" else "" }}>Launch my business</option>
-                    <option value="not sure" {{ "selected" if not onboarding or onboarding[8] == "not sure" else "" }}>Not sure</option>
-                </select>
-
-                <button type="submit">Save and Continue</button>
+                <button type="submit">Save Answers and Show My Next Step</button>
             </form>
         </section>
     </main>

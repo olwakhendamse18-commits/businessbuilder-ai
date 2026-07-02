@@ -5759,3 +5759,49 @@ html[data-theme="default"] .dashboard .build-status.applied-safely {
         width: 100%;
     }
 }
+/* Guided onboarding and long AI output safeguards */
+.onboarding-form,
+.onboarding-section {
+    display: grid;
+    gap: 18px;
+}
+
+.onboarding-section {
+    padding: 22px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 18px;
+    background: rgba(15, 23, 42, 0.58);
+}
+
+.onboarding-check-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+}
+
+.onboarding-form label,
+.onboarding-check-grid label {
+    min-width: 0;
+}
+
+.result-next-step {
+    margin: 24px 0;
+    padding: 20px;
+    border: 1px solid rgba(56, 189, 248, 0.32);
+    border-radius: 16px;
+    background: rgba(14, 116, 144, 0.12);
+}
+
+.tool-output,
+.result-document,
+.roadmap-step,
+.workspace-tool-card {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+@media (max-width: 640px) {
+    .onboarding-section { padding: 16px; }
+    .onboarding-check-grid { grid-template-columns: 1fr; }
+}

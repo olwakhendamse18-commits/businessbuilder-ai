@@ -141,7 +141,7 @@
             { name: "Product Finder", description: "Research product ideas, positioning, and sourcing paths.", route: "/product_finder", category: "Research", plan: "Starter", keywords: "products sell product ideas" },
             { name: "Supplier Finder", description: "Compare supplier types and platforms before buying inventory.", route: "/supplier_finder", category: "Research", plan: "Starter", keywords: "supplier shipping costs inventory" },
             { name: "Pricing Advisor", description: "Create low, standard, and premium pricing guidance.", route: "/pricing_advisor", category: "Planning", plan: "Starter", keywords: "price plan upgrade cost margin" },
-            { name: "Payment Guide", description: "Compare Paystack, PayPal, EFT, cards, and other payment options.", route: "/payment_guide", category: "Planning", plan: "Starter", keywords: "payments money receive money checkout shopify payments" },
+            { name: "Payment Guide", description: "Compare Paystack, PayPal, EFT, cards, and other payment options.", route: "/payment_guide", category: "Planning", plan: "Starter", keywords: "payments money receive money checkout shopify payments card payments Capitec Pay Ozow EFT" },
             { name: "Email Marketing Assistant", description: "Draft campaigns, subject lines, calls to action, and follow-ups.", route: "/email_marketing", category: "Marketing", plan: "Pro" },
             { name: "Domain Buying Assistant", description: "Find domain names, compare providers, review renewal risks, and create a safe buying checklist.", route: "/domain_buying_assistant", category: "Website", plan: "Starter / Pro", keywords: "buy domain domain name website name register domain availability provider renewal DNS connect domain" },
             { name: "Domain/DNS Helper", description: "Choose a domain and understand DNS connection steps.", route: "/domain_helper", category: "Website", plan: "Starter" },
@@ -166,7 +166,7 @@
             { name: "Support", description: "Get help with billing, integrations, AI output, or your account.", route: "/support", category: "Help", plan: "Starter", keywords: "help contact billing shopify canva" },
             { name: "Examples", description: "View sample BusinessBuilder AI outputs.", route: "/examples", category: "Help", plan: "Public" },
             { name: "Projects", description: "Organize and revisit your business projects.", route: "/projects", category: "Workspace", plan: "Starter" },
-            { name: "Onboarding", description: "Update your business idea, market, budget, and goals.", route: "/onboarding", category: "Workspace", plan: "Starter" }
+            { name: "Onboarding", description: "Answer beginner-friendly questions and get your recommended next step.", route: "/onboarding", category: "Workspace", plan: "Starter", keywords: "start start business business checklist what do I do next idea country budget business type customer platform stage" }
         ];
 
         const helpResponses = [
@@ -178,7 +178,7 @@
             { terms: ["launch", "ready to launch", "launch checklist"], text: "Use Launch Readiness to check what is missing before launch.", label: "Open Launch Readiness", route: "/launch_readiness" },
             { terms: ["buy domain", "domain name", "website name", "connect domain", "dns"], text: "Use Domain Buying Assistant to shortlist names, compare providers, understand renewal risks, and prepare safe DNS steps. Check availability with the provider before buying.", label: "Open Domain Buying Assistant", route: "/domain_buying_assistant" },
             { terms: ["register business", "business setup", "business email", "legal", "tax", "sars", "shipping"], text: "Use Business Setup Agent for a general setup roadmap. Verify registration, tax, legal, and compliance requirements with official local sources and qualified professionals.", label: "Open Business Setup Agent", route: "/business_setup_agent" },
-            { terms: ["start business", "business checklist", "what do i do next", "launch plan"], text: "Use Business Launch Assistant for one practical roadmap covering validation, budget, brand, operations, store setup, marketing, and approval boundaries.", label: "Open Business Launch Assistant", route: "/business_launch_assistant" },
+            { terms: ["start business", "business checklist", "what do i do next", "what next", "launch plan"], text: "Start with onboarding, then use Business Launch Assistant for a practical roadmap covering validation, budget, brand, operations, store setup, marketing, and approval boundaries.", label: "Start Guided Journey", route: "/onboarding" },
             { terms: ["validate idea", "is my idea good", "demand", "mvp"], text: "Use Idea Validation Agent to test assumptions with low-cost experiments before committing heavily.", label: "Validate My Idea", route: "/idea_validation" },
             { terms: ["startup cost", "budget planner", "how much money", "business costs"], text: "Use Startup Cost Planner to separate must-haves, monthly costs, optional costs, and items that can wait.", label: "Plan Startup Costs", route: "/startup_cost_planner" },
             { terms: ["business name", "brand name", "tagline", "logo brief"], text: "Use the Name & Brand Agent for ideas and direction, then verify domains, social handles, CIPC records, and trademarks yourself.", label: "Open Brand Agent", route: "/brand_agent" },
@@ -191,7 +191,7 @@
 
         const pageSuggestions = {
             "/dashboard": ["Business Launch Assistant", "Idea Validation Agent", "Startup Cost Planner", "Launch Readiness"],
-            "/build_center": ["Business Workflow", "Product Finder", "AI Store Agent", "Launch Readiness"],
+            "/build_center": ["Onboarding", "Business Launch Assistant", "Idea Validation Agent", "Launch Readiness"],
             "/ai_store_agent": ["Product Finder", "Shopify Settings", "Canva Settings", "Launch Readiness"],
             "/product_finder": ["Supplier Finder", "Pricing Advisor", "AI Store Agent", "Build Center"],
             "/supplier_finder": ["Product Finder", "Pricing Advisor", "Payment Guide", "Build Center"],

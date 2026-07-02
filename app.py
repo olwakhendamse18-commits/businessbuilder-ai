@@ -63,6 +63,9 @@ Do not send mass marketing emails without an official integration and explicit u
 Never connect a third-party platform without explicit user permission, and never ask for a platform password.
 Create drafts first and require review, approval, and separate final confirmation before supported external actions.
 Tell users to verify provider requirements, fees, policies, taxes, customs, supplier quality, shipping, returns, and legal rules directly with the provider.
+Be beginner-friendly, use checklists, explain assumptions, and never guarantee business success.
+When the user's country is South Africa, use rand-based examples and add general reminders where relevant for Paystack, PayPal, EFT, cards, Capitec Pay or Ozow availability to verify, .co.za domains, CIPC/BizPortal, SARS, record keeping, VAT thresholds, and PAYE/UIF when hiring. Make clear this is general guidance and direct users to official sources or qualified professionals.
+End generated business guidance with: Next best action; What the AI can do next; What the user must do manually; What requires approval; Risks or warnings; Recommended tool/page to open next.
 """
 
 SHOPIFY_ADMIN_API_VERSION = "2026-04"
@@ -490,6 +493,35 @@ def init_db():
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # Grow the original onboarding table without replacing it.  Both SQLite and
+    # PostgreSQL support ADD COLUMN; checking first keeps init_db idempotent.
+    onboarding_columns = {
+        "business_type": "TEXT",
+        "platform": "TEXT",
+        "current_stage": "TEXT",
+        "has_business_name": "TEXT",
+        "has_domain": "TEXT",
+        "has_products": "TEXT",
+        "has_suppliers": "TEXT",
+        "has_branding": "TEXT",
+        "has_payment_provider": "TEXT",
+        "has_shipping_plan": "TEXT",
+        "main_goal": "TEXT"
+    }
+    if using_postgres():
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'user_onboarding'
+        """)
+        existing_onboarding_columns = {row[0] for row in cur.fetchall()}
+    else:
+        cur.execute("PRAGMA table_info(user_onboarding)")
+        existing_onboarding_columns = {row[1] for row in cur.fetchall()}
+    for column_name, column_type in onboarding_columns.items():
+        if column_name not in existing_onboarding_columns:
+            cur.execute(f"ALTER TABLE user_onboarding ADD COLUMN {column_name} {column_type}")
 
     execute_schema(f"""
         CREATE TABLE IF NOT EXISTS pricing_advice (
@@ -1798,7 +1830,10 @@ def get_user_onboarding(user_id):
         sql("""
             SELECT id, business_idea, country, budget, has_shopify,
                    has_canva, product_type, target_customer, business_goal,
-                   completed
+                   completed, business_type, platform, current_stage,
+                   has_business_name, has_domain, has_products, has_suppliers,
+                   has_branding, has_payment_provider, has_shipping_plan,
+                   main_goal
             FROM user_onboarding
             WHERE user_id = ?
             ORDER BY id DESC
@@ -1825,6 +1860,17 @@ def save_user_onboarding(user_id, data):
         data.get("target_customer", ""),
         data.get("business_goal", ""),
         1,
+        data.get("business_type", ""),
+        data.get("platform", ""),
+        data.get("current_stage", ""),
+        data.get("has_business_name", "No"),
+        data.get("has_domain", "No"),
+        data.get("has_products", "No"),
+        data.get("has_suppliers", "No"),
+        data.get("has_branding", "No"),
+        data.get("has_payment_provider", "No"),
+        data.get("has_shipping_plan", "No"),
+        data.get("main_goal", data.get("business_goal", "")),
     )
 
     if existing:
@@ -1840,6 +1886,17 @@ def save_user_onboarding(user_id, data):
                     target_customer = ?,
                     business_goal = ?,
                     completed = ?,
+                    business_type = ?,
+                    platform = ?,
+                    current_stage = ?,
+                    has_business_name = ?,
+                    has_domain = ?,
+                    has_products = ?,
+                    has_suppliers = ?,
+                    has_branding = ?,
+                    has_payment_provider = ?,
+                    has_shipping_plan = ?,
+                    main_goal = ?,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
                 AND user_id = ?
@@ -1852,15 +1909,32 @@ def save_user_onboarding(user_id, data):
                 INSERT INTO user_onboarding (
                     user_id, business_idea, country, budget, has_shopify,
                     has_canva, product_type, target_customer, business_goal,
-                    completed
+                    completed, business_type, platform, current_stage,
+                    has_business_name, has_domain, has_products, has_suppliers,
+                    has_branding, has_payment_provider, has_shipping_plan,
+                    main_goal
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """),
             (user_id,) + values
         )
 
     conn.commit()
     conn.close()
+
+
+def onboarding_as_dict(row):
+    """Expose named onboarding values while preserving legacy tuple positions."""
+    if not row:
+        return {}
+    keys = (
+        "id", "business_idea", "country", "budget", "has_shopify",
+        "has_canva", "product_type", "target_customer", "business_goal",
+        "completed", "business_type", "platform", "current_stage",
+        "has_business_name", "has_domain", "has_products", "has_suppliers",
+        "has_branding", "has_payment_provider", "has_shipping_plan", "main_goal"
+    )
+    return dict(zip(keys, row))
 
 
 def create_business_project_record(
@@ -3008,6 +3082,7 @@ def build_project_context(user_id):
 
 
 def get_launch_readiness(user_id):
+    onboarding = onboarding_as_dict(get_user_onboarding(user_id))
     completed_steps = get_completed_steps(user_id)
     business_plans = get_business_plans(user_id)
     product_research_list = get_product_research_list(user_id)
@@ -3036,6 +3111,20 @@ def get_launch_readiness(user_id):
     marketing_plans = get_launch_tool_outputs("marketing_launch_agent", user_id)
 
     checks = [
+        {
+            "title": "Business idea defined",
+            "complete": bool(onboarding.get("business_idea")),
+            "description": "Write down the offer, problem, and business model in plain language.",
+            "url": "/onboarding",
+            "action": "Complete Onboarding"
+        },
+        {
+            "title": "Target customer defined",
+            "complete": bool(onboarding.get("target_customer")),
+            "description": "Identify the first customer group whose problem you want to solve.",
+            "url": "/onboarding",
+            "action": "Define Customer"
+        },
         {
             "title": "Business workflow completed",
             "complete": len(completed_steps) >= len(WORKFLOW_STEPS),
@@ -3131,7 +3220,7 @@ def get_launch_readiness(user_id):
         },
         {
             "title": "Domain buying plan created",
-            "complete": bool(domain_buying_plans),
+            "complete": bool(domain_buying_plans or onboarding.get("has_domain") == "Yes"),
             "description": "Create an optional shortlist, provider comparison, renewal warning, and safe buying checklist.",
             "url": "/domain_buying_assistant",
             "action": "Plan Domain Purchase",
@@ -3209,6 +3298,13 @@ def get_launch_readiness(user_id):
             "description": "Draft key pages and policies, then review them for your operations.",
             "url": "/store_content_generator",
             "action": "Draft Store Content"
+        },
+        {
+            "title": "Support or contact method prepared",
+            "complete": bool(store_content),
+            "description": "Choose a customer-facing email, contact page, WhatsApp, or support process.",
+            "url": "/store_content_generator",
+            "action": "Prepare Contact Method"
         },
         {
             "title": "Marketing launch plan created",
@@ -6836,23 +6932,25 @@ def build_center():
         }
     ]
 
-    # Keep one clear beginner journey even as the Build Center's detailed tools grow.
+    # One clear 16-step beginner journey, even as detailed tools grow behind it.
+    onboarding_complete = bool(get_user_onboarding(user_id) and get_user_onboarding(user_id)[9])
     roadmap_steps = [
-        {"number": "01", "title": "Choose Business Idea", "status": status_for(launch_plans or workflow_started), "description": "Describe the problem, customer, offer, and business model you want to explore.", "url": "/business_launch_assistant", "action": "Plan My Business"},
-        {"number": "02", "title": "Validate Idea", "status": status_for(idea_validations, bool(launch_plans)), "description": "Test assumptions, demand signals, risks, and a low-cost MVP before spending heavily.", "url": "/idea_validation", "action": "Validate Idea"},
-        {"number": "03", "title": "Plan Startup Budget", "status": status_for(startup_cost_plans, bool(idea_validations)), "description": "Separate must-have, monthly, optional, and wait-until-later costs.", "url": "/startup_cost_planner", "action": "Plan Startup Costs"},
-        {"number": "04", "title": "Choose Business Name and Brand", "status": status_for(brand_plans, bool(idea_validations)), "description": "Create name, tagline, positioning, colour, and Canva brief ideas, then verify availability.", "url": "/brand_agent", "action": "Create Brand Plan"},
-        {"number": "05", "title": "Plan Registration / Tax / Admin", "status": status_for(registration_guides, workflow_started), "description": "Create a general checklist and verify final requirements with official sources or a professional.", "url": "/registration_tax_guide", "action": "Review Admin Guide"},
-        {"number": "06", "title": "Find Products / Services", "status": status_for(product_research_list, workflow_started), "description": "Research suitable products, services, positioning, competitor questions, and first offers.", "url": "/product_finder", "action": "Find Products"},
-        {"number": "07", "title": "Find Suppliers / Fulfilment", "status": status_for(supplier_recommendations, bool(product_research_list)), "description": "Compare supplier, fulfilment, local, POD, and service-delivery options before committing money.", "url": "/supplier_finder", "action": "Compare Options"},
-        {"number": "08", "title": "Set Pricing", "status": status_for(pricing_advice_list, bool(product_research_list)), "description": "Estimate margins, break-even basics, positioning, and the first prices to test.", "url": "/pricing_advisor", "action": "Plan Pricing"},
-        {"number": "09", "title": "Choose Domain", "status": status_for(domain_buying_plans, bool(brand_plans)), "description": "Shortlist credible domains, compare providers and renewals, and verify availability directly.", "url": "/domain_buying_assistant", "action": "Plan Domain"},
-        {"number": "10", "title": "Set Up Payments", "status": status_for(payment_guides, bool(pricing_advice_list)), "description": "Choose payment methods and prepare verification, refund, security, payout, and checkout tests.", "url": "/payment_guide", "action": "Plan Payments"},
+        {"number": "01", "title": "Complete Onboarding", "status": status_for(onboarding_complete), "description": "Save your idea, market, budget, stage, platform, existing assets, and first goal.", "url": "/onboarding", "action": "Complete Onboarding" if not onboarding_complete else "Review Answers"},
+        {"number": "02", "title": "Validate Idea", "status": status_for(idea_validations, onboarding_complete), "description": "Test the customer problem, demand signals, competitors, risks, and a low-cost MVP.", "url": "/idea_validation", "action": "Validate Idea"},
+        {"number": "03", "title": "Plan Budget", "status": status_for(startup_cost_plans, bool(idea_validations)), "description": "Separate must-have, monthly, optional, and wait-until-later startup costs.", "url": "/startup_cost_planner", "action": "Plan Startup Costs"},
+        {"number": "04", "title": "Choose Name and Brand", "status": status_for(brand_plans, bool(idea_validations)), "description": "Create name, tagline, positioning, colour, logo, and social-handle direction, then verify availability.", "url": "/brand_agent", "action": "Create Brand Plan"},
+        {"number": "05", "title": "Choose Domain", "status": status_for(domain_buying_plans, bool(brand_plans)), "description": "Shortlist credible domains, compare providers and renewals, and verify availability directly.", "url": "/domain_buying_assistant", "action": "Plan Domain"},
+        {"number": "06", "title": "Registration / Tax / Admin Reminder", "status": status_for(registration_guides, onboarding_complete), "description": "Create a general checklist and verify final requirements with official sources or a qualified professional.", "url": "/registration_tax_guide", "action": "Review Admin Guide"},
+        {"number": "07", "title": "Find Products / Services", "status": status_for(product_research_list, onboarding_complete), "description": "Research suitable products, services, positioning, competitor questions, and first offers.", "url": "/product_finder", "action": "Find Products"},
+        {"number": "08", "title": "Find Suppliers / Fulfilment", "status": status_for(supplier_recommendations, bool(product_research_list)), "description": "Compare local, wholesale, dropshipping, POD, and service-delivery options before committing money.", "url": "/supplier_finder", "action": "Compare Options"},
+        {"number": "09", "title": "Set Pricing", "status": status_for(pricing_advice_list, bool(product_research_list)), "description": "Estimate costs, margins, break-even basics, and low, standard, and premium prices to test.", "url": "/pricing_advisor", "action": "Plan Pricing"},
+        {"number": "10", "title": "Set Up Payments", "status": status_for(payment_guides, bool(pricing_advice_list)), "description": "Compare Paystack, PayPal, EFT, and card options and prepare verification and checkout tests.", "url": "/payment_guide", "action": "Plan Payments"},
         {"number": "11", "title": "Set Up Shipping", "status": status_for(shipping_plans, bool(product_research_list)), "description": "Plan delivery, fulfilment, packaging, returns, and customer communication.", "url": "/shipping_setup", "action": "Plan Shipping"},
-        {"number": "12", "title": "Create Store Content and Policies", "status": status_for(store_content_outputs, bool(brand_plans)), "description": "Draft homepage, product, FAQ, contact, shipping, refund, privacy, and terms content for review.", "url": "/store_content_generator", "action": "Draft Store Content"},
-        {"number": "13", "title": "Create Marketing Launch Plan", "status": status_for(marketing_launch_plans or email_campaigns, bool(store_content_outputs)), "description": "Prepare a seven-day campaign, email, WhatsApp, social, offer, and outreach drafts.", "url": "/marketing_launch_agent", "action": "Plan Marketing"},
-        {"number": "14", "title": "Check Launch Readiness", "status": status_for(launch_readiness["score"] >= 75, launch_readiness["score"] > 0), "description": "See completed items, important gaps, and the next three actions before launch.", "url": "/launch_readiness", "action": "Check Readiness"},
-        {"number": "15", "title": "Generate Launch Package", "status": status_for(user_package_at_least(user_id, "Pro") and launch_readiness["score"] >= 75, launch_readiness["score"] > 0), "description": "Bring strategy, research, setup plans, drafts, checks, and next actions into one reviewable package.", "url": "/launch_package", "action": "Open Launch Package"}
+        {"number": "12", "title": "Create Store Content", "status": status_for(store_content_outputs, bool(brand_plans)), "description": "Draft homepage, product, FAQ, shipping, refund, privacy, and terms content for review.", "url": "/store_content_generator", "action": "Draft Store Content"},
+        {"number": "13", "title": "Create Canva Branding Brief", "status": status_for(canva_branding_packages or canva_design_briefs, bool(brand_plans)), "description": "Prepare a Canva-ready logo, palette, typography, social, banner, and launch-post brief.", "url": "/brand_agent" if not brand_plans else "/canva_settings", "action": "Create Branding Brief"},
+        {"number": "14", "title": "Create Marketing Launch Plan", "status": status_for(marketing_launch_plans or email_campaigns, bool(store_content_outputs)), "description": "Prepare a seven-day campaign, email, WhatsApp, social, offer, and ad-copy drafts.", "url": "/marketing_launch_agent", "action": "Plan Marketing"},
+        {"number": "15", "title": "Check Launch Readiness", "status": status_for(launch_readiness["score"] >= 75, launch_readiness["score"] > 0), "description": "See completed items, high-risk gaps, and the next three actions before launch.", "url": "/launch_readiness", "action": "Check Readiness"},
+        {"number": "16", "title": "Generate Launch Package", "status": status_for(user_package_at_least(user_id, "Pro") and launch_readiness["score"] >= 75, launch_readiness["score"] > 0), "description": "Bring strategy, research, setup plans, drafts, checks, and next actions into one reviewable package.", "url": "/launch_package", "action": "Open Launch Package"}
     ]
 
     roadmap_requirements = {
@@ -6861,7 +6959,8 @@ def build_center():
         "App Connections": "Premium Build", "Marketing Drafts": "Premium Build",
         "Design Drafts": "Premium Build", "Website/Store Drafts": "Premium Build",
         "Create Store Content": "Pro", "Create Store Content and Policies": "Pro", "Create Marketing Launch Plan": "Pro",
-        "Generate Launch Package": "Pro", "Plan Registration / Tax / Admin": "Pro"
+        "Create Canva Branding Brief": "Pro", "Generate Launch Package": "Pro",
+        "Plan Registration / Tax / Admin": "Pro", "Registration / Tax / Admin Reminder": "Pro"
     }
     for step in roadmap_steps:
         required_plan = roadmap_requirements.get(step["title"], "Starter")
@@ -6871,6 +6970,18 @@ def build_center():
             step["status"] = "Locked"
             step["url"] = "/pricing"
             step["action"] = f"Upgrade to {required_plan}"
+
+    next_roadmap_step = next(
+        (step for step in roadmap_steps if step["status"] != "Completed" and step.get("unlocked")),
+        next((step for step in roadmap_steps if step["status"] != "Completed"), None)
+    )
+    if next_roadmap_step:
+        next_recommended_action = {
+            "title": next_roadmap_step["title"],
+            "description": next_roadmap_step["description"],
+            "url": next_roadmap_step["url"],
+            "action": next_roadmap_step["action"]
+        }
 
     return render_template(
         "build_center.html",
@@ -9038,9 +9149,23 @@ def render_launch_tool(tool_key):
     user_id = session["user_id"]
     config = LAUNCH_TOOL_CONFIG[tool_key]
     outputs = [launch_tool_record(tool_key, row) for row in get_launch_tool_outputs(tool_key, user_id)]
+    onboarding = get_user_onboarding(user_id)
+    onboarding_data = onboarding_as_dict(onboarding)
+    field_defaults = {
+        "business_idea": onboarding_data.get("business_idea", ""),
+        "business_type": onboarding_data.get("business_type") or onboarding_data.get("product_type", ""),
+        "country": onboarding_data.get("country", ""),
+        "budget": onboarding_data.get("budget", ""),
+        "target_customer": onboarding_data.get("target_customer", ""),
+        "selling_platform": onboarding_data.get("platform", ""),
+        "platform": onboarding_data.get("platform", ""),
+        "product_type": onboarding_data.get("business_type") or onboarding_data.get("product_type", ""),
+        "stage": onboarding_data.get("current_stage", "")
+    }
     return render_template(
         "launch_tool.html", tool_key=tool_key, tool=config, outputs=outputs,
-        onboarding=get_user_onboarding(user_id), active_project=get_active_business_project(user_id),
+        onboarding=onboarding, onboarding_data=onboarding_data, field_defaults=field_defaults,
+        active_project=get_active_business_project(user_id),
         current_package=get_user_package(user_id) or "Starter",
         plan_available=user_package_at_least(user_id, config["plan"])
     )
@@ -9074,6 +9199,7 @@ Core safety rules:
 - Legal, tax, policy, registration, and compliance content is general educational guidance. Tell the user to verify official requirements.
 - Make approval boundaries explicit: what the AI drafts, what the user reviews, and what the user must complete directly.
 - Use concise headings, checklists, short explanations, and a calm practical tone. Avoid overwhelming the beginner.
+- End with six labelled action blocks: Next best action; What the AI can do next; What the user must do manually; What requires approval; Risks or warnings; Recommended tool/page to open next.
 
 Tool-specific safety note: {config['safety']}
 {local_guidance}
@@ -9402,9 +9528,11 @@ def onboarding():
 
     user_id = session["user_id"]
 
+    onboarding_record = get_user_onboarding(user_id)
     return render_template(
         "onboarding.html",
-        onboarding=get_user_onboarding(user_id),
+        onboarding=onboarding_record,
+        onboarding_data=onboarding_as_dict(onboarding_record),
         active_project=get_active_business_project(user_id)
     )
 
@@ -9423,8 +9551,20 @@ def save_onboarding():
         "has_canva": request.form.get("has_canva", "").strip(),
         "product_type": request.form.get("product_type", "").strip(),
         "target_customer": request.form.get("target_customer", "").strip(),
-        "business_goal": request.form.get("business_goal", "").strip()
+        "business_goal": request.form.get("main_goal", request.form.get("business_goal", "")).strip(),
+        "business_type": request.form.get("business_type", "").strip(),
+        "platform": request.form.get("platform", "").strip(),
+        "current_stage": request.form.get("current_stage", "").strip(),
+        "has_business_name": request.form.get("has_business_name", "No").strip(),
+        "has_domain": request.form.get("has_domain", "No").strip(),
+        "has_products": request.form.get("has_products", "No").strip(),
+        "has_suppliers": request.form.get("has_suppliers", "No").strip(),
+        "has_branding": request.form.get("has_branding", "No").strip(),
+        "has_payment_provider": request.form.get("has_payment_provider", "No").strip(),
+        "has_shipping_plan": request.form.get("has_shipping_plan", "No").strip(),
+        "main_goal": request.form.get("main_goal", "").strip()
     }
+    data["product_type"] = data["business_type"] or data["product_type"]
 
     if not data["business_idea"]:
         return redirect("/onboarding?onboarding_error=business_idea")

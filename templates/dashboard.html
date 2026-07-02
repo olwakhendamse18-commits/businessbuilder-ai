@@ -223,6 +223,18 @@
             </div>
         </section>
 
+        <section class="workspace-section dashboard-roadmap-preview">
+            <div class="section-heading-row">
+                <div><p class="eyebrow">Roadmap preview</p><h2>Your next three launch steps</h2><p>Work through one clear action at a time. Optional integrations never block the basic journey.</p></div>
+                <a href="/build_center" class="secondary-button">View All 16 Steps</a>
+            </div>
+            <div class="cards readiness-priority-grid">
+                {% for step in launch_readiness["next_actions"] %}
+                    <article class="card"><span class="workspace-tool-icon">{{ loop.index }}</span><h3>{{ step["title"] }}</h3><p>{{ step["description"] }}</p><a href="{{ step['url'] }}" class="{{ 'primary-button' if loop.first else 'secondary-button' }}">{{ step["action"] }}</a></article>
+                {% endfor %}
+            </div>
+        </section>
+
         <section class="workspace-section launch-command-center">
             <div class="section-heading-row"><div><p class="eyebrow">Start here</p><h2>Your business launch command center</h2><p>Follow the stages in order when you are unsure. Each tool creates guidance or drafts that you review before taking action.</p></div><a href="/business_launch_assistant" class="primary-button">Build My Launch Plan</a></div>
 
