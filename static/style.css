@@ -5472,3 +5472,204 @@ html[data-theme="default"] .bb-mascot-bubble {
     --muted: #a7b4c8;
     --border: rgba(148, 163, 184, .22);
 }
+
+/* Dark workspace card contrast and resilient dynamic text. */
+html[data-theme="default"] .dashboard .agent-safety-banner,
+html[data-theme="default"] .dashboard .agent-benefit-grid article,
+html[data-theme="default"] .dashboard .approval-warning,
+html[data-theme="default"] .dashboard .approval-actions,
+html[data-theme="default"] .dashboard .approval-context,
+html[data-theme="default"] .dashboard .guide-note,
+html[data-theme="default"] .dashboard .security-warning,
+html[data-theme="default"] .dashboard .connection-help,
+html[data-theme="default"] .dashboard .tool-safety-card,
+html[data-theme="default"] .dashboard .research-output-guide,
+html[data-theme="default"] .dashboard .checkbox-grid label,
+html[data-theme="default"] .dashboard .definition-grid div,
+html[data-theme="default"] .dashboard .empty-card {
+    background: rgba(15, 23, 42, .92);
+    border-color: rgba(148, 163, 184, .2);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .2);
+    color: #e5edf9;
+}
+
+html[data-theme="default"] .dashboard .agent-safety-banner,
+html[data-theme="default"] .dashboard .approval-warning,
+html[data-theme="default"] .dashboard .security-warning {
+    background: linear-gradient(135deg, rgba(37, 99, 235, .13), rgba(20, 184, 166, .08)), #0f172a;
+    border-color: rgba(96, 165, 250, .32);
+}
+
+html[data-theme="default"] .dashboard :is(
+    .agent-safety-banner,
+    .agent-benefit-grid article,
+    .approval-warning,
+    .approval-actions,
+    .approval-context,
+    .guide-note,
+    .security-warning,
+    .connection-help,
+    .tool-safety-card,
+    .research-output-guide,
+    .checkbox-grid label,
+    .definition-grid div,
+    .empty-card,
+    .readiness-card,
+    .roadmap-step
+) h2,
+html[data-theme="default"] .dashboard :is(
+    .agent-safety-banner,
+    .agent-benefit-grid article,
+    .approval-warning,
+    .approval-actions,
+    .approval-context,
+    .guide-note,
+    .security-warning,
+    .connection-help,
+    .tool-safety-card,
+    .research-output-guide,
+    .checkbox-grid label,
+    .definition-grid div,
+    .empty-card,
+    .readiness-card,
+    .roadmap-step
+) h3 {
+    color: #f8fafc;
+}
+
+html[data-theme="default"] .dashboard :is(
+    .agent-safety-banner,
+    .agent-benefit-grid article,
+    .approval-warning,
+    .approval-actions,
+    .approval-context,
+    .guide-note,
+    .security-warning,
+    .connection-help,
+    .tool-safety-card,
+    .research-output-guide,
+    .checkbox-grid label,
+    .definition-grid div,
+    .empty-card,
+    .readiness-card,
+    .roadmap-step
+) :is(p, li, small, span) {
+    color: #a8b6cc;
+    opacity: 1;
+}
+
+html[data-theme="default"] .dashboard .safety-icon {
+    background: rgba(59, 130, 246, .2);
+    color: #93c5fd;
+}
+
+html[data-theme="default"] .dashboard .business-plan-output,
+html[data-theme="default"] .dashboard .tool-output {
+    background: #0b1630;
+    border: 1px solid rgba(148, 163, 184, .18);
+    border-radius: 16px;
+    color: #e5edf9;
+    padding: clamp(16px, 3vw, 26px);
+}
+
+html[data-theme="default"] .dashboard .build-status.not-started,
+html[data-theme="default"] .dashboard .muted-badge,
+html[data-theme="default"] .dashboard .plan-requirement-badge {
+    background: rgba(148, 163, 184, .14);
+    border-color: rgba(148, 163, 184, .22);
+    color: #c2cede;
+}
+
+html[data-theme="default"] .dashboard .build-status.in-progress,
+html[data-theme="default"] .dashboard .build-status.needs-approval {
+    background: rgba(245, 158, 11, .16);
+    color: #fcd68a;
+}
+
+html[data-theme="default"] .dashboard .build-status.completed,
+html[data-theme="default"] .dashboard .build-status.approved,
+html[data-theme="default"] .dashboard .build-status.applied,
+html[data-theme="default"] .dashboard .build-status.applied-safely {
+    background: rgba(34, 197, 94, .16);
+    color: #9ce8b7;
+}
+
+.dashboard :is(
+    .card,
+    .project-form,
+    .agent-safety-banner,
+    .agent-benefit-grid article,
+    .roadmap-step,
+    .readiness-card,
+    .advisor-output-card,
+    .empty-card,
+    .approval-warning,
+    .guide-note,
+    .security-warning,
+    .connection-help,
+    .workspace-tool-card,
+    .bbai-slide
+) {
+    height: auto;
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    word-break: normal;
+}
+
+.dashboard :is(.cards, .agent-benefit-grid, .roadmap-grid, .launch-roadmap, .workspace-tool-grid) {
+    align-items: stretch;
+    grid-auto-rows: auto;
+}
+
+.dashboard :is(p, li, label, small, h1, h2, h3, h4),
+.bb-ai-panel :is(p, small, strong, span, a, button) {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+.dashboard :is(.primary-button, .secondary-button, button, .workspace-plan-badge, .build-status, .plan-requirement-badge),
+.bb-ai-panel :is(.bb-assistant-chip, .bb-assistant-result, .primary-button, .secondary-button) {
+    height: auto;
+    line-height: 1.35;
+    max-width: 100%;
+    min-width: 0;
+    white-space: normal;
+}
+
+.dashboard :is(.business-plan-output, .tool-output, pre),
+.bb-ai-panel .bb-assistant-results {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    word-break: normal;
+}
+
+.bb-ai-panel .bb-assistant-result > span:first-child {
+    min-width: 0;
+}
+
+.bb-ai-panel .bb-assistant-result-meta {
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+@media (max-width: 620px) {
+    .dashboard-main h1,
+    .workspace-heading-row h1 {
+        font-size: clamp(1.75rem, 9vw, 2.35rem);
+        line-height: 1.08;
+    }
+
+    .dashboard :is(.card, .project-form, .roadmap-step, .agent-benefit-grid article) {
+        padding: 18px;
+    }
+
+    .dashboard :is(.card-actions, .generator-actions) {
+        align-items: stretch;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
