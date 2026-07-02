@@ -108,7 +108,7 @@
             chips: [["Dashboard", "dashboard"], ["Generate My Store", "generate store"], ["Find Products", "products"], ["Support", "support"]]
         };
         const routeContexts = {
-            "/dashboard": { bubble: "Ready to build?", chips: [["Generate My Store", "generate store"], ["Continue Building", "business workflow"], ["Find Products", "products"], ["Check Launch Readiness", "launch"]] },
+            "/dashboard": { bubble: "What should we do next?", chips: [["Start launch plan", "start business"], ["Validate idea", "validate idea"], ["Plan budget", "startup cost"], ["Check readiness", "launch readiness"]] },
             "/build_center": { bubble: "Follow the roadmap", chips: [["Continue roadmap", "business workflow"], ["Product research", "product finder"], ["Pricing", "pricing"], ["Launch readiness", "launch"]] },
             "/ai_store_agent": { bubble: "Want me to draft your store?", chips: [["Create store task", "AI Store Agent"], ["Review drafts", "AI Store Agent"], ["Generate products", "Shopify products"], ["Launch checklist", "launch"]] },
             "/product_finder": { bubble: "Let’s find products", chips: [["Find suppliers", "supplier"], ["Pricing advisor", "pricing"], ["Product ideas", "products"], ["Store draft", "generate store"]] },
@@ -149,7 +149,7 @@
             { name: "Business Launch Assistant", description: "Create a personalised, beginner-friendly roadmap from business idea to launch.", route: "/business_launch_assistant", category: "Launch", plan: "Starter", keywords: "start business business checklist what do I do next launch plan business idea" },
             { name: "Idea Validation Agent", description: "Test demand assumptions, risks, competitors, and a low-cost MVP.", route: "/idea_validation", category: "Planning", plan: "Starter", keywords: "idea validate validation demand MVP go no go customer" },
             { name: "Startup Cost Planner", description: "Plan one-time, monthly, must-have, optional, and later startup costs.", route: "/startup_cost_planner", category: "Money", plan: "Starter", keywords: "budget startup cost money break even business costs" },
-            { name: "Business Name & Brand Agent", description: "Create name ideas, taglines, visual direction, and a Canva-ready logo brief.", route: "/brand_agent", category: "Branding", plan: "Starter", keywords: "business name brand logo color tagline CIPC trademark social handle" },
+            { name: "Name & Brand Agent", description: "Create name ideas, taglines, visual direction, and a Canva-ready logo brief.", route: "/brand_agent", category: "Branding", plan: "Starter", keywords: "business name brand logo colour color tagline CIPC trademark social handle" },
             { name: "Registration & Tax Guide", description: "Create a general admin checklist to verify with CIPC, SARS, official sources, or a professional.", route: "/registration_tax_guide", category: "Admin", plan: "Pro", keywords: "register registration tax SARS CIPC legal VAT turnover tax admin" },
             { name: "Shipping Setup Agent", description: "Plan delivery, couriers, fulfilment, packaging, returns, and customer updates.", route: "/shipping_setup", category: "Operations", plan: "Starter", keywords: "shipping delivery courier fulfillment fulfilment packaging pickup returns" },
             { name: "Store Content Generator", description: "Draft homepage, product, FAQ, contact, shipping, refund, privacy, and terms content.", route: "/store_content_generator", category: "Store", plan: "Pro", keywords: "policy policies returns refund privacy about contact FAQ website copy store content" },
@@ -190,7 +190,7 @@
         ];
 
         const pageSuggestions = {
-            "/dashboard": ["Build Center", "AI Store Agent", "Product Finder", "Launch Readiness"],
+            "/dashboard": ["Business Launch Assistant", "Idea Validation Agent", "Startup Cost Planner", "Launch Readiness"],
             "/build_center": ["Business Workflow", "Product Finder", "AI Store Agent", "Launch Readiness"],
             "/ai_store_agent": ["Product Finder", "Shopify Settings", "Canva Settings", "Launch Readiness"],
             "/product_finder": ["Supplier Finder", "Pricing Advisor", "AI Store Agent", "Build Center"],
@@ -200,7 +200,7 @@
             "/settings": ["Shopify Settings", "Canva Settings", "Pricing", "Support"],
             "/domain_buying_assistant": ["Domain/DNS Helper", "Business Setup Agent", "Shopify Settings", "Support"],
             "/business_setup_agent": ["Domain Buying Assistant", "Payment Guide", "Canva Settings", "Launch Readiness"]
-            ,"/business_launch_assistant": ["Idea Validation Agent", "Startup Cost Planner", "Business Name & Brand Agent", "Launch Readiness"]
+            ,"/business_launch_assistant": ["Idea Validation Agent", "Startup Cost Planner", "Name & Brand Agent", "Launch Readiness"]
             ,"/idea_validation": ["Business Launch Assistant", "Startup Cost Planner", "Product Finder", "Supplier Finder"]
             ,"/startup_cost_planner": ["Pricing Advisor", "Payment Guide", "Business Launch Assistant", "Build Center"]
             ,"/brand_agent": ["Domain Buying Assistant", "Canva Settings", "Store Content Generator", "Business Launch Assistant"]

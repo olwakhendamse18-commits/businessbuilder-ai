@@ -2531,7 +2531,7 @@ LAUNCH_TOOL_CONFIG = {
             ("stage", "Current stage", "select", True, "", ["Idea only", "Validating", "Planning", "Building", "Ready to launch"]),
             ("notes", "Anything else the AI should know?", "textarea", False, "Constraints, goals, deadlines, or questions", [])
         ],
-        "sections": ["Business readiness summary", "Next best steps", "Business idea validation checklist", "Market research checklist", "Competitor research checklist", "Product or service setup checklist", "Supplier or fulfillment checklist", "Branding checklist", "Domain and website checklist", "Payment setup checklist", "Shipping and delivery checklist", "Legal, admin, and tax reminders", "Marketing launch checklist", "Tools needed", "What the AI can draft", "What the user must do manually", "What requires approval", "Estimated cost categories", "Estimated difficulty", "Suggested timeline", "Next recommended action"],
+        "sections": ["Business readiness summary", "Next best steps", "Business idea validation checklist", "Market research checklist", "Startup cost checklist", "Product or service and supplier checklist", "Branding checklist", "Domain and website checklist", "Payment setup checklist", "Shipping and delivery checklist", "Legal, admin, and tax reminders", "Marketing launch checklist", "What the AI can draft", "What the user must do manually", "What requires approval", "Risks and assumptions to check", "Suggested 7-day action plan", "Next recommended action"],
         "safety": "The AI prepares guidance and drafts. It never buys, registers, submits, publishes, charges, or makes final business decisions for you."
     },
     "idea_validation": {
@@ -6071,6 +6071,7 @@ def dashboard():
         key: len(get_launch_tool_outputs(key, user_id))
         for key in LAUNCH_TOOL_CONFIG
     }
+    domain_buying_plans = get_domain_buying_plans(user_id)
 
     if not paid:
         next_action = {
@@ -6086,24 +6087,45 @@ def dashboard():
             "url": "/onboarding",
             "label": "Start Onboarding"
         }
-    elif not workflow_answers:
+    elif not launch_tool_summary["business_launch_assistant"]:
         next_action = {
-            "title": "Complete your business workflow",
-            "description": "Save your business details once, then reuse them for plans, research, store assets, and launch packages.",
-            "url": "/business_workflow",
-            "label": "Open Workflow"
+            "title": "Create your business launch roadmap",
+            "description": "Turn your idea, budget, customer, and current stage into one calm, practical path from idea to launch.",
+            "url": "/business_launch_assistant",
+            "label": "Build My Launch Plan"
         }
-    elif onboarding and onboarding[8] == "find products" and not product_research_list:
+    elif not launch_tool_summary["idea_validation"]:
         next_action = {
-            "title": "Find products for your idea",
-            "description": "Your onboarding goal points to product discovery. Start with product research before building store drafts.",
-            "url": "/product_finder",
-            "label": "Find Products"
+            "title": "Validate the idea before spending heavily",
+            "description": "Test customer assumptions, risks, demand signals, and the smallest useful first version.",
+            "url": "/idea_validation",
+            "label": "Validate My Idea"
+        }
+    elif not launch_tool_summary["startup_cost_planner"]:
+        next_action = {
+            "title": "Plan a realistic startup budget",
+            "description": "Separate must-have, monthly, optional, and wait-until-later costs before committing money.",
+            "url": "/startup_cost_planner",
+            "label": "Plan Startup Costs"
+        }
+    elif not launch_tool_summary["brand_agent"]:
+        next_action = {
+            "title": "Choose a name and brand direction",
+            "description": "Create name, tagline, positioning, colour, and Canva brief ideas, then verify availability yourself.",
+            "url": "/brand_agent",
+            "label": "Create Brand Plan"
+        }
+    elif not domain_buying_plans:
+        next_action = {
+            "title": "Plan your domain purchase safely",
+            "description": "Shortlist credible names, compare providers and renewals, and check availability directly before buying.",
+            "url": "/domain_buying_assistant",
+            "label": "Plan My Domain"
         }
     elif not product_research_list:
         next_action = {
-            "title": "Find products before building the store",
-            "description": "Use AI Product Finder to identify product ideas, sourcing paths, competitors, pricing, and first draft products.",
+            "title": "Research your first products or services",
+            "description": "Identify suitable offers, positioning, competitor questions, and sourcing paths before building store assets.",
             "url": "/product_finder",
             "label": "Find Products"
         }
@@ -6128,12 +6150,40 @@ def dashboard():
             "url": "/payment_guide",
             "label": "Open Payment Guide"
         }
-    elif user_package_at_least(user_id, "Pro") and not ai_store_builds:
+    elif not launch_tool_summary["shipping_setup"]:
         next_action = {
-            "title": "Generate your store package",
-            "description": "Use AI Store Builder to create the full Shopify store package, then approve safe draft asset creation.",
-            "url": "/store_builder",
-            "label": "Generate My Store"
+            "title": "Plan delivery and fulfilment",
+            "description": "Choose a fulfilment path and prepare packaging, returns, delivery, and customer communication checklists.",
+            "url": "/shipping_setup",
+            "label": "Plan Shipping"
+        }
+    elif not launch_tool_summary["store_content_generator"]:
+        next_action = {
+            "title": "Draft your store content and policies",
+            "description": "Prepare reviewable homepage, product, FAQ, shipping, refund, privacy, and contact content.",
+            "url": "/store_content_generator",
+            "label": "Draft Store Content"
+        }
+    elif not launch_tool_summary["marketing_launch_agent"]:
+        next_action = {
+            "title": "Prepare your launch marketing",
+            "description": "Create a seven-day content plan, email, WhatsApp, social, offer, and outreach drafts without publishing automatically.",
+            "url": "/marketing_launch_agent",
+            "label": "Plan Launch Marketing"
+        }
+    elif launch_readiness["score"] < 75:
+        next_action = {
+            "title": "Check what is missing before launch",
+            "description": "Review completed items, important gaps, and the next three actions that will make your launch stronger.",
+            "url": "/launch_readiness",
+            "label": "Check Launch Readiness"
+        }
+    elif user_package_at_least(user_id, "Pro"):
+        next_action = {
+            "title": "Review your launch package",
+            "description": "Bring your strategy, research, setup plans, drafts, and remaining actions into one final review.",
+            "url": "/launch_package",
+            "label": "Open Launch Package"
         }
     else:
         next_action = {
@@ -6788,24 +6838,21 @@ def build_center():
 
     # Keep one clear beginner journey even as the Build Center's detailed tools grow.
     roadmap_steps = [
-        {"number": "01", "title": "Choose Business Idea", "status": status_for(launch_plans or workflow_started), "description": "Describe the problem, offer, customer, and business model you want to explore.", "url": "/business_launch_assistant", "action": "Plan My Business"},
-        {"number": "02", "title": "Validate Idea", "status": status_for(idea_validations, bool(launch_plans)), "description": "Test assumptions, risks, demand signals, and a low-cost MVP before spending heavily.", "url": "/idea_validation", "action": "Validate Idea"},
-        {"number": "03", "title": "Choose Customer", "status": status_for(bool(workflow_answers), bool(idea_validations)), "description": "Define the customer, their problem, buying reason, and the first segment to reach.", "url": "/business_workflow", "action": "Define Customer"},
-        {"number": "04", "title": "Plan Budget", "status": status_for(startup_cost_plans, workflow_started), "description": "Separate must-have, monthly, optional, and wait-until-later startup costs.", "url": "/startup_cost_planner", "action": "Plan Startup Costs"},
-        {"number": "05", "title": "Choose Business Name", "status": status_for(brand_plans, bool(idea_validations)), "description": "Create name and tagline ideas, then verify domain, social, CIPC, and trademark availability.", "url": "/brand_agent", "action": "Create Brand Plan"},
-        {"number": "06", "title": "Plan Registration / Tax / Admin", "status": status_for(registration_guides, workflow_started), "description": "Create a general checklist and verify the final requirements with official sources.", "url": "/registration_tax_guide", "action": "Review Admin Guide"},
-        {"number": "07", "title": "Find Products / Services", "status": status_for(product_research_list, workflow_started), "description": "Research suitable products, services, positioning, competitors, and first offers.", "url": "/product_finder", "action": "Find Products"},
-        {"number": "08", "title": "Find Suppliers / Fulfilment", "status": status_for(supplier_recommendations, bool(product_research_list)), "description": "Compare sourcing, fulfilment, local supplier, POD, and service-delivery paths.", "url": "/supplier_finder", "action": "Compare Options"},
-        {"number": "09", "title": "Set Pricing", "status": status_for(pricing_advice_list, bool(product_research_list)), "description": "Estimate margins, break-even basics, positioning, and prices to test.", "url": "/pricing_advisor", "action": "Plan Pricing"},
-        {"number": "10", "title": "Choose Platform", "status": status_for(ai_store_builds or shopify_plans, workflow_started), "description": "Choose Shopify, a custom website, social selling, or a marketplace based on your needs.", "url": "/app_connection_agent", "action": "Choose Platform"},
-        {"number": "11", "title": "Buy Domain Safely", "status": status_for(domain_buying_plans, workflow_started), "description": "Shortlist domains, compare providers and renewals, then purchase directly when ready.", "url": "/domain_buying_assistant", "action": "Plan Domain"},
-        {"number": "12", "title": "Create Branding", "status": status_for(brand_plans or canva_branding_packages or canva_design_briefs, bool(domain_buying_plans)), "description": "Prepare brand personality, colour direction, logo brief, and Canva-ready assets.", "url": "/brand_agent", "action": "Create Branding"},
-        {"number": "13", "title": "Create Store Content", "status": status_for(store_content_outputs, bool(brand_plans or ai_store_builds)), "description": "Draft homepage copy, key pages, product copy, FAQs, and policies for review.", "url": "/store_content_generator", "action": "Draft Store Content"},
-        {"number": "14", "title": "Set Up Payments", "status": status_for(payment_guides, bool(pricing_advice_list)), "description": "Choose payment methods and prepare verification, refund, security, and checkout tests.", "url": "/payment_guide", "action": "Plan Payments"},
-        {"number": "15", "title": "Set Up Shipping", "status": status_for(shipping_plans, bool(product_research_list)), "description": "Plan delivery, fulfilment, packaging, returns, and customer communication.", "url": "/shipping_setup", "action": "Plan Shipping"},
-        {"number": "16", "title": "Create Marketing Launch Plan", "status": status_for(marketing_launch_plans or email_campaigns, bool(store_content_outputs)), "description": "Prepare a launch campaign, seven-day content plan, email, WhatsApp, and social drafts.", "url": "/marketing_launch_agent", "action": "Plan Marketing"},
-        {"number": "17", "title": "Check Launch Readiness", "status": status_for(launch_readiness["score"] >= 75, launch_readiness["score"] > 0), "description": "See completed items, missing items, risks, and the next three useful actions.", "url": "/launch_readiness", "action": "Check Readiness"},
-        {"number": "18", "title": "Generate Launch Package", "status": status_for(user_package_at_least(user_id, "Pro") and launch_readiness["score"] >= 75, launch_readiness["score"] > 0), "description": "Bring strategy, research, drafts, checks, and next actions into one reviewable package.", "url": "/launch_package", "action": "Open Launch Package"}
+        {"number": "01", "title": "Choose Business Idea", "status": status_for(launch_plans or workflow_started), "description": "Describe the problem, customer, offer, and business model you want to explore.", "url": "/business_launch_assistant", "action": "Plan My Business"},
+        {"number": "02", "title": "Validate Idea", "status": status_for(idea_validations, bool(launch_plans)), "description": "Test assumptions, demand signals, risks, and a low-cost MVP before spending heavily.", "url": "/idea_validation", "action": "Validate Idea"},
+        {"number": "03", "title": "Plan Startup Budget", "status": status_for(startup_cost_plans, bool(idea_validations)), "description": "Separate must-have, monthly, optional, and wait-until-later costs.", "url": "/startup_cost_planner", "action": "Plan Startup Costs"},
+        {"number": "04", "title": "Choose Business Name and Brand", "status": status_for(brand_plans, bool(idea_validations)), "description": "Create name, tagline, positioning, colour, and Canva brief ideas, then verify availability.", "url": "/brand_agent", "action": "Create Brand Plan"},
+        {"number": "05", "title": "Plan Registration / Tax / Admin", "status": status_for(registration_guides, workflow_started), "description": "Create a general checklist and verify final requirements with official sources or a professional.", "url": "/registration_tax_guide", "action": "Review Admin Guide"},
+        {"number": "06", "title": "Find Products / Services", "status": status_for(product_research_list, workflow_started), "description": "Research suitable products, services, positioning, competitor questions, and first offers.", "url": "/product_finder", "action": "Find Products"},
+        {"number": "07", "title": "Find Suppliers / Fulfilment", "status": status_for(supplier_recommendations, bool(product_research_list)), "description": "Compare supplier, fulfilment, local, POD, and service-delivery options before committing money.", "url": "/supplier_finder", "action": "Compare Options"},
+        {"number": "08", "title": "Set Pricing", "status": status_for(pricing_advice_list, bool(product_research_list)), "description": "Estimate margins, break-even basics, positioning, and the first prices to test.", "url": "/pricing_advisor", "action": "Plan Pricing"},
+        {"number": "09", "title": "Choose Domain", "status": status_for(domain_buying_plans, bool(brand_plans)), "description": "Shortlist credible domains, compare providers and renewals, and verify availability directly.", "url": "/domain_buying_assistant", "action": "Plan Domain"},
+        {"number": "10", "title": "Set Up Payments", "status": status_for(payment_guides, bool(pricing_advice_list)), "description": "Choose payment methods and prepare verification, refund, security, payout, and checkout tests.", "url": "/payment_guide", "action": "Plan Payments"},
+        {"number": "11", "title": "Set Up Shipping", "status": status_for(shipping_plans, bool(product_research_list)), "description": "Plan delivery, fulfilment, packaging, returns, and customer communication.", "url": "/shipping_setup", "action": "Plan Shipping"},
+        {"number": "12", "title": "Create Store Content and Policies", "status": status_for(store_content_outputs, bool(brand_plans)), "description": "Draft homepage, product, FAQ, contact, shipping, refund, privacy, and terms content for review.", "url": "/store_content_generator", "action": "Draft Store Content"},
+        {"number": "13", "title": "Create Marketing Launch Plan", "status": status_for(marketing_launch_plans or email_campaigns, bool(store_content_outputs)), "description": "Prepare a seven-day campaign, email, WhatsApp, social, offer, and outreach drafts.", "url": "/marketing_launch_agent", "action": "Plan Marketing"},
+        {"number": "14", "title": "Check Launch Readiness", "status": status_for(launch_readiness["score"] >= 75, launch_readiness["score"] > 0), "description": "See completed items, important gaps, and the next three actions before launch.", "url": "/launch_readiness", "action": "Check Readiness"},
+        {"number": "15", "title": "Generate Launch Package", "status": status_for(user_package_at_least(user_id, "Pro") and launch_readiness["score"] >= 75, launch_readiness["score"] > 0), "description": "Bring strategy, research, setup plans, drafts, checks, and next actions into one reviewable package.", "url": "/launch_package", "action": "Open Launch Package"}
     ]
 
     roadmap_requirements = {
@@ -6813,7 +6860,7 @@ def build_center():
         "Email Marketing": "Pro", "App Recommendations": "Pro", "Launch Package": "Pro",
         "App Connections": "Premium Build", "Marketing Drafts": "Premium Build",
         "Design Drafts": "Premium Build", "Website/Store Drafts": "Premium Build",
-        "Create Store Content": "Pro", "Create Marketing Launch Plan": "Pro",
+        "Create Store Content": "Pro", "Create Store Content and Policies": "Pro", "Create Marketing Launch Plan": "Pro",
         "Generate Launch Package": "Pro", "Plan Registration / Tax / Admin": "Pro"
     }
     for step in roadmap_steps:
@@ -9014,7 +9061,7 @@ def generate_launch_tool(tool_key):
     sections = "\n".join(f"{index}. {title}" for index, title in enumerate(config["sections"], 1))
     south_africa = data.get("country", "").strip().lower() in {"south africa", "za", "rsa"}
     local_guidance = """
-For this South African user, include practical general reminders where relevant: verify CIPC registration choices, SARS obligations, VAT/turnover-tax rules, record keeping, POPIA/consumer duties, payment-provider verification, and employer obligations. Clearly direct the user to official CIPC and SARS sources or a qualified professional. Do not present this as final legal or tax advice.
+For this South African user, include practical general reminders where relevant: a .co.za domain may support local trust; CIPC or BizPortal may be relevant for company registration; SARS obligations, VAT, PAYE, and turnover tax depend on circumstances; income and expense records should be kept; and POPIA, consumer, and employer duties may apply. For payments, explain that Paystack may support cards and local methods such as EFT/Ozow or Capitec Pay where currently available, but availability, eligibility, fees, and onboarding must be verified directly with Paystack and the relevant provider. Clearly direct the user to official CIPC, BizPortal, and SARS sources or a qualified professional. Do not present this as final legal or tax advice and never request ID, tax, banking, or card details.
 """ if south_africa else "Explain that country-specific rules must be verified with official local sources."
     prompt = f"""
 Create a beginner-friendly {config['title']} output for a BusinessBuilder AI user.

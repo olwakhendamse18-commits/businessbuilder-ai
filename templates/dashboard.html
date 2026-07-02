@@ -224,35 +224,35 @@
         </section>
 
         <section class="workspace-section launch-command-center">
-            <div class="section-heading-row"><div><p class="eyebrow">Start here</p><h2>Your business launch command center</h2><p>Work through the decisions in any order. BusinessBuilder AI saves each plan and points you to the next useful action.</p></div><a href="/business_launch_assistant" class="primary-button">Build My Launch Plan</a></div>
-            <div class="workspace-tool-grid launch-command-grid">
-                <a href="/business_launch_assistant" class="workspace-tool-card recommended"><span class="workspace-tool-icon">✦</span><span><strong>Business Launch Assistant</strong><small>Your personalised idea-to-launch roadmap.</small></span><b>{{ launch_tool_summary.business_launch_assistant }} saved</b></a>
-                <a href="/idea_validation" class="workspace-tool-card"><span class="workspace-tool-icon">?</span><span><strong>Idea Validation</strong><small>Test demand assumptions, risks, and a low-cost MVP.</small></span><b>{{ launch_tool_summary.idea_validation }} saved</b></a>
-                <a href="/startup_cost_planner" class="workspace-tool-card"><span class="workspace-tool-icon">R</span><span><strong>Startup Cost Planner</strong><small>Prioritise must-have, monthly, and later costs.</small></span><b>{{ launch_tool_summary.startup_cost_planner }} saved</b></a>
-                <a href="/brand_agent" class="workspace-tool-card"><span class="workspace-tool-icon">Aa</span><span><strong>Name & Brand Agent</strong><small>Create names, taglines, visual direction, and checks.</small></span><b>{{ launch_tool_summary.brand_agent }} saved</b></a>
-                <a href="/domain_buying_assistant" class="workspace-tool-card"><span class="workspace-tool-icon">.com</span><span><strong>Domain Buying Assistant</strong><small>Shortlist names and compare buying risks safely.</small></span><b>Plan first</b></a>
-                <a href="/payment_guide" class="workspace-tool-card"><span class="workspace-tool-icon">Pay</span><span><strong>Payment Setup</strong><small>Choose methods and prepare checkout testing.</small></span><b>Safe guide</b></a>
-                <a href="/shipping_setup" class="workspace-tool-card"><span class="workspace-tool-icon">→</span><span><strong>Shipping Setup</strong><small>Plan delivery, packaging, returns, and updates.</small></span><b>{{ launch_tool_summary.shipping_setup }} saved</b></a>
-                <a href="/marketing_launch_agent" class="workspace-tool-card"><span class="workspace-tool-icon">@</span><span><strong>Marketing Launch</strong><small>Draft your first campaign and seven-day content plan.</small></span><b>{{ launch_tool_summary.marketing_launch_agent }} saved</b></a>
-            </div>
-        </section>
+            <div class="section-heading-row"><div><p class="eyebrow">Start here</p><h2>Your business launch command center</h2><p>Follow the stages in order when you are unsure. Each tool creates guidance or drafts that you review before taking action.</p></div><a href="/business_launch_assistant" class="primary-button">Build My Launch Plan</a></div>
 
-        <section class="workspace-section dashboard-tools-section">
-            <div class="section-heading-row"><div><p class="eyebrow">Your tools</p><h2>Choose what you want to work on</h2><p>Each tool creates guidance or drafts you can review before taking action.</p></div><a href="/build_center" class="secondary-button">View full roadmap</a></div>
-            <div class="workspace-tool-grid">
-                <a href="/ai_store_agent" class="workspace-tool-card recommended"><span class="workspace-tool-icon">✦</span><span><strong>AI Store Agent</strong><small>Create and review store-building tasks.</small></span><b>Recommended</b></a>
-                <a href="/product_finder" class="workspace-tool-card"><span class="workspace-tool-icon">⌕</span><span><strong>Product Finder</strong><small>Find products, positioning, and sourcing paths.</small></span><b>Available</b></a>
-                <a href="/supplier_finder" class="workspace-tool-card"><span class="workspace-tool-icon">S</span><span><strong>Supplier Finder</strong><small>Compare safer, cheaper, and professional options.</small></span><b>Available</b></a>
-                <a href="/pricing_advisor" class="workspace-tool-card"><span class="workspace-tool-icon">%</span><span><strong>Pricing Advisor</strong><small>Plan margins and three pricing levels.</small></span><b>Available</b></a>
-                <a href="/payment_guide" class="workspace-tool-card"><span class="workspace-tool-icon">R</span><span><strong>Payment Guide</strong><small>Compare checkout and payment methods safely.</small></span><b>Available</b></a>
-                <a href="/domain_buying_assistant" class="workspace-tool-card"><span class="workspace-tool-icon">.com</span><span><strong>Domain Buying Assistant</strong><small>Find domain ideas, compare providers, and get a safe buying checklist.</small></span><b>{{ "Full plan" if pro_package else "Basic" }}</b></a>
-                <a href="/business_setup_agent" class="workspace-tool-card"><span class="workspace-tool-icon">01</span><span><strong>Business Setup Agent</strong><small>Plan the business setup tasks you need before launch.</small></span><b>{{ "Advanced" if premium_build else "Available" }}</b></a>
-                <a href="/domain_helper" class="workspace-tool-card"><span class="workspace-tool-icon">.co</span><span><strong>Domain Helper</strong><small>Choose a domain and understand DNS setup.</small></span><b>Available</b></a>
-                <a href="/email_marketing" class="workspace-tool-card"><span class="workspace-tool-icon">@</span><span><strong>Email Marketing</strong><small>Draft campaigns, subject lines, and follow-ups.</small></span><b>{{ "Available" if pro_package else "Pro" }}</b></a>
-                <a href="/business_workflow" class="workspace-tool-card"><span class="workspace-tool-icon">✓</span><span><strong>Business Workflow</strong><small>Complete the details that power every draft.</small></span><b>Foundation</b></a>
-                <a href="/build_center" class="workspace-tool-card"><span class="workspace-tool-icon">12</span><span><strong>Build Center</strong><small>Follow your launch roadmap step by step.</small></span><b>Progress</b></a>
-                <a href="/support" class="workspace-tool-card"><span class="workspace-tool-icon">?</span><span><strong>Support</strong><small>Get help with your account, tools, or output.</small></span><b>Help</b></a>
-            </div>
+            <div class="dashboard-stage-group"><div class="stage-heading"><span>01</span><div><h3>Plan</h3><p>Make the important decisions before spending heavily.</p></div></div><div class="workspace-tool-grid">
+                <a href="/business_launch_assistant" class="workspace-tool-card recommended"><span class="workspace-tool-icon">✦</span><span><strong>Business Launch Assistant</strong><small>Your personalised idea-to-launch roadmap.</small></span><b>{{ launch_tool_summary.business_launch_assistant }} saved</b></a>
+                <a href="/idea_validation" class="workspace-tool-card"><span class="workspace-tool-icon">?</span><span><strong>Idea Validation</strong><small>Test assumptions, demand signals, risks, and an MVP.</small></span><b>{{ launch_tool_summary.idea_validation }} saved</b></a>
+                <a href="/startup_cost_planner" class="workspace-tool-card"><span class="workspace-tool-icon">R</span><span><strong>Startup Cost Planner</strong><small>Separate must-have, monthly, optional, and later costs.</small></span><b>{{ launch_tool_summary.startup_cost_planner }} saved</b></a>
+                <a href="/brand_agent" class="workspace-tool-card"><span class="workspace-tool-icon">Aa</span><span><strong>Name & Brand Agent</strong><small>Create names, positioning, visual direction, and checks.</small></span><b>{{ launch_tool_summary.brand_agent }} saved</b></a>
+            </div></div>
+
+            <div class="dashboard-stage-group"><div class="stage-heading"><span>02</span><div><h3>Build</h3><p>Research what you will sell and prepare customer-facing assets.</p></div></div><div class="workspace-tool-grid">
+                <a href="/product_finder" class="workspace-tool-card"><span class="workspace-tool-icon">⌕</span><span><strong>Product Finder</strong><small>Research suitable products, services, and positioning.</small></span><b>Research</b></a>
+                <a href="/supplier_finder" class="workspace-tool-card"><span class="workspace-tool-icon">S</span><span><strong>Supplier Finder</strong><small>Compare supplier and fulfilment paths before buying.</small></span><b>Compare</b></a>
+                <a href="/pricing_advisor" class="workspace-tool-card"><span class="workspace-tool-icon">%</span><span><strong>Pricing Advisor</strong><small>Plan margins, break-even basics, and prices to test.</small></span><b>Price</b></a>
+                <a href="/store_content_generator" class="workspace-tool-card"><span class="workspace-tool-icon">T</span><span><strong>Store Content Generator</strong><small>Draft pages, product copy, FAQs, and policies.</small></span><b>{{ launch_tool_summary.store_content_generator }} saved</b></a>
+            </div></div>
+
+            <div class="dashboard-stage-group"><div class="stage-heading"><span>03</span><div><h3>Set up</h3><p>Prepare the operational pieces that support safe trading.</p></div></div><div class="workspace-tool-grid">
+                <a href="/domain_buying_assistant" class="workspace-tool-card"><span class="workspace-tool-icon">.co</span><span><strong>Domain Buying Assistant</strong><small>Shortlist names, compare providers, and verify directly.</small></span><b>Plan first</b></a>
+                <a href="/registration_tax_guide" class="workspace-tool-card"><span class="workspace-tool-icon">i</span><span><strong>Registration & Tax Guide</strong><small>Create questions to verify with official sources.</small></span><b>General guide</b></a>
+                <a href="/payment_guide" class="workspace-tool-card"><span class="workspace-tool-icon">Pay</span><span><strong>Payment Guide</strong><small>Compare methods and prepare verification and checkout tests.</small></span><b>Safe setup</b></a>
+                <a href="/shipping_setup" class="workspace-tool-card"><span class="workspace-tool-icon">→</span><span><strong>Shipping Setup</strong><small>Plan delivery, fulfilment, packaging, and returns.</small></span><b>{{ launch_tool_summary.shipping_setup }} saved</b></a>
+            </div></div>
+
+            <div class="dashboard-stage-group"><div class="stage-heading"><span>04</span><div><h3>Launch</h3><p>Prepare your campaign, review gaps, and ask for help when needed.</p></div></div><div class="workspace-tool-grid">
+                <a href="/marketing_launch_agent" class="workspace-tool-card"><span class="workspace-tool-icon">@</span><span><strong>Marketing Launch Agent</strong><small>Draft a seven-day campaign, email, WhatsApp, and social content.</small></span><b>{{ launch_tool_summary.marketing_launch_agent }} saved</b></a>
+                <a href="/launch_readiness" class="workspace-tool-card"><span class="workspace-tool-icon">✓</span><span><strong>Launch Readiness</strong><small>See completed items, important gaps, and next actions.</small></span><b>{{ launch_readiness.score }}%</b></a>
+                <a href="/build_center" class="workspace-tool-card"><span class="workspace-tool-icon">15</span><span><strong>Build Center</strong><small>Follow the complete launch roadmap step by step.</small></span><b>Roadmap</b></a>
+                <a href="/support" class="workspace-tool-card"><span class="workspace-tool-icon">?</span><span><strong>Support</strong><small>Get help with your account, tools, integrations, or output.</small></span><b>Help</b></a>
+            </div></div>
         </section>
 
         <section class="workspace-section dashboard-integrations-section">
