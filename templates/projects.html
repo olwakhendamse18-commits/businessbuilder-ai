@@ -30,7 +30,7 @@
         <div class="dashboard-header">
             <p class="eyebrow">Project Memory</p>
             <h1>Business Projects</h1>
-            <p>Create and switch between different business ideas. The active project is added to AI chat context where possible.</p>
+            <p>Organize each business idea and keep its roadmap, research, drafts, and launch package in one place.</p>
         </div>
 
         {% if request.args.get("project_error") %}
@@ -46,10 +46,16 @@
                 <textarea name="business_idea" placeholder="Describe the business idea."></textarea>
                 <label>Target customer</label>
                 <input name="target_customer" placeholder="Example: Students aged 18-25">
+                <label>Business type</label>
+                <input name="business_type" placeholder="Example: Ecommerce, service, local business">
                 <label>Country</label>
                 <input name="country" placeholder="Example: South Africa">
                 <label>Budget</label>
                 <input name="budget" placeholder="Example: R2,000">
+                <label>Platform</label>
+                <select name="platform"><option>Not sure</option><option>Shopify</option><option>Custom website</option><option>Social media</option><option>Marketplace</option></select>
+                <label>Current stage</label>
+                <select name="current_stage"><option>Idea only</option><option>Validating</option><option>Planning</option><option>Building store</option><option>Ready to launch</option></select>
                 <label>Notes</label>
                 <textarea name="notes" placeholder="Important context for the AI."></textarea>
                 <button type="submit">Create Project</button>

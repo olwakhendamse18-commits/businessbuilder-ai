@@ -5805,3 +5805,60 @@ html[data-theme="default"] .dashboard .build-status.applied-safely {
     .onboarding-section { padding: 16px; }
     .onboarding-check-grid { grid-template-columns: 1fr; }
 }
+
+/* Progress, approval, persona, and competitor workspaces */
+.progress-timeline {
+    display: grid;
+    gap: 14px;
+    margin-top: 24px;
+}
+
+.progress-step-card {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+    padding: 20px;
+    border: 1px solid rgba(148, 163, 184, .2);
+    border-radius: 18px;
+    background: rgba(15, 23, 42, .74);
+}
+
+.progress-step-card h3,
+.approval-task-card h3 { margin-top: 6px; }
+
+.risk-note {
+    color: #fbbf24;
+    font-weight: 700;
+}
+
+.approval-task-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.approval-task-card details { margin: 14px 0; }
+.approval-task-card summary { cursor: pointer; font-weight: 700; }
+.approval-task-card form { margin: 0; }
+
+.approval-preview {
+    max-height: 260px;
+    overflow: auto;
+    margin-top: 12px;
+    padding: 14px;
+    border-radius: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background: rgba(2, 6, 23, .7);
+    color: inherit;
+}
+
+.build-status.pending,
+.build-status.needs-attention { color: #fbbf24; }
+.build-status.approved { color: #86efac; }
+.build-status.rejected { color: #fca5a5; }
+.build-status.done { color: #93c5fd; }
+
+@media (max-width: 640px) {
+    .progress-step-card { grid-template-columns: 1fr; padding: 16px; }
+    .approval-task-grid { grid-template-columns: 1fr; }
+}

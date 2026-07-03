@@ -37,6 +37,10 @@
             <article class="card"><p class="eyebrow">Country</p><h3>{{ project[4] or "Not set" }}</h3></article>
             <article class="card"><p class="eyebrow">Budget</p><h3>{{ project[5] or "Not set" }}</h3></article>
             <article class="card"><p class="eyebrow">Launch Readiness</p><h3>{{ launch_readiness["score"] }}%</h3><a href="/launch_readiness" class="secondary-button">View Checklist</a></article>
+            <article class="card"><p class="eyebrow">Business Type</p><h3>{{ project[9] or "Not set" }}</h3></article>
+            <article class="card"><p class="eyebrow">Platform</p><h3>{{ project[10] or "Not set" }}</h3></article>
+            <article class="card"><p class="eyebrow">Current Stage</p><h3>{{ project[11] or "Not set" }}</h3></article>
+            <article class="card"><p class="eyebrow">Progress</p><h3>{{ business_progress.percentage }}%</h3><a href="/business_progress" class="secondary-button">View Progress</a></article>
         </section>
 
         <section class="next-action-card">
@@ -48,6 +52,9 @@
                 <a href="/business_workflow" class="secondary-button">Open Workflow</a>
                 <a href="/product_finder" class="secondary-button">Find Products</a>
                 <a href="/ai_store_agent" class="secondary-button">AI Store Agent</a>
+                <a href="/customer_persona" class="secondary-button">Customer Persona</a>
+                <a href="/competitor_research" class="secondary-button">Competitor Research</a>
+                <a href="/approval_center" class="secondary-button">Approval Center</a>
             </div>
         </section>
 
@@ -56,6 +63,9 @@
             <article class="card"><h3>Product Research</h3><p>{{ product_research_list|length }} saved research reports.</p></article>
             <article class="card"><h3>Store Builds</h3><p>{{ ai_store_builds|length }} generated store packages.</p></article>
             <article class="card"><h3>AI Store Agent Tasks</h3><p>{{ store_agent_tasks|length }} saved agent tasks.</p></article>
+            <article class="card"><h3>Customer Personas</h3><p>{{ customer_personas|length }} saved persona drafts.</p></article>
+            <article class="card"><h3>Competitor Research</h3><p>{{ competitor_reports|length }} saved research guides.</p></article>
+            <article class="card"><h3>Approval Tasks</h3><p>{{ approval_tasks|length }} review tasks in this user workspace.</p></article>
         </section>
     </main>
 </div>

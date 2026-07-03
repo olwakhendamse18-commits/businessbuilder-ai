@@ -766,6 +766,53 @@ def init_db():
         )
     """)
 
+    project_columns = {
+        "business_type": "TEXT",
+        "platform": "TEXT",
+        "current_stage": "TEXT"
+    }
+    if using_postgres():
+        cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'business_projects'
+        """)
+        existing_project_columns = {row[0] for row in cur.fetchall()}
+    else:
+        cur.execute("PRAGMA table_info(business_projects)")
+        existing_project_columns = {row[1] for row in cur.fetchall()}
+    for column_name, column_type in project_columns.items():
+        if column_name not in existing_project_columns:
+            cur.execute(f"ALTER TABLE business_projects ADD COLUMN {column_name} {column_type}")
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS approval_tasks (
+            id {id_type}, user_id INTEGER NOT NULL, project_id INTEGER,
+            title TEXT NOT NULL, task_type TEXT NOT NULL, description TEXT,
+            content TEXT, status TEXT NOT NULL DEFAULT 'pending',
+            source_route TEXT, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS customer_personas (
+            id {id_type}, user_id INTEGER NOT NULL, project_id INTEGER,
+            business_idea TEXT, product_service TEXT, target_customer TEXT,
+            country TEXT, price_range TEXT, platform TEXT, notes TEXT,
+            result TEXT NOT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS competitor_research (
+            id {id_type}, user_id INTEGER NOT NULL, project_id INTEGER,
+            business_idea TEXT, product_service TEXT, country TEXT,
+            target_customer TEXT, known_competitors TEXT, price_range TEXT,
+            platform TEXT, notes TEXT, result TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     cur.execute(sql("""
         CREATE INDEX IF NOT EXISTS idx_user_settings_user
         ON user_settings (user_id)
@@ -784,6 +831,26 @@ def init_db():
     cur.execute(sql("""
         CREATE INDEX IF NOT EXISTS idx_business_projects_user_active
         ON business_projects (user_id, active)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_approval_tasks_user_status
+        ON approval_tasks (user_id, status)
+    """))
+
+    cur.execute(sql("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_approval_tasks_source
+        ON approval_tasks (user_id, task_type, source_route)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_customer_personas_user
+        ON customer_personas (user_id, created_at)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_competitor_research_user
+        ON competitor_research (user_id, created_at)
     """))
 
     cur.execute(sql("""
@@ -1945,7 +2012,10 @@ def create_business_project_record(
     country="",
     budget="",
     notes="",
-    make_active=True
+    make_active=True,
+    business_type="",
+    platform="",
+    current_stage=""
 ):
     conn = db()
     cur = conn.cursor()
@@ -1961,14 +2031,16 @@ def create_business_project_record(
             sql("""
                 INSERT INTO business_projects (
                     user_id, name, business_idea, target_customer,
-                    country, budget, notes, active
+                    country, budget, notes, active, business_type,
+                    platform, current_stage
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """),
             (
                 user_id, name, business_idea, target_customer,
-                country, budget, notes, 1 if make_active else 0
+                country, budget, notes, 1 if make_active else 0,
+                business_type, platform, current_stage
             )
         )
         project_id = cur.fetchone()[0]
@@ -1977,13 +2049,15 @@ def create_business_project_record(
             sql("""
                 INSERT INTO business_projects (
                     user_id, name, business_idea, target_customer,
-                    country, budget, notes, active
+                    country, budget, notes, active, business_type,
+                    platform, current_stage
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """),
             (
                 user_id, name, business_idea, target_customer,
-                country, budget, notes, 1 if make_active else 0
+                country, budget, notes, 1 if make_active else 0,
+                business_type, platform, current_stage
             )
         )
         project_id = cur.lastrowid
@@ -1999,7 +2073,8 @@ def get_business_projects(user_id):
     cur.execute(
         sql("""
             SELECT id, name, business_idea, target_customer, country,
-                   budget, notes, active, created_at
+                   budget, notes, active, created_at, business_type,
+                   platform, current_stage, updated_at
             FROM business_projects
             WHERE user_id = ?
             ORDER BY active DESC, id DESC
@@ -2017,7 +2092,8 @@ def get_active_business_project(user_id):
     cur.execute(
         sql("""
             SELECT id, name, business_idea, target_customer, country,
-                   budget, notes, active, created_at
+                   budget, notes, active, created_at, business_type,
+                   platform, current_stage, updated_at
             FROM business_projects
             WHERE user_id = ?
             AND active = 1
@@ -2037,7 +2113,8 @@ def get_business_project(user_id, project_id):
     cur.execute(
         sql("""
             SELECT id, name, business_idea, target_customer, country,
-                   budget, notes, active, created_at
+                   budget, notes, active, created_at, business_type,
+                   platform, current_stage, updated_at
             FROM business_projects
             WHERE user_id = ?
             AND id = ?
@@ -2118,6 +2195,167 @@ def get_recent_support_tickets(limit=10):
     )
     tickets = cur.fetchall()
     conn.close()
+
+
+def get_customer_personas(user_id, persona_id=None):
+    query = """
+        SELECT id, project_id, business_idea, product_service, target_customer,
+               country, price_range, platform, notes, result, created_at
+        FROM customer_personas WHERE user_id = ?
+    """
+    params = [user_id]
+    if persona_id is not None:
+        query += " AND id = ?"
+        params.append(persona_id)
+    query += " ORDER BY id DESC"
+    if persona_id is not None:
+        query += " LIMIT 1"
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql(query), tuple(params))
+    result = cur.fetchone() if persona_id is not None else cur.fetchall()
+    conn.close()
+    return result
+
+
+def save_customer_persona(user_id, data, result):
+    project = get_active_business_project(user_id)
+    values = (
+        user_id, project[0] if project else None, data.get("business_idea", ""),
+        data.get("product_service", ""), data.get("target_customer", ""),
+        data.get("country", ""), data.get("price_range", ""),
+        data.get("platform", ""), data.get("notes", ""), result
+    )
+    conn = db()
+    cur = conn.cursor()
+    query = """
+        INSERT INTO customer_personas (
+            user_id, project_id, business_idea, product_service,
+            target_customer, country, price_range, platform, notes, result
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    if using_postgres():
+        query += " RETURNING id"
+    cur.execute(sql(query), values)
+    output_id = cur.fetchone()[0] if using_postgres() else cur.lastrowid
+    conn.commit()
+    conn.close()
+    return output_id
+
+
+def get_competitor_research(user_id, research_id=None):
+    query = """
+        SELECT id, project_id, business_idea, product_service, country,
+               target_customer, known_competitors, price_range, platform,
+               notes, result, created_at
+        FROM competitor_research WHERE user_id = ?
+    """
+    params = [user_id]
+    if research_id is not None:
+        query += " AND id = ?"
+        params.append(research_id)
+    query += " ORDER BY id DESC"
+    if research_id is not None:
+        query += " LIMIT 1"
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql(query), tuple(params))
+    result = cur.fetchone() if research_id is not None else cur.fetchall()
+    conn.close()
+    return result
+
+
+def save_competitor_research(user_id, data, result):
+    project = get_active_business_project(user_id)
+    values = (
+        user_id, project[0] if project else None, data.get("business_idea", ""),
+        data.get("product_service", ""), data.get("country", ""),
+        data.get("target_customer", ""), data.get("known_competitors", ""),
+        data.get("price_range", ""), data.get("platform", ""),
+        data.get("notes", ""), result
+    )
+    conn = db()
+    cur = conn.cursor()
+    query = """
+        INSERT INTO competitor_research (
+            user_id, project_id, business_idea, product_service, country,
+            target_customer, known_competitors, price_range, platform, notes, result
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    if using_postgres():
+        query += " RETURNING id"
+    cur.execute(sql(query), values)
+    output_id = cur.fetchone()[0] if using_postgres() else cur.lastrowid
+    conn.commit()
+    conn.close()
+    return output_id
+
+
+def ensure_approval_task(user_id, title, task_type, description, content, source_route):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id FROM approval_tasks
+        WHERE user_id = ? AND task_type = ? AND source_route = ? LIMIT 1
+    """), (user_id, task_type, source_route))
+    if not cur.fetchone():
+        project = get_active_business_project(user_id)
+        cur.execute(sql("""
+            INSERT INTO approval_tasks (
+                user_id, project_id, title, task_type, description,
+                content, status, source_route
+            ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+        """), (
+            user_id, project[0] if project else None, title, task_type,
+            description, content or "", source_route
+        ))
+        conn.commit()
+    conn.close()
+
+
+def sync_approval_tasks(user_id):
+    for task in get_store_agent_tasks(user_id):
+        ensure_approval_task(
+            user_id, task[3], "AI Store Agent task",
+            "Review this AI Store Agent draft inside BusinessBuilder AI.",
+            task[4], f"/review_store_agent_task/{task[0]}"
+        )
+    for draft in get_app_action_drafts(user_id):
+        ensure_approval_task(
+            user_id, draft[3], "Connected app draft",
+            "Review this app draft. Approval here does not apply it externally.",
+            draft[4], f"/review_app_action_draft/{draft[0]}"
+        )
+
+
+def get_approval_tasks(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, project_id, title, task_type, description, content,
+               status, source_route, created_at, updated_at
+        FROM approval_tasks WHERE user_id = ?
+        ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1
+                 WHEN 'rejected' THEN 2 ELSE 3 END, id DESC
+    """), (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def update_approval_task(user_id, task_id, status):
+    if status not in {"approved", "rejected", "done"}:
+        return False
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        UPDATE approval_tasks SET status = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+    """), (status, task_id, user_id))
+    changed = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return changed
     return tickets
 
 
@@ -3081,7 +3319,60 @@ def build_project_context(user_id):
     )
 
 
-def get_launch_readiness(user_id):
+def get_business_progress(user_id):
+    onboarding = onboarding_as_dict(get_user_onboarding(user_id))
+    active_project = get_active_business_project(user_id)
+    personas = get_customer_personas(user_id)
+    competitors = get_competitor_research(user_id)
+    approvals = get_approval_tasks(user_id)
+    pending_approvals = [task for task in approvals if task[6] == "pending"]
+    launch_package_opened = get_usage_count(user_id, "launch_package", "total") > 0
+    data = [
+        ("Onboarding", bool(onboarding.get("completed")), "/onboarding", "Save the core idea, market, budget, stage, and goal.", True),
+        ("Validate idea", bool(get_launch_tool_outputs("idea_validation", user_id)), "/idea_validation", "Test demand, assumptions, risks, and a low-cost MVP.", True),
+        ("Plan budget", bool(get_launch_tool_outputs("startup_cost_planner", user_id)), "/startup_cost_planner", "Separate must-have, monthly, and optional costs.", True),
+        ("Brand and business name", bool(get_launch_tool_outputs("brand_agent", user_id)), "/brand_agent", "Create a brand direction and verify names manually.", False),
+        ("Domain", bool(get_domain_buying_plans(user_id) or onboarding.get("has_domain") == "Yes"), "/domain_buying_assistant", "Shortlist and verify a credible domain before buying.", False),
+        ("Registration / tax / admin", bool(get_launch_tool_outputs("registration_tax_guide", user_id)), "/registration_tax_guide", "Review general reminders with official sources.", False),
+        ("Product or service", bool(get_product_research_list(user_id)), "/product_finder", "Define and research the first offer.", True),
+        ("Supplier or fulfilment", bool(get_supplier_recommendations(user_id)), "/supplier_finder", "Compare fulfilment options before committing money.", True),
+        ("Pricing", bool(get_pricing_advice_list(user_id)), "/pricing_advisor", "Check costs, margin, break-even, and prices to test.", True),
+        ("Payments", bool(get_payment_guides(user_id)), "/payment_guide", "Choose and test payment methods without sharing credentials.", True),
+        ("Shipping", bool(get_launch_tool_outputs("shipping_setup", user_id)), "/shipping_setup", "Plan delivery, packaging, returns, and updates.", True),
+        ("Store content", bool(get_launch_tool_outputs("store_content_generator", user_id)), "/store_content_generator", "Draft pages and policies, then review them.", True),
+        ("Canva branding", bool(get_canva_branding_packages(user_id) or get_canva_design_briefs(user_id)), "/brand_agent", "Prepare a Canva-ready brand and design brief.", False),
+        ("Marketing", bool(get_launch_tool_outputs("marketing_launch_agent", user_id) or get_email_campaigns(user_id)), "/marketing_launch_agent", "Create reviewable launch marketing drafts.", False),
+        ("Launch readiness", get_launch_readiness(user_id, include_progress=False)["score"] >= 75, "/launch_readiness", "Resolve important gaps and pending reviews.", True),
+        ("Launch package", launch_package_opened, "/launch_package", "Review the final package before launching manually.", False)
+    ]
+    first_missing = next((index for index, item in enumerate(data) if not item[1]), None)
+    steps = []
+    for index, (title, complete, url, description, critical) in enumerate(data):
+        if complete:
+            status = "Completed"
+        elif index == first_missing:
+            status = "In progress"
+        elif critical and any(item[1] for item in data[index + 1:]):
+            status = "Needs attention"
+        else:
+            status = "Not started"
+        steps.append({
+            "number": f"{index + 1:02d}", "title": title, "status": status,
+            "description": description, "url": url,
+            "action": "Review" if complete else "Continue",
+            "risk": "Important before launch" if critical and not complete else ""
+        })
+    completed = sum(1 for step in steps if step["status"] == "Completed")
+    return {
+        "steps": steps, "completed": completed, "total": len(steps),
+        "percentage": int(round(completed / len(steps) * 100)),
+        "next_step": next((step for step in steps if step["status"] != "Completed"), steps[-1]),
+        "project": active_project, "pending_approvals": len(pending_approvals),
+        "persona_count": len(personas), "competitor_count": len(competitors)
+    }
+
+
+def get_launch_readiness(user_id, include_progress=True):
     onboarding = onboarding_as_dict(get_user_onboarding(user_id))
     completed_steps = get_completed_steps(user_id)
     business_plans = get_business_plans(user_id)
@@ -3109,8 +3400,38 @@ def get_launch_readiness(user_id):
     shipping_plans = get_launch_tool_outputs("shipping_setup", user_id)
     store_content = get_launch_tool_outputs("store_content_generator", user_id)
     marketing_plans = get_launch_tool_outputs("marketing_launch_agent", user_id)
+    projects = get_business_projects(user_id)
+    personas = get_customer_personas(user_id)
+    competitor_reports = get_competitor_research(user_id)
+    approval_tasks = get_approval_tasks(user_id)
+    critical_pending = [task for task in approval_tasks if task[6] == "pending"]
+    launch_package_opened = get_usage_count(user_id, "launch_package", "total") > 0
 
     checks = [
+        {
+            "title": "Business project created",
+            "complete": bool(projects),
+            "description": "Keep this business idea and its launch work organized in one project.",
+            "url": "/projects", "action": "Create Project", "optional": True
+        },
+        {
+            "title": "Customer persona created",
+            "complete": bool(personas),
+            "description": "Describe the likely buyer, their pain points, objections, and validation questions.",
+            "url": "/customer_persona", "action": "Create Persona", "optional": True
+        },
+        {
+            "title": "Competitor research guide created",
+            "complete": bool(competitor_reports),
+            "description": "Prepare a manual competitor comparison and differentiation checklist.",
+            "url": "/competitor_research", "action": "Research Competitors", "optional": True
+        },
+        {
+            "title": "Critical drafts reviewed",
+            "complete": not critical_pending,
+            "description": "Review pending AI drafts. Approval here never publishes or spends automatically.",
+            "url": "/approval_center", "action": "Open Approval Center", "optional": True
+        },
         {
             "title": "Business idea defined",
             "complete": bool(onboarding.get("business_idea")),
@@ -3315,7 +3636,7 @@ def get_launch_readiness(user_id):
         },
         {
             "title": "Launch package generated/downloaded",
-            "complete": bool(ai_store_builds and latest_tasks.get("launch_checklist")),
+            "complete": launch_package_opened or bool(ai_store_builds and latest_tasks.get("launch_checklist")),
             "description": "Generate your launch checklist and package.",
             "url": "/launch_package",
             "action": "Open Launch Package"
@@ -3349,7 +3670,7 @@ def get_launch_readiness(user_id):
         if not check["complete"] and check["title"] in high_risk_titles
     ]
 
-    return {
+    result = {
         "score": score,
         "completed": completed,
         "total": len(checks),
@@ -3358,6 +3679,9 @@ def get_launch_readiness(user_id):
         "next_actions": next_actions,
         "high_risk_items": high_risk_items
     }
+    if include_progress:
+        result["progress"] = get_business_progress(user_id)
+    return result
 
 
 @app.context_processor
@@ -6168,6 +6492,11 @@ def dashboard():
         for key in LAUNCH_TOOL_CONFIG
     }
     domain_buying_plans = get_domain_buying_plans(user_id)
+    customer_personas = get_customer_personas(user_id)
+    competitor_reports = get_competitor_research(user_id)
+    approval_tasks = get_approval_tasks(user_id)
+    business_progress = get_business_progress(user_id)
+    business_projects = get_business_projects(user_id)
 
     if not paid:
         next_action = {
@@ -6196,6 +6525,18 @@ def dashboard():
             "description": "Test customer assumptions, risks, demand signals, and the smallest useful first version.",
             "url": "/idea_validation",
             "label": "Validate My Idea"
+        }
+    elif not customer_personas:
+        next_action = {
+            "title": "Understand your first customer",
+            "description": "Create an assumption-based persona, then validate it through real customer conversations.",
+            "url": "/customer_persona", "label": "Create Customer Persona"
+        }
+    elif not competitor_reports:
+        next_action = {
+            "title": "Prepare your competitor research",
+            "description": "Build a manual comparison checklist and identify ethical differentiation opportunities.",
+            "url": "/competitor_research", "label": "Research Competitors"
         }
     elif not launch_tool_summary["startup_cost_planner"]:
         next_action = {
@@ -6329,6 +6670,11 @@ def dashboard():
         active_project=active_project,
         launch_readiness=launch_readiness,
         launch_tool_summary=launch_tool_summary,
+        customer_personas=customer_personas,
+        competitor_reports=competitor_reports,
+        approval_tasks=approval_tasks,
+        business_progress=business_progress,
+        business_projects=business_projects,
         usage_limit_message=get_usage_limit_message(
             request.args.get("usage_limit"),
             user_id
@@ -6405,6 +6751,10 @@ def build_center():
     shipping_plans = get_launch_tool_outputs("shipping_setup", user_id)
     store_content_outputs = get_launch_tool_outputs("store_content_generator", user_id)
     marketing_launch_plans = get_launch_tool_outputs("marketing_launch_agent", user_id)
+    customer_personas = get_customer_personas(user_id)
+    competitor_reports = get_competitor_research(user_id)
+    approval_tasks = get_approval_tasks(user_id)
+    business_projects = get_business_projects(user_id)
     connected_apps = get_connected_app_summaries(user_id)
     app_action_drafts = get_app_action_drafts(user_id)
     marketing_app_drafts = [draft for draft in app_action_drafts if draft[2] in {"email_campaign", "social_ad_draft"}]
@@ -6437,6 +6787,13 @@ def build_center():
     launch_readiness = get_launch_readiness(user_id)
 
     build_items = [
+        {
+            "title": "Business Progress Tracker",
+            "status": status_for(get_business_progress(user_id)["percentage"] >= 75, get_business_progress(user_id)["percentage"] > 0),
+            "description": "See the complete idea-to-launch journey and the next step that needs attention.",
+            "url": "/business_progress", "action": "View Progress",
+            "count": f"{get_business_progress(user_id)['percentage']}% complete"
+        },
         {
             "title": f"{current_package} Package",
             "status": status_for(paid),
@@ -6935,8 +7292,11 @@ def build_center():
     # One clear 16-step beginner journey, even as detailed tools grow behind it.
     onboarding_complete = bool(get_user_onboarding(user_id) and get_user_onboarding(user_id)[9])
     roadmap_steps = [
+        {"number": "00", "title": "Organize Business Project", "status": status_for(business_projects), "description": "Optionally keep each business idea, roadmap, research, drafts, and package in one workspace.", "url": "/projects", "action": "Open Projects"},
         {"number": "01", "title": "Complete Onboarding", "status": status_for(onboarding_complete), "description": "Save your idea, market, budget, stage, platform, existing assets, and first goal.", "url": "/onboarding", "action": "Complete Onboarding" if not onboarding_complete else "Review Answers"},
         {"number": "02", "title": "Validate Idea", "status": status_for(idea_validations, onboarding_complete), "description": "Test the customer problem, demand signals, competitors, risks, and a low-cost MVP.", "url": "/idea_validation", "action": "Validate Idea"},
+        {"number": "02A", "title": "Create Customer Persona", "status": status_for(customer_personas, bool(idea_validations)), "description": "Turn assumptions into a practical buyer profile and questions to validate with real people.", "url": "/customer_persona", "action": "Create Persona"},
+        {"number": "02B", "title": "Research Competitors", "status": status_for(competitor_reports, bool(customer_personas)), "description": "Prepare a manual competitor comparison, search checklist, and differentiation plan.", "url": "/competitor_research", "action": "Research Competitors"},
         {"number": "03", "title": "Plan Budget", "status": status_for(startup_cost_plans, bool(idea_validations)), "description": "Separate must-have, monthly, optional, and wait-until-later startup costs.", "url": "/startup_cost_planner", "action": "Plan Startup Costs"},
         {"number": "04", "title": "Choose Name and Brand", "status": status_for(brand_plans, bool(idea_validations)), "description": "Create name, tagline, positioning, colour, logo, and social-handle direction, then verify availability.", "url": "/brand_agent", "action": "Create Brand Plan"},
         {"number": "05", "title": "Choose Domain", "status": status_for(domain_buying_plans, bool(brand_plans)), "description": "Shortlist credible domains, compare providers and renewals, and verify availability directly.", "url": "/domain_buying_assistant", "action": "Plan Domain"},
@@ -6949,6 +7309,7 @@ def build_center():
         {"number": "12", "title": "Create Store Content", "status": status_for(store_content_outputs, bool(brand_plans)), "description": "Draft homepage, product, FAQ, shipping, refund, privacy, and terms content for review.", "url": "/store_content_generator", "action": "Draft Store Content"},
         {"number": "13", "title": "Create Canva Branding Brief", "status": status_for(canva_branding_packages or canva_design_briefs, bool(brand_plans)), "description": "Prepare a Canva-ready logo, palette, typography, social, banner, and launch-post brief.", "url": "/brand_agent" if not brand_plans else "/canva_settings", "action": "Create Branding Brief"},
         {"number": "14", "title": "Create Marketing Launch Plan", "status": status_for(marketing_launch_plans or email_campaigns, bool(store_content_outputs)), "description": "Prepare a seven-day campaign, email, WhatsApp, social, offer, and ad-copy drafts.", "url": "/marketing_launch_agent", "action": "Plan Marketing"},
+        {"number": "14A", "title": "Review Approval Center", "status": status_for(approval_tasks and not any(task[6] == 'pending' for task in approval_tasks), bool(approval_tasks)), "description": "Review AI drafts in one place. Approval never publishes, buys, sends, registers, or spends automatically.", "url": "/approval_center", "action": "Review Drafts"},
         {"number": "15", "title": "Check Launch Readiness", "status": status_for(launch_readiness["score"] >= 75, launch_readiness["score"] > 0), "description": "See completed items, high-risk gaps, and the next three actions before launch.", "url": "/launch_readiness", "action": "Check Readiness"},
         {"number": "16", "title": "Generate Launch Package", "status": status_for(user_package_at_least(user_id, "Pro") and launch_readiness["score"] >= 75, launch_readiness["score"] > 0), "description": "Bring strategy, research, setup plans, drafts, checks, and next actions into one reviewable package.", "url": "/launch_package", "action": "Open Launch Package"}
     ]
@@ -8001,6 +8362,9 @@ def get_launch_package_data(user_id):
     canva_design_briefs = get_canva_design_briefs(user_id)
     canva_designs = get_canva_designs(user_id)
     build_quotes = get_build_quotes(user_id)
+    customer_personas = get_customer_personas(user_id)
+    competitor_reports = get_competitor_research(user_id)
+    approval_tasks = get_approval_tasks(user_id)
 
     return {
         "answers_by_step": answers_by_step,
@@ -8021,6 +8385,12 @@ def get_launch_package_data(user_id):
         ),
         "canva_designs": canva_designs,
         "latest_build_quote": build_quotes[0] if build_quotes else None
+        ,"active_project": get_active_business_project(user_id)
+        ,"business_progress": get_business_progress(user_id)
+        ,"approval_tasks": approval_tasks
+        ,"pending_approval_count": len([task for task in approval_tasks if task[6] == "pending"])
+        ,"latest_customer_persona": customer_personas[0] if customer_personas else None
+        ,"latest_competitor_research": competitor_reports[0] if competitor_reports else None
     }
 
 
@@ -9927,6 +10297,183 @@ Willing to hold inventory: {data["inventory"]}
     return redirect("/supplier_finder?supplier_notice=created")
 
 
+@app.route("/business_progress")
+def business_progress():
+    if "user_id" not in session:
+        return redirect("/login")
+    return render_template(
+        "business_progress.html",
+        progress=get_business_progress(session["user_id"]),
+        current_package=get_user_package(session["user_id"]) or "Starter"
+    )
+
+
+@app.route("/approval_center")
+def approval_center():
+    if "user_id" not in session:
+        return redirect("/login")
+    user_id = session["user_id"]
+    sync_approval_tasks(user_id)
+    tasks = get_approval_tasks(user_id)
+    grouped = {status: [task for task in tasks if task[6] == status] for status in ("pending", "approved", "rejected", "done")}
+    return render_template("approval_center.html", tasks=tasks, grouped=grouped)
+
+
+def approval_status_route(task_id, status):
+    if "user_id" not in session:
+        return redirect("/login")
+    update_approval_task(session["user_id"], task_id, status)
+    return redirect(f"/approval_center?approval_notice={status}")
+
+
+@app.route("/approve_task/<int:task_id>", methods=["POST"])
+def approve_task(task_id): return approval_status_route(task_id, "approved")
+
+
+@app.route("/reject_task/<int:task_id>", methods=["POST"])
+def reject_task(task_id): return approval_status_route(task_id, "rejected")
+
+
+@app.route("/mark_task_done/<int:task_id>", methods=["POST"])
+def mark_task_done(task_id): return approval_status_route(task_id, "done")
+
+
+@app.route("/customer_persona")
+def customer_persona():
+    if "user_id" not in session:
+        return redirect("/login")
+    user_id = session["user_id"]
+    return render_template(
+        "customer_persona.html", personas=get_customer_personas(user_id),
+        onboarding_data=onboarding_as_dict(get_user_onboarding(user_id)),
+        active_project=get_active_business_project(user_id)
+    )
+
+
+@app.route("/generate_customer_persona", methods=["POST"])
+def generate_customer_persona():
+    if "user_id" not in session:
+        return redirect("/login")
+    user_id = session["user_id"]
+    data = {key: request.form.get(key, "").strip() for key in (
+        "business_idea", "product_service", "target_customer", "country",
+        "price_range", "platform", "notes"
+    )}
+    if not data["business_idea"] or not data["product_service"]:
+        return redirect("/customer_persona?persona_error=missing")
+    prompt = f"""
+Create a beginner-friendly customer persona research draft.
+
+Safety and quality rules:
+- Clearly label every inference as an assumption to validate, not a fact.
+- Do not stereotype or infer protected or sensitive traits.
+- Do not guarantee demand or success and do not claim live customer data.
+- Encourage at least five real customer conversations or equivalent low-cost tests.
+- Use practical headings and checklists.
+
+Include: ideal customer profile; suitable age/life-stage estimate only when justified;
+pain points; desired outcomes; reasons to buy; objections; where to find customers
+online and offline; marketing message; tone of voice; product or offer ideas;
+what to test before launch; next best action; what the user must verify manually.
+
+Business idea: {data['business_idea']}
+Product/service: {data['product_service']}
+Known target customer: {data['target_customer'] or 'Not known yet'}
+Country: {data['country'] or 'Not provided'}
+Price range: {data['price_range'] or 'Not provided'}
+Platform: {data['platform'] or 'Not sure'}
+Notes: {data['notes'] or 'None'}
+{build_project_context(user_id)}
+"""
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+        )
+    except Exception:
+        return redirect("/customer_persona?persona_error=ai_response")
+    output_id = save_customer_persona(user_id, data, response.choices[0].message.content.strip())
+    return redirect(f"/customer_persona/{output_id}?persona_notice=created")
+
+
+@app.route("/customer_persona/<int:persona_id>")
+def customer_persona_detail(persona_id):
+    if "user_id" not in session:
+        return redirect("/login")
+    persona = get_customer_personas(session["user_id"], persona_id)
+    if not persona:
+        return redirect("/customer_persona")
+    return render_template("customer_persona_result.html", persona=persona)
+
+
+@app.route("/competitor_research")
+def competitor_research_page():
+    if "user_id" not in session:
+        return redirect("/login")
+    user_id = session["user_id"]
+    return render_template(
+        "competitor_research.html", reports=get_competitor_research(user_id),
+        onboarding_data=onboarding_as_dict(get_user_onboarding(user_id)),
+        active_project=get_active_business_project(user_id)
+    )
+
+
+@app.route("/generate_competitor_research", methods=["POST"])
+def generate_competitor_research():
+    if "user_id" not in session:
+        return redirect("/login")
+    user_id = session["user_id"]
+    data = {key: request.form.get(key, "").strip() for key in (
+        "business_idea", "product_service", "country", "target_customer",
+        "known_competitors", "price_range", "platform", "notes"
+    )}
+    if not data["business_idea"] or not data["product_service"]:
+        return redirect("/competitor_research?competitor_error=missing")
+    prompt = f"""
+Create a beginner-friendly competitor research guide, not a live-data report.
+
+Rules:
+- State clearly: "This is a research guide. Check competitors manually before making final decisions."
+- Never invent current prices, market share, reviews, availability, or competitor facts.
+- Discuss named competitors only from information supplied by the user; otherwise suggest competitor types.
+- Avoid guarantees, unfair stereotyping, scraping claims, or unethical copying.
+
+Include: direct competitor types or user-provided examples; indirect competitors;
+comparison criteria; pricing styles to study; possible strengths; weaknesses to look
+for; differentiation options; what to copy ethically; what to avoid; a manual research
+checklist; useful search phrases; next best action; what the user must verify manually.
+
+Business idea: {data['business_idea']}
+Product/service: {data['product_service']}
+Country: {data['country'] or 'Not provided'}
+Target customer: {data['target_customer'] or 'Not known yet'}
+Known competitors supplied by user: {data['known_competitors'] or 'None'}
+Price range: {data['price_range'] or 'Not provided'}
+Platform/industry: {data['platform'] or 'Not sure'}
+Notes: {data['notes'] or 'None'}
+{build_project_context(user_id)}
+"""
+    try:
+        response = safe_openai_chat_completion(
+            model="gpt-4.1-mini",
+            messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]
+        )
+    except Exception:
+        return redirect("/competitor_research?competitor_error=ai_response")
+    output_id = save_competitor_research(user_id, data, response.choices[0].message.content.strip())
+    return redirect(f"/competitor_research/{output_id}?competitor_notice=created")
+
+
+@app.route("/competitor_research/<int:research_id>")
+def competitor_research_detail(research_id):
+    if "user_id" not in session:
+        return redirect("/login")
+    report = get_competitor_research(session["user_id"], research_id)
+    if not report:
+        return redirect("/competitor_research")
+    return render_template("competitor_research_result.html", report=report)
+
+
 @app.route("/projects")
 def projects_page():
     if "user_id" not in session:
@@ -9953,6 +10500,9 @@ def create_business_project():
     country = request.form.get("country", "").strip()
     budget = request.form.get("budget", "").strip()
     notes = request.form.get("notes", "").strip()
+    business_type = request.form.get("business_type", "").strip()
+    platform = request.form.get("platform", "").strip()
+    current_stage = request.form.get("current_stage", "").strip()
 
     if not name:
         return redirect("/projects?project_error=name")
@@ -9964,8 +10514,7 @@ def create_business_project():
         target_customer,
         country,
         budget,
-        notes,
-        True
+        notes, True, business_type, platform, current_stage
     )
 
     return redirect(f"/project/{project_id}")
@@ -10002,6 +10551,10 @@ def project_detail(project_id):
         product_research_list=get_product_research_list(user_id),
         ai_store_builds=get_ai_store_builds(user_id),
         store_agent_tasks=get_store_agent_tasks(user_id),
+        customer_personas=get_customer_personas(user_id),
+        competitor_reports=get_competitor_research(user_id),
+        approval_tasks=get_approval_tasks(user_id),
+        business_progress=get_business_progress(user_id),
         launch_readiness=get_launch_readiness(user_id),
         premium_build=user_package_at_least(user_id, "Premium Build")
     )

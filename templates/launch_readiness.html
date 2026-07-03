@@ -34,6 +34,7 @@
             <h1>{{ readiness["score"] }}% Launch Ready</h1>
             <p>{{ readiness["completed"] }} of {{ readiness["total"] }} launch readiness items are complete{% if active_project %} for {{ active_project[1] }}{% endif %}.</p>
             <div class="readiness-meter" role="progressbar" aria-label="Launch readiness" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ readiness['score'] }}"><span style="width: {{ readiness['score'] }}%"></span></div>
+            <div class="generator-actions"><a href="/business_progress" class="secondary-button">View Business Progress</a><a href="/approval_center" class="secondary-button">Review Pending Tasks</a></div>
         </div>
 
         <section class="next-action-card">

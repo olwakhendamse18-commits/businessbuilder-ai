@@ -5,6 +5,7 @@
     <title>Launch Package - BusinessBuilder AI</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
 </head>
 
 <body>
@@ -72,6 +73,22 @@
         </section>
 
         <div class="launch-package-grid">
+            <section class="launch-package-section">
+                <p class="eyebrow">Project Workspace</p><h2>Business Project</h2>
+                {% if active_project %}<h3>{{ active_project[1] }}</h3><p>{{ active_project[2] or "No business idea summary saved." }}</p><a href="/project/{{ active_project[0] }}" class="secondary-button">Open Project</a>{% else %}<p>Not completed yet — open My Business Projects.</p><a href="/projects" class="secondary-button">Create Project</a>{% endif %}
+            </section>
+            <section class="launch-package-section">
+                <p class="eyebrow">Progress Tracker</p><h2>{{ business_progress.percentage }}% complete</h2><p>{{ business_progress.completed }} of 16 journey stages completed.</p><a href="/business_progress" class="secondary-button">View Progress</a>
+            </section>
+            <section class="launch-package-section">
+                <p class="eyebrow">Customer Understanding</p><h2>Customer Persona</h2>{% if latest_customer_persona %}<p>{{ latest_customer_persona[3] }}</p><a href="/customer_persona/{{ latest_customer_persona[0] }}" class="secondary-button">View Persona</a>{% else %}<p>Not completed yet — open Customer Persona Generator.</p><a href="/customer_persona" class="secondary-button">Create Persona</a>{% endif %}
+            </section>
+            <section class="launch-package-section">
+                <p class="eyebrow">Market Research</p><h2>Competitor Research</h2>{% if latest_competitor_research %}<p>{{ latest_competitor_research[3] }}</p><a href="/competitor_research/{{ latest_competitor_research[0] }}" class="secondary-button">View Research</a>{% else %}<p>Not completed yet — open Competitor Research Assistant.</p><a href="/competitor_research" class="secondary-button">Research Competitors</a>{% endif %}
+            </section>
+            <section class="launch-package-section">
+                <p class="eyebrow">Review Status</p><h2>Approval Center</h2>{% if pending_approval_count %}<p>{{ pending_approval_count }} pending approval task{{ '' if pending_approval_count == 1 else 's' }} remain.</p>{% else %}<p>No synced approval tasks are waiting for review.</p>{% endif %}<a href="/approval_center" class="secondary-button">Open Approval Center</a>
+            </section>
             <section class="launch-package-section">
                 <p class="eyebrow">Foundation</p>
                 <h2>Business Summary</h2>
@@ -246,6 +263,6 @@
     </main>
 
 </div>
-
+{% include "_app_scripts.html" %}
 </body>
 </html>
