@@ -6,6 +6,7 @@
     <title>Command Center | BusinessBuilder AI</title>
     {% include "_pwa_head.html" %}
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/css/command-center.css">
 </head>
 <body>
 <div class="dashboard command-center-shell">
@@ -29,11 +30,11 @@
                 <h1>BusinessBuilder AI Command Center</h1>
                 <p>Builder helps you plan, draft, remember decisions, route work to tools, and ask for approval before anything consequential happens.</p>
                 <div class="dashboard-hero-actions">
-                    <button type="button" class="primary-button" data-mode="text">Text Mode</button>
-                    <button type="button" class="secondary-button" data-mode="voice" aria-describedby="voiceModeNote">Voice Mode preview</button>
+                    <button type="button" class="primary-button" id="textModeButton" data-mode="text">Type</button>
+                    <button type="button" class="secondary-button" id="voiceModeButton" data-mode="voice" aria-describedby="voiceModeNote">Voice</button>
                     <a href="/build_center" class="secondary-button">Open Build Center</a>
                 </div>
-                <small id="voiceModeNote">Voice sessions are planned for Milestone 2. This build does not expose the OpenAI API key to the browser.</small>
+                <small id="voiceModeNote">Microphone access is requested only after you click Start Voice. Text mode remains available if voice fails.</small>
             </div>
             <div class="command-orb-card" aria-label="Builder agent state">
                 <div class="command-orb" data-agent-state="ready">
@@ -79,6 +80,28 @@
                         <button type="button" class="secondary-button" id="stopAgentButton">Stop</button>
                     </div>
                 </form>
+
+                <section class="voice-console" id="voiceConsole" hidden aria-label="Voice controls">
+                    <div class="voice-status-row">
+                        <span class="voice-indicator" id="voiceIndicator" aria-hidden="true"></span>
+                        <strong id="voiceStateLabel" aria-live="polite">Idle</strong>
+                        <span id="voiceDuration">00:00</span>
+                    </div>
+                    <canvas id="voiceWaveform" width="640" height="96" aria-label="Voice activity waveform"></canvas>
+                    <audio id="voiceRemoteAudio" autoplay></audio>
+                    <p id="voiceCaption" class="voice-caption" aria-live="polite">Start Voice when you are ready. Builder will use the same project, memory, approvals, and transcript.</p>
+                    <div class="generator-actions voice-actions">
+                        <button type="button" class="primary-button" id="startVoiceButton">Start Voice</button>
+                        <button type="button" class="secondary-button" id="stopVoiceButton" disabled>Stop Voice</button>
+                        <button type="button" class="secondary-button" id="muteVoiceButton" disabled>Mute</button>
+                        <button type="button" class="secondary-button" id="interruptVoiceButton" disabled>Stop Speaking</button>
+                        <button type="button" class="secondary-button" id="fallbackTextButton">Use Text Instead</button>
+                    </div>
+                    <div class="security-warning">
+                        <strong>Voice safety:</strong>
+                        <p>No raw audio is saved. Completed voice transcripts are sent once through the same backend agent used by text chat.</p>
+                    </div>
+                </section>
             </article>
 
             <aside class="project-form command-side-panel">
@@ -255,6 +278,15 @@
 </div>
 
 <script>
+window.BB_COMMAND_CENTER = {
+    conversationId: {{ conversation[0] }},
+    realtimeSessionUrl: "/api/realtime/session",
+    realtimeEndUrl: "/api/realtime/session/end",
+    agentMessageUrl: "/api/agent/message",
+    agentStopUrl: "/api/agent/stop",
+    maxVoiceSeconds: {{ voice_config.session_max_seconds }},
+    idleTimeoutSeconds: {{ voice_config.idle_timeout_seconds }}
+};
 (() => {
     const form = document.getElementById("commandChatForm");
     const input = document.getElementById("commandMessage");
@@ -317,14 +349,11 @@
         });
     }
 
-    document.querySelectorAll("[data-mode='voice']").forEach((button) => {
-        button.addEventListener("click", async () => {
-            setState("Voice preview");
-            addMessage("assistant", "Voice mode is planned for Milestone 2. For this Milestone 1 build, use text mode; no microphone permission is requested yet.");
-        });
-    });
 })();
 </script>
+<script src="/static/js/waveform.js"></script>
+<script src="/static/js/realtime-voice.js"></script>
+<script src="/static/js/command-center.js"></script>
 
 {% include "_app_scripts.html" %}
 </body>

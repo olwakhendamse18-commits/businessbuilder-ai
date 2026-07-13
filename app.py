@@ -26,6 +26,7 @@ import psycopg2
 import re
 import json
 import urllib.parse
+from datetime import datetime, timezone
 from io import BytesIO
 from xml.sax.saxutils import escape
 
@@ -1197,6 +1198,23 @@ def init_db():
             message TEXT NOT NULL,
             severity TEXT NOT NULL DEFAULT 'info',
             read INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_voice_sessions (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            conversation_id INTEGER,
+            project_id INTEGER,
+            status TEXT NOT NULL DEFAULT 'active',
+            model_name TEXT,
+            voice_name TEXT,
+            started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ended_at TIMESTAMP,
+            duration_seconds INTEGER NOT NULL DEFAULT 0,
+            disconnect_reason TEXT,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -3500,9 +3518,84 @@ AGENT_TOOL_DIRECTORY = [
     {"name": "Launch Readiness", "route": "/launch_readiness", "risk": "low", "approval": "No approval for scoring"}
 ]
 
+VOICE_SESSION_MAX_SDP_BYTES = 64 * 1024
+VOICE_DEFAULT_SESSION_MAX_MINUTES = 10
+VOICE_DEFAULT_DAILY_MAX_MINUTES = 20
+VOICE_DEFAULT_IDLE_TIMEOUT_SECONDS = 90
+VOICE_SESSION_RATE_LIMIT_DAILY = 20
+
 
 def safe_json_dumps(data):
     return json.dumps(data, ensure_ascii=False, default=str)
+
+
+def env_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(name, default, minimum=None, maximum=None):
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    if minimum is not None:
+        value = max(value, minimum)
+    if maximum is not None:
+        value = min(value, maximum)
+    return value
+
+
+def utc_now():
+    return datetime.now(timezone.utc)
+
+
+def parse_db_datetime(value):
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not value:
+        return None
+    text = str(value).replace("Z", "+00:00")
+    for candidate in (text, text.split(".")[0]):
+        try:
+            parsed = datetime.fromisoformat(candidate)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def get_voice_config():
+    max_minutes = env_int(
+        "VOICE_SESSION_MAX_MINUTES",
+        VOICE_DEFAULT_SESSION_MAX_MINUTES,
+        minimum=1,
+        maximum=30
+    )
+    daily_minutes = env_int(
+        "VOICE_DAILY_MAX_MINUTES",
+        VOICE_DEFAULT_DAILY_MAX_MINUTES,
+        minimum=1,
+        maximum=180
+    )
+    idle_timeout = env_int(
+        "VOICE_IDLE_TIMEOUT_SECONDS",
+        VOICE_DEFAULT_IDLE_TIMEOUT_SECONDS,
+        minimum=20,
+        maximum=600
+    )
+    return {
+        "enabled": env_bool("VOICE_ENABLED", True),
+        "model": os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime-2.1").strip() or "gpt-realtime-2.1",
+        "voice": os.getenv("OPENAI_REALTIME_VOICE", "marin").strip() or "marin",
+        "session_max_minutes": max_minutes,
+        "daily_max_minutes": daily_minutes,
+        "idle_timeout_seconds": idle_timeout,
+        "session_max_seconds": max_minutes * 60,
+        "daily_max_seconds": daily_minutes * 60
+    }
 
 
 def get_agent_profile(user_id):
@@ -4051,6 +4144,206 @@ def get_agent_alerts(user_id, unread_only=False, limit=8):
     rows = cur.fetchall()
     conn.close()
     return rows
+
+
+def get_active_voice_session(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, conversation_id, project_id, status, model_name,
+               voice_name, started_at, ended_at, duration_seconds,
+               disconnect_reason, created_at
+        FROM agent_voice_sessions
+        WHERE user_id = ? AND status = ?
+        ORDER BY id DESC
+        LIMIT 1
+    """), (user_id, "active"))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def get_user_voice_sessions(user_id, limit=100):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, conversation_id, project_id, status, model_name,
+               voice_name, started_at, ended_at, duration_seconds,
+               disconnect_reason, created_at
+        FROM agent_voice_sessions
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+    """), (user_id, limit))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_user_voice_usage(user_id):
+    today = utc_now().date()
+    sessions = get_user_voice_sessions(user_id, 200)
+    total_seconds = 0
+    sessions_today = 0
+    for row in sessions:
+        started_at = parse_db_datetime(row[7] or row[11])
+        if not started_at or started_at.date() != today:
+            continue
+        sessions_today += 1
+        if row[4] == "active":
+            total_seconds += max(0, int((utc_now() - started_at).total_seconds()))
+        else:
+            total_seconds += int(row[9] or 0)
+    return {"seconds_today": total_seconds, "sessions_today": sessions_today}
+
+
+def can_start_voice_session(user_id):
+    config = get_voice_config()
+    if not config["enabled"]:
+        return False, "Voice mode is currently disabled. Text mode is still available."
+    if not os.getenv("OPENAI_API_KEY"):
+        return False, "Voice mode is not configured yet. OPENAI_API_KEY is missing on the server."
+    if get_active_voice_session(user_id):
+        return False, "A voice session is already active. Stop it before starting another one."
+    usage = get_user_voice_usage(user_id)
+    if usage["sessions_today"] >= VOICE_SESSION_RATE_LIMIT_DAILY:
+        return False, "You have reached today's voice session start limit. Text mode is still available."
+    if usage["seconds_today"] >= config["daily_max_seconds"]:
+        return False, "You have reached today's voice minutes limit. Text mode is still available."
+    return True, ""
+
+
+def start_voice_session(user_id, conversation_id, project_id):
+    config = get_voice_config()
+    conn = db()
+    cur = conn.cursor()
+    values = (user_id, conversation_id, project_id, "active", config["model"], config["voice"])
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO agent_voice_sessions (
+                user_id, conversation_id, project_id, status, model_name, voice_name
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING id
+        """), values)
+        session_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO agent_voice_sessions (
+                user_id, conversation_id, project_id, status, model_name, voice_name
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        """), values)
+        session_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return session_id
+
+
+def finish_voice_session(user_id, voice_session_id, reason="client_disconnected"):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT started_at
+        FROM agent_voice_sessions
+        WHERE user_id = ? AND id = ?
+        LIMIT 1
+    """), (user_id, voice_session_id))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return False
+    started_at = parse_db_datetime(row[0])
+    duration = max(0, int((utc_now() - started_at).total_seconds())) if started_at else 0
+    cur.execute(sql("""
+        UPDATE agent_voice_sessions
+        SET status = ?, ended_at = CURRENT_TIMESTAMP, duration_seconds = ?,
+            disconnect_reason = ?
+        WHERE user_id = ? AND id = ?
+    """), ("ended", duration, str(reason or "client_disconnected")[:120], user_id, voice_session_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def finish_stale_voice_sessions(user_id):
+    active = get_active_voice_session(user_id)
+    if not active:
+        return
+    started_at = parse_db_datetime(active[7])
+    config = get_voice_config()
+    if started_at and (utc_now() - started_at).total_seconds() > config["session_max_seconds"]:
+        finish_voice_session(user_id, active[0], "max_duration_reached")
+
+
+def voice_safety_identifier(user_id):
+    seed = f"businessbuilder-ai-realtime-safety:{user_id}".encode("utf-8")
+    return hashlib.sha256(seed).hexdigest()
+
+
+def realtime_voice_instructions():
+    return (
+        "You are Builder, the original voice interface for BusinessBuilder AI. "
+        "Be calm, concise, respectful, analytical, quietly confident, and occasionally witty. "
+        "Do not imitate JARVIS, Marvel, Iron Man, celebrities, or real people. "
+        "Do not perform business reasoning or external actions independently. "
+        "Use voice for transcription, brief acknowledgements, interruption, and speaking canonical responses "
+        "provided by the BusinessBuilder backend. Do not read raw JSON, IDs, HTML, stack traces, hidden checkpoints, "
+        "or internal schemas. If approval is required, say the user must review the approval card first."
+    )
+
+
+def create_realtime_sdp_answer(user_id, offer_sdp):
+    config = get_voice_config()
+    api_key = os.getenv("OPENAI_API_KEY")
+    endpoint = os.getenv("OPENAI_REALTIME_WEBRTC_URL", "https://api.openai.com/v1/realtime/calls")
+    params = {
+        "model": config["model"],
+        "voice": config["voice"],
+        "modalities": "audio,text"
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/sdp",
+        "OpenAI-Beta": "realtime=v1",
+        "X-OpenAI-Safety-Identifier": voice_safety_identifier(user_id)
+    }
+    # Server-controlled session settings. The client cannot override these.
+    session_config = {
+        "instructions": realtime_voice_instructions(),
+        "voice": config["voice"],
+        "modalities": ["audio", "text"],
+        "input_audio_transcription": {"model": "gpt-4o-mini-transcribe"},
+        "turn_detection": {
+            "type": "semantic_vad",
+            "eagerness": "low",
+            "create_response": False,
+            "interrupt_response": True
+        },
+        "max_response_output_tokens": 900,
+        "tool_choice": "none"
+    }
+    headers["X-BusinessBuilder-Realtime-Config"] = base64.urlsafe_b64encode(
+        safe_json_dumps(session_config).encode("utf-8")
+    ).decode("utf-8")
+    try:
+        response = requests.post(
+            endpoint,
+            headers=headers,
+            params=params,
+            data=offer_sdp,
+            timeout=25
+        )
+    except requests.RequestException:
+        return None, "Could not reach the OpenAI Realtime service."
+    if response.status_code >= 400:
+        if response.status_code == 401:
+            return None, "Voice authentication failed on the server. Check the OpenAI API key."
+        if response.status_code == 429:
+            return None, "Voice is temporarily rate limited. Text mode is still available."
+        return None, "OpenAI Realtime could not start this voice session."
+    answer = response.text or ""
+    if "v=" not in answer[:20]:
+        return None, "OpenAI Realtime returned an unexpected handshake response."
+    return answer, None
 
 
 def approval_required_for_action(profile, action_type, risk_level):
@@ -13594,7 +13887,8 @@ def command_center():
         alerts=alerts,
         progress=progress,
         current_package=current_package,
-        connections=connections
+        connections=connections,
+        voice_config=get_voice_config()
     )
 
 
@@ -13687,9 +13981,11 @@ def api_agent_message():
         conversation = get_or_create_agent_conversation(user_id, project_id)
         conversation_id = conversation[0]
 
-    save_agent_message(user_id, conversation_id, "user", user_message, "text")
+    message_mode = str(data.get("mode", "text")).strip().lower()
+    content_type = "voice" if message_mode == "voice" else "text"
+    save_agent_message(user_id, conversation_id, "user", user_message, content_type)
     result = run_businessbuilder_agent(user_id, conversation_id, user_message)
-    save_agent_message(user_id, conversation_id, "assistant", result["reply"], "text")
+    save_agent_message(user_id, conversation_id, "assistant", result["reply"], content_type)
 
     return jsonify({
         "reply": result["reply"],
@@ -13745,14 +14041,56 @@ def api_realtime_session():
     if "user_id" not in session:
         return jsonify({"error": "Login required."}), 401
 
-    return jsonify({
-        "available": False,
-        "milestone": "Milestone 2",
-        "message": (
-            "Realtime voice is not enabled in this Milestone 1 build. "
-            "The permanent OpenAI API key is never exposed to browser JavaScript."
-        )
-    }), 501
+    user_id = session["user_id"]
+    finish_stale_voice_sessions(user_id)
+    content_type = (request.content_type or "").split(";", 1)[0].strip().lower()
+    if content_type != "application/sdp":
+        return jsonify({"error": "Voice session requests must use Content-Type: application/sdp."}), 415
+
+    offer_sdp = request.get_data(as_text=True)
+    if not offer_sdp or not offer_sdp.strip().startswith("v="):
+        return jsonify({"error": "A valid SDP offer is required."}), 400
+    if len(offer_sdp.encode("utf-8")) > VOICE_SESSION_MAX_SDP_BYTES:
+        return jsonify({"error": "The SDP offer is too large."}), 413
+
+    allowed, message = can_start_voice_session(user_id)
+    if not allowed:
+        return jsonify({"error": message}), 429 if "limit" in message.lower() or "active" in message.lower() else 503
+
+    active_project = get_active_project(user_id)
+    project_id = active_project[0] if active_project else None
+    conversation = get_or_create_agent_conversation(user_id, project_id)
+    voice_session_id = start_voice_session(user_id, conversation[0], project_id)
+
+    answer_sdp, error = create_realtime_sdp_answer(user_id, offer_sdp)
+    if error:
+        finish_voice_session(user_id, voice_session_id, "realtime_handshake_failed")
+        return jsonify({"error": error}), 503
+
+    response = app.response_class(answer_sdp, mimetype="application/sdp")
+    config = get_voice_config()
+    response.headers["X-BusinessBuilder-Voice-Session"] = str(voice_session_id)
+    response.headers["X-BusinessBuilder-Conversation"] = str(conversation[0])
+    response.headers["X-BusinessBuilder-Voice-Max-Seconds"] = str(config["session_max_seconds"])
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.route("/api/realtime/session/end", methods=["POST"])
+def api_realtime_session_end():
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+
+    data = request.get_json(silent=True) or {}
+    voice_session_id = data.get("voice_session_id")
+    try:
+        voice_session_id = int(voice_session_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Valid voice_session_id required."}), 400
+
+    reason = str(data.get("reason", "client_disconnected"))[:120]
+    finish_voice_session(session["user_id"], voice_session_id, reason)
+    return jsonify({"status": "ended"})
 
 
 @app.route("/api/conversations")

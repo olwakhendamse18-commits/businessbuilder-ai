@@ -1,0 +1,135 @@
+/* Milestone 2 voice layer for the original BusinessBuilder AI Command Center. */
+.voice-console {
+    background: rgba(2, 6, 23, .54);
+    border: 1px solid rgba(45, 212, 191, .22);
+    border-radius: 22px;
+    margin-top: 16px;
+    padding: 16px;
+}
+
+.voice-status-row {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.voice-indicator {
+    background: #64748b;
+    border-radius: 999px;
+    box-shadow: 0 0 0 6px rgba(100, 116, 139, .14);
+    display: inline-block;
+    flex: 0 0 auto;
+    height: 12px;
+    width: 12px;
+}
+
+.voice-indicator[data-state="connected"],
+.voice-indicator[data-state="listening"],
+.voice-indicator[data-state="user_speaking"] {
+    background: #14b8a6;
+    box-shadow: 0 0 0 7px rgba(20, 184, 166, .16), 0 0 22px rgba(20, 184, 166, .55);
+}
+
+.voice-indicator[data-state="thinking"],
+.voice-indicator[data-state="speaking"] {
+    background: #60a5fa;
+    box-shadow: 0 0 0 7px rgba(96, 165, 250, .16), 0 0 22px rgba(96, 165, 250, .55);
+}
+
+.voice-indicator[data-state="waiting_for_approval"] {
+    background: #fb923c;
+    box-shadow: 0 0 0 7px rgba(251, 146, 60, .16), 0 0 22px rgba(251, 146, 60, .55);
+}
+
+.voice-indicator[data-state="error"] {
+    background: #fb7185;
+    box-shadow: 0 0 0 7px rgba(251, 113, 133, .16), 0 0 22px rgba(251, 113, 133, .55);
+}
+
+#voiceStateLabel {
+    color: #f8fafc;
+    flex: 1;
+}
+
+#voiceDuration {
+    color: #bfd0e6;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+}
+
+#voiceWaveform {
+    background: rgba(2, 6, 23, .5);
+    border: 1px solid rgba(148, 163, 184, .16);
+    border-radius: 18px;
+    display: block;
+    height: 96px;
+    max-width: 100%;
+    width: 100%;
+}
+
+.voice-caption {
+    color: #dbeafe !important;
+    margin: 12px 0;
+}
+
+.voice-actions button {
+    min-height: 44px;
+}
+
+body[data-voice-state="listening"] .command-orb,
+body[data-voice-state="user_speaking"] .command-orb {
+    box-shadow: 0 0 0 10px rgba(20, 184, 166, .12), 0 0 64px rgba(20, 184, 166, .62), inset 0 0 30px rgba(255,255,255,.16);
+}
+
+body[data-voice-state="thinking"] .command-orb {
+    animation-duration: 1.6s;
+}
+
+body[data-voice-state="speaking"] .command-orb {
+    box-shadow: 0 0 0 10px rgba(96, 165, 250, .12), 0 0 72px rgba(96, 165, 250, .64), inset 0 0 30px rgba(255,255,255,.16);
+}
+
+body[data-voice-state="waiting_for_approval"] .command-orb {
+    border-color: rgba(251, 146, 60, .9);
+    box-shadow: 0 0 0 10px rgba(251, 146, 60, .10), 0 0 58px rgba(251, 146, 60, .38), inset 0 0 30px rgba(255,255,255,.12);
+}
+
+body[data-voice-state="muted"] .voice-console {
+    border-color: rgba(148, 163, 184, .34);
+}
+
+.command-center-main button:focus-visible,
+.command-center-main a:focus-visible,
+.voice-console button:focus-visible {
+    outline: 3px solid rgba(45, 212, 191, .75);
+    outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body[data-voice-state] .command-orb {
+        animation: none;
+    }
+}
+
+@media (max-width: 720px) {
+    .voice-status-row {
+        align-items: flex-start;
+        display: grid;
+        grid-template-columns: auto 1fr;
+    }
+
+    #voiceDuration {
+        grid-column: 1 / -1;
+    }
+
+    .voice-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    #voiceWaveform {
+        height: 76px;
+    }
+}
