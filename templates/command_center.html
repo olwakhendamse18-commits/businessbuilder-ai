@@ -332,6 +332,62 @@
             </article>
         </section>
 
+        <section class="command-grid command-grid-small" id="browser-tasks">
+            <article class="project-form browser-task-panel">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Restricted browser tasks</p>
+                        <h2>Inspect public pages safely</h2>
+                    </div>
+                    <span class="build-status {{ 'success' if browser_config.enabled else 'cancelled' }}">
+                        {{ "Enabled" if browser_config.enabled else "Disabled by default" }}
+                    </span>
+                </div>
+                <p>Use this for read-only visual checks like homepage clarity, navigation, broken buttons, or public layout review. Browser control runs in a separate worker and never enters passwords, pays, publishes, sends, deletes, or submits forms.</p>
+                <form class="stacked-form" id="browserTaskForm">
+                    <label>Objective
+                        <textarea id="browserObjective" rows="3" maxlength="900" placeholder="Inspect https://www.businessbuilder.site and review homepage navigation. Do not submit anything." required></textarea>
+                    </label>
+                    <label>Start URL
+                        <input id="browserStartUrl" type="url" placeholder="https://www.businessbuilder.site" required>
+                    </label>
+                    <label>Allowed domain
+                        <input id="browserAllowedDomain" type="text" placeholder="businessbuilder.site">
+                    </label>
+                    <div class="security-warning">
+                        <strong>Safety rules:</strong>
+                        <p>Allowed: public navigation, scrolling and screenshots. Pauses/blocks: forms, login, payments, publishing, messaging, downloads, credentials, prompt injection, or leaving the allowlist.</p>
+                    </div>
+                    <div class="generator-actions">
+                        <button type="submit" class="primary-button">Start browser task</button>
+                        <button type="button" class="secondary-button" id="refreshBrowserTasksButton">Refresh</button>
+                    </div>
+                </form>
+                <div class="research-status-card" id="browserTaskStatus" aria-live="polite">
+                    Browser tasks are disabled until the separate worker and model are configured.
+                </div>
+            </article>
+
+            <article class="project-form browser-task-panel">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Browser history</p>
+                        <h2>Tasks, screenshots and actions</h2>
+                    </div>
+                    <button type="button" class="secondary-button" id="cancelBrowserTaskButton" disabled>Cancel active task</button>
+                </div>
+                <div class="timeline-list browser-task-list" id="browserTaskList">
+                    <p class="empty-card">No browser tasks loaded yet.</p>
+                </div>
+                <div class="browser-artifact-viewer" id="browserArtifactViewer">
+                    <p class="empty-card">Screenshots appear here after the browser worker runs.</p>
+                </div>
+                <div class="timeline-list" id="browserActionTimeline">
+                    <p class="empty-card">Action timeline will appear here.</p>
+                </div>
+            </article>
+        </section>
+
         <section class="project-form">
             <div class="command-section-header">
                 <div>
@@ -389,8 +445,10 @@ window.BB_COMMAND_CENTER = {
     researchUrl: "/api/research",
     monitoringRulesUrl: "/api/monitoring/rules",
     alertsUrl: "/api/alerts",
+    browserTasksUrl: "/api/browser/tasks",
     maxVoiceSeconds: {{ voice_config.session_max_seconds }},
-    idleTimeoutSeconds: {{ voice_config.idle_timeout_seconds }}
+    idleTimeoutSeconds: {{ voice_config.idle_timeout_seconds }},
+    browserControlEnabled: {{ "true" if browser_config.enabled else "false" }}
 };
 (() => {
     const form = document.getElementById("commandChatForm");

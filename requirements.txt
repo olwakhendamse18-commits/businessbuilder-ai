@@ -10,3 +10,4 @@ psycopg2-binary
 requests
 reportlab
 cryptography
+playwright

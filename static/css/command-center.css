@@ -131,6 +131,52 @@
     min-height: 38px;
 }
 
+.browser-task-panel .security-warning {
+    margin-top: 10px;
+}
+
+.browser-task-list {
+    max-height: 320px;
+    overflow: auto;
+}
+
+.browser-task-item {
+    white-space: normal;
+}
+
+.browser-artifact-viewer {
+    display: grid;
+    gap: 12px;
+    margin: 14px 0;
+}
+
+.browser-artifact-viewer figure {
+    background: rgba(2, 6, 23, .46);
+    border: 1px solid rgba(148, 163, 184, .2);
+    border-radius: 18px;
+    margin: 0;
+    overflow: hidden;
+}
+
+.browser-artifact-viewer img {
+    display: block;
+    height: auto;
+    max-height: 420px;
+    object-fit: contain;
+    width: 100%;
+}
+
+.browser-artifact-viewer figcaption {
+    color: #cbd5e1;
+    font-size: .86rem;
+    padding: 10px 12px;
+}
+
+#browserActionTimeline {
+    max-height: 360px;
+    overflow: auto;
+}
+
 .build-status.completed,
 .build-status.success {
     background: rgba(20, 184, 166, .16);
@@ -144,6 +190,10 @@
 }
 
 .build-status.queued,
+.build-status.starting,
+.build-status.running,
+.build-status.waiting_for_approval,
+.build-status.waiting_for_user,
 .build-status.researching,
 .build-status.synthesizing,
 .build-status.warning {

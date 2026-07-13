@@ -26,6 +26,8 @@ import psycopg2
 import re
 import json
 import urllib.parse
+import ipaddress
+import mimetypes
 from datetime import datetime, timezone
 from io import BytesIO
 from xml.sax.saxutils import escape
@@ -1323,6 +1325,102 @@ def init_db():
     """)
 
     execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_browser_tasks (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            project_id INTEGER,
+            conversation_id INTEGER,
+            agent_task_id INTEGER,
+            background_job_id INTEGER,
+            objective TEXT NOT NULL,
+            start_url TEXT NOT NULL,
+            allowed_domains_json TEXT,
+            status TEXT NOT NULL DEFAULT 'queued',
+            risk_level TEXT NOT NULL DEFAULT 'low',
+            current_step TEXT,
+            final_summary TEXT,
+            error_message TEXT,
+            requested_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            started_at TIMESTAMP,
+            paused_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            cancelled_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_browser_sessions (
+            id {id_type},
+            browser_task_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            project_id INTEGER,
+            status TEXT NOT NULL DEFAULT 'starting',
+            browser_name TEXT,
+            viewport_width INTEGER,
+            viewport_height INTEGER,
+            started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ended_at TIMESTAMP,
+            action_count INTEGER NOT NULL DEFAULT 0,
+            screenshot_count INTEGER NOT NULL DEFAULT 0,
+            disconnect_reason TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_browser_actions (
+            id {id_type},
+            browser_task_id INTEGER NOT NULL,
+            browser_session_id INTEGER,
+            user_id INTEGER NOT NULL,
+            sequence_number INTEGER NOT NULL DEFAULT 0,
+            action_type TEXT NOT NULL,
+            action_summary TEXT,
+            target_url TEXT,
+            target_domain TEXT,
+            risk_level TEXT NOT NULL DEFAULT 'low',
+            validation_result TEXT,
+            approval_id INTEGER,
+            status TEXT NOT NULL DEFAULT 'planned',
+            error_message TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            executed_at TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_browser_artifacts (
+            id {id_type},
+            browser_task_id INTEGER NOT NULL,
+            browser_session_id INTEGER,
+            user_id INTEGER NOT NULL,
+            artifact_type TEXT NOT NULL,
+            storage_path TEXT NOT NULL,
+            mime_type TEXT,
+            size_bytes INTEGER NOT NULL DEFAULT 0,
+            sequence_number INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP,
+            deleted_at TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_browser_domain_permissions (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            project_id INTEGER,
+            domain TEXT NOT NULL,
+            permission_type TEXT NOT NULL DEFAULT 'public_read_only',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS usage_logs (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -1334,6 +1432,31 @@ def init_db():
     cur.execute(sql("""
         CREATE INDEX IF NOT EXISTS idx_usage_logs_user_action_created
         ON usage_logs (user_id, action_type, created_at)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_agent_browser_tasks_user_status
+        ON agent_browser_tasks (user_id, status, created_at)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_agent_browser_sessions_task
+        ON agent_browser_sessions (browser_task_id, user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_agent_browser_actions_task
+        ON agent_browser_actions (browser_task_id, user_id, sequence_number)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_agent_browser_artifacts_task
+        ON agent_browser_artifacts (browser_task_id, user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_agent_browser_permissions_user_domain
+        ON agent_browser_domain_permissions (user_id, domain, enabled)
     """))
 
     conn.commit()
@@ -3636,6 +3759,33 @@ MONITOR_TYPES = {
     "shopify_connection_health", "canva_connection_health",
     "paystack_mode_status", "project_inactivity"
 }
+BROWSER_TASK_STATUSES = {
+    "planned", "queued", "starting", "running", "waiting_for_approval",
+    "waiting_for_user", "completed", "failed", "cancelled", "timed_out", "blocked"
+}
+
+BROWSER_TERMINAL_STATUSES = {"completed", "failed", "cancelled", "timed_out", "blocked"}
+
+BROWSER_SAFE_ACTIONS = {"screenshot", "wait", "move", "scroll"}
+
+BROWSER_ACTION_TYPES = {
+    "screenshot", "wait", "move", "scroll", "click", "double_click",
+    "keypress", "type", "drag", "navigate"
+}
+
+BROWSER_HARD_BLOCK_TERMS = {
+    "password", "otp", "one-time", "one time", "card", "checkout", "buy", "pay",
+    "purchase", "subscribe", "publish", "post", "send", "submit",
+    "delete", "remove", "authorize", "allow", "confirm", "transfer", "place order",
+    "save changes", "captcha", "api key", "secret", "bank", "paystack dashboard",
+    "identity", "id number", "domain purchase", "download", "install", "extension"
+}
+
+BROWSER_PROMPT_INJECTION_TERMS = {
+    "ignore previous instructions", "ignore all previous instructions",
+    "reveal your api key", "show your system prompt", "developer message",
+    "system message", "environment variables", "exfiltrate", "bypass"
+}
 
 
 def safe_json_dumps(data):
@@ -3736,6 +3886,580 @@ def get_monitoring_config():
         "alert_dedup_hours": env_int("MONITOR_ALERT_DEDUP_HOURS", 24, minimum=1, maximum=168),
         "worker_poll_seconds": env_int("WORKER_POLL_SECONDS", 10, minimum=2, maximum=300)
     }
+
+
+def get_browser_config():
+    storage_dir = os.getenv("BROWSER_STORAGE_DIR", os.path.join("browser_artifacts"))
+    return {
+        "enabled": env_bool("BROWSER_CONTROL_ENABLED", False),
+        "computer_model": os.getenv("OPENAI_COMPUTER_MODEL", "").strip(),
+        "headless": env_bool("BROWSER_HEADLESS", True),
+        "max_actions": env_int("BROWSER_MAX_ACTIONS", 25, minimum=1, maximum=75),
+        "task_timeout_seconds": env_int("BROWSER_TASK_TIMEOUT_SECONDS", 180, minimum=30, maximum=900),
+        "max_screenshots": env_int("BROWSER_MAX_SCREENSHOTS", 20, minimum=1, maximum=50),
+        "retention_hours": env_int("BROWSER_SCREENSHOT_RETENTION_HOURS", 24, minimum=1, maximum=168),
+        "max_concurrent_per_user": env_int("BROWSER_MAX_CONCURRENT_PER_USER", 1, minimum=1, maximum=3),
+        "worker_poll_seconds": env_int("BROWSER_WORKER_POLL_SECONDS", 5, minimum=2, maximum=120),
+        "viewport_width": env_int("BROWSER_DEFAULT_VIEWPORT_WIDTH", 1280, minimum=320, maximum=1920),
+        "viewport_height": env_int("BROWSER_DEFAULT_VIEWPORT_HEIGHT", 720, minimum=320, maximum=1440),
+        "allowed_domains": [
+            item.strip().lower().removeprefix("www.")
+            for item in os.getenv("BROWSER_ALLOWED_DOMAINS", "businessbuilder.site,www.businessbuilder.site").split(",")
+            if item.strip()
+        ],
+        "allow_localhost": env_bool("BROWSER_ALLOW_LOCALHOST", False),
+        "storage_dir": storage_dir
+    }
+
+
+def browser_daily_max_tasks():
+    return env_int("BROWSER_DAILY_MAX_TASKS", 3, minimum=1, maximum=50)
+
+
+def normalize_browser_hostname(hostname):
+    value = (hostname or "").strip().lower().rstrip(".")
+    if value.startswith("www."):
+        value = value[4:]
+    return value
+
+
+def is_private_hostname_or_ip(hostname):
+    host = normalize_browser_hostname(hostname)
+    if not host:
+        return True
+    if host in {"localhost", "metadata.google.internal"} or host.endswith(".local") or "." not in host:
+        return True
+    if re.match(r"^(127\.|10\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)", host):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (
+        ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+        or ip.is_multicast or ip.is_unspecified
+        or host.startswith("169.254.169.254")
+    )
+
+
+def validate_browser_url(raw_url, allowed_domains=None, allow_localhost=None):
+    config = get_browser_config()
+    allow_localhost = config["allow_localhost"] if allow_localhost is None else bool(allow_localhost)
+    allowed = [normalize_browser_hostname(domain) for domain in (allowed_domains or config["allowed_domains"]) if domain]
+    value = (raw_url or "").strip()
+    if not value:
+        return False, "", "", "Start URL is required."
+    parsed = urllib.parse.urlparse(value)
+    if not parsed.scheme:
+        parsed = urllib.parse.urlparse("https://" + value)
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in {"https", "http"}:
+        return False, "", "", "Only http(s) URLs are allowed. file:, data:, javascript:, browser and custom schemes are blocked."
+    if scheme == "http" and not allow_localhost:
+        return False, "", "", "Plain http is blocked unless localhost development mode is explicitly enabled."
+    if parsed.username or parsed.password:
+        return False, "", "", "URLs containing embedded usernames or passwords are blocked."
+    host = normalize_browser_hostname(parsed.hostname)
+    if not host:
+        return False, "", "", "A valid hostname is required."
+    if is_private_hostname_or_ip(host):
+        if not (allow_localhost and host in {"localhost", "127.0.0.1", "::1"}):
+            return False, "", "", "Local, private-network, metadata and internal destinations are blocked."
+    if allowed and host not in allowed:
+        return False, "", "", f"Domain '{host}' is not in this browser task allowlist."
+    safe_url = urllib.parse.urlunparse(parsed._replace(fragment="", netloc=parsed.netloc.lower()))
+    return True, safe_url, host, ""
+
+
+def parse_allowed_domains(start_url, requested_domains=None):
+    domains = []
+    for value in (requested_domains or []):
+        host = normalize_browser_hostname(str(value).replace("https://", "").replace("http://", "").split("/")[0])
+        if host and host not in domains:
+            domains.append(host)
+    ok, safe_url, host, _ = validate_browser_url(start_url, allowed_domains=domains or None)
+    if ok and host not in domains:
+        domains.append(host)
+    if not domains:
+        domains = get_browser_config()["allowed_domains"]
+    return domains, safe_url if ok else (start_url or "").strip()
+
+
+def browser_action_text(action):
+    if isinstance(action, dict):
+        pieces = [str(action.get(key, "")) for key in ("type", "text", "selector", "label", "url", "description", "button")]
+        return " ".join(pieces).lower()
+    return str(action or "").lower()
+
+
+def validate_browser_action(task, action, page_url=None, element_hint=""):
+    action_type = str((action or {}).get("type", "")).strip().lower()
+    text = f"{browser_action_text(action)} {element_hint or ''}".lower()
+    if action_type not in BROWSER_ACTION_TYPES:
+        return {"allowed": False, "requires_approval": False, "requires_user_handoff": False, "blocked": True, "reason": "Unsupported browser action.", "risk_level": "high"}
+    if any(term in text for term in BROWSER_PROMPT_INJECTION_TERMS):
+        return {"allowed": False, "requires_approval": False, "requires_user_handoff": True, "blocked": True, "reason": "Possible prompt-injection instructions were detected on the page.", "risk_level": "high"}
+    if any(term in text for term in BROWSER_HARD_BLOCK_TERMS):
+        return {"allowed": False, "requires_approval": False, "requires_user_handoff": True, "blocked": True, "reason": "This action appears related to payment, publishing, credentials, deletion, submission, security or another hard-blocked area.", "risk_level": "high"}
+    allowed_domains = []
+    if task and len(task) > 8:
+        try:
+            allowed_domains = json.loads(task[8] or "[]")
+        except (TypeError, ValueError):
+            allowed_domains = []
+    target_url = (action or {}).get("url") or page_url
+    if target_url:
+        ok, _, _, reason = validate_browser_url(target_url, allowed_domains=allowed_domains)
+        if not ok:
+            return {"allowed": False, "requires_approval": True, "requires_user_handoff": True, "blocked": False, "reason": reason, "risk_level": "medium"}
+    if action_type in BROWSER_SAFE_ACTIONS:
+        return {"allowed": True, "requires_approval": False, "requires_user_handoff": False, "blocked": False, "reason": "Low-risk visual browser action.", "risk_level": "low"}
+    if action_type in {"click", "double_click", "keypress", "drag", "navigate"}:
+        return {"allowed": True, "requires_approval": False, "requires_user_handoff": False, "blocked": False, "reason": "Allowed only for public navigation on the task allowlist.", "risk_level": "low"}
+    return {"allowed": False, "requires_approval": True, "requires_user_handoff": True, "blocked": False, "reason": "Typing or form-like interaction requires user approval or handoff.", "risk_level": "medium"}
+
+
+def redact_browser_action_summary(action):
+    action_type = str((action or {}).get("type", "action")).strip().lower()
+    if action_type == "type":
+        return "Entered approved non-sensitive text. The typed value is not stored."
+    if action_type == "navigate":
+        return "Navigated to an allowlisted public page."
+    return f"Browser action: {action_type.replace('_', ' ')}."
+
+
+def get_user_browser_usage(user_id):
+    today_start = datetime.combine(utc_now().date(), datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S")
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT COUNT(*)
+        FROM agent_browser_tasks
+        WHERE user_id = ? AND created_at >= ?
+    """), (user_id, today_start))
+    daily = cur.fetchone()[0]
+    active_statuses = tuple(status for status in BROWSER_TASK_STATUSES if status not in BROWSER_TERMINAL_STATUSES)
+    placeholders = ",".join(["?"] * len(active_statuses))
+    cur.execute(sql(f"""
+        SELECT COUNT(*)
+        FROM agent_browser_tasks
+        WHERE user_id = ? AND status IN ({placeholders})
+    """), (user_id, *active_statuses))
+    active = cur.fetchone()[0]
+    conn.close()
+    return {"daily": int(daily or 0), "active": int(active or 0)}
+
+
+def can_create_browser_task(user_id):
+    config = get_browser_config()
+    if not config["enabled"]:
+        return False, "Browser control is disabled. Text, voice and research remain available."
+    if not config["computer_model"]:
+        return False, "Browser control needs OPENAI_COMPUTER_MODEL before tasks can run."
+    usage = get_user_browser_usage(user_id)
+    if usage["daily"] >= browser_daily_max_tasks():
+        return False, f"You have reached the daily browser-task limit of {browser_daily_max_tasks()}."
+    if usage["active"] >= config["max_concurrent_per_user"]:
+        return False, "You already have an active browser task. Cancel or finish it before starting another."
+    return True, ""
+
+
+def create_browser_task(user_id, project_id, conversation_id, agent_task_id, objective, start_url, allowed_domains):
+    conn = db()
+    cur = conn.cursor()
+    values = (
+        user_id, project_id, conversation_id, agent_task_id, None,
+        objective.strip()[:900], start_url, safe_json_dumps(allowed_domains),
+        "queued", "low", "Queued for isolated browser worker."
+    )
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO agent_browser_tasks (
+                user_id, project_id, conversation_id, agent_task_id, background_job_id,
+                objective, start_url, allowed_domains_json, status, risk_level, current_step
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+        """), values)
+        task_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO agent_browser_tasks (
+                user_id, project_id, conversation_id, agent_task_id, background_job_id,
+                objective, start_url, allowed_domains_json, status, risk_level, current_step
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """), values)
+        task_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return task_id
+
+
+def get_browser_task(user_id, browser_task_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, project_id, conversation_id, agent_task_id, background_job_id,
+               objective, start_url, allowed_domains_json, status, risk_level, current_step,
+               final_summary, error_message, requested_at, started_at, paused_at,
+               completed_at, cancelled_at, created_at, updated_at
+        FROM agent_browser_tasks
+        WHERE user_id = ? AND id = ?
+        LIMIT 1
+    """), (user_id, browser_task_id))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def list_browser_tasks(user_id, limit=20):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, project_id, conversation_id, agent_task_id, background_job_id,
+               objective, start_url, allowed_domains_json, status, risk_level, current_step,
+               final_summary, error_message, requested_at, started_at, paused_at,
+               completed_at, cancelled_at, created_at, updated_at
+        FROM agent_browser_tasks
+        WHERE user_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+    """), (user_id, limit))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def update_browser_task_status(browser_task_id, status, current_step=None, final_summary=None, error_message=None):
+    if status not in BROWSER_TASK_STATUSES:
+        status = "failed"
+    timestamp_column = ""
+    if status in {"running", "starting"}:
+        timestamp_column = ", started_at = COALESCE(started_at, CURRENT_TIMESTAMP)"
+    elif status in {"waiting_for_approval", "waiting_for_user", "blocked"}:
+        timestamp_column = ", paused_at = CURRENT_TIMESTAMP"
+    elif status in {"completed", "failed", "timed_out"}:
+        timestamp_column = ", completed_at = CURRENT_TIMESTAMP"
+    elif status == "cancelled":
+        timestamp_column = ", cancelled_at = CURRENT_TIMESTAMP"
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql(f"""
+        UPDATE agent_browser_tasks
+        SET status = ?, current_step = COALESCE(?, current_step),
+            final_summary = COALESCE(?, final_summary),
+            error_message = COALESCE(?, error_message),
+            updated_at = CURRENT_TIMESTAMP{timestamp_column}
+        WHERE id = ?
+    """), (status, current_step, final_summary, error_message, browser_task_id))
+    conn.commit()
+    conn.close()
+
+
+def create_browser_session_record(browser_task, browser_name="chromium"):
+    config = get_browser_config()
+    conn = db()
+    cur = conn.cursor()
+    values = (browser_task[0], browser_task[1], browser_task[2], "running", browser_name, config["viewport_width"], config["viewport_height"])
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO agent_browser_sessions (
+                browser_task_id, user_id, project_id, status, browser_name,
+                viewport_width, viewport_height
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+        """), values)
+        session_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO agent_browser_sessions (
+                browser_task_id, user_id, project_id, status, browser_name,
+                viewport_width, viewport_height
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """), values)
+        session_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return session_id
+
+
+def finish_browser_session_record(browser_session_id, status="ended", reason="completed"):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        UPDATE agent_browser_sessions
+        SET status = ?, ended_at = CURRENT_TIMESTAMP, disconnect_reason = ?
+        WHERE id = ?
+    """), (status, str(reason or "")[:180], browser_session_id))
+    conn.commit()
+    conn.close()
+
+
+def record_browser_action(browser_task_id, browser_session_id, user_id, sequence_number, action, validation, status="executed", target_url=""):
+    target_domain = normalize_browser_hostname(urllib.parse.urlparse(target_url or "").hostname)
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        INSERT INTO agent_browser_actions (
+            browser_task_id, browser_session_id, user_id, sequence_number, action_type,
+            action_summary, target_url, target_domain, risk_level, validation_result,
+            approval_id, status, error_message, executed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """), (
+        browser_task_id, browser_session_id, user_id, sequence_number,
+        str((action or {}).get("type", "action"))[:40],
+        redact_browser_action_summary(action), target_url[:1000] if target_url else "",
+        target_domain, validation.get("risk_level", "low"), safe_json_dumps(validation),
+        validation.get("approval_id"), status, validation.get("reason", "")
+    ))
+    cur.execute(sql("""
+        UPDATE agent_browser_sessions
+        SET action_count = action_count + 1
+        WHERE id = ?
+    """), (browser_session_id,))
+    conn.commit()
+    conn.close()
+
+
+def record_browser_artifact(browser_task_id, browser_session_id, user_id, artifact_type, storage_path, sequence_number=0):
+    path = os.path.abspath(storage_path)
+    size = os.path.getsize(path) if os.path.exists(path) else 0
+    mime_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+    expires_at = (utc_now().replace(microsecond=0)).timestamp() + (get_browser_config()["retention_hours"] * 3600)
+    expires_text = datetime.fromtimestamp(expires_at, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    conn = db()
+    cur = conn.cursor()
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO agent_browser_artifacts (
+                browser_task_id, browser_session_id, user_id, artifact_type, storage_path,
+                mime_type, size_bytes, sequence_number, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+        """), (browser_task_id, browser_session_id, user_id, artifact_type, path, mime_type, size, sequence_number, expires_text))
+        artifact_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO agent_browser_artifacts (
+                browser_task_id, browser_session_id, user_id, artifact_type, storage_path,
+                mime_type, size_bytes, sequence_number, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """), (browser_task_id, browser_session_id, user_id, artifact_type, path, mime_type, size, sequence_number, expires_text))
+        artifact_id = cur.lastrowid
+    cur.execute(sql("""
+        UPDATE agent_browser_sessions
+        SET screenshot_count = screenshot_count + 1
+        WHERE id = ?
+    """), (browser_session_id,))
+    conn.commit()
+    conn.close()
+    return artifact_id
+
+
+def get_browser_actions(user_id, browser_task_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, browser_task_id, browser_session_id, user_id, sequence_number,
+               action_type, action_summary, target_url, target_domain, risk_level,
+               validation_result, approval_id, status, error_message, created_at, executed_at
+        FROM agent_browser_actions
+        WHERE user_id = ? AND browser_task_id = ?
+        ORDER BY sequence_number ASC, id ASC
+    """), (user_id, browser_task_id))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_browser_artifacts(user_id, browser_task_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, browser_task_id, browser_session_id, user_id, artifact_type,
+               storage_path, mime_type, size_bytes, sequence_number, created_at,
+               expires_at, deleted_at
+        FROM agent_browser_artifacts
+        WHERE user_id = ? AND browser_task_id = ? AND deleted_at IS NULL
+        ORDER BY sequence_number ASC, id ASC
+    """), (user_id, browser_task_id))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def get_browser_artifact(user_id, artifact_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, browser_task_id, browser_session_id, user_id, artifact_type,
+               storage_path, mime_type, size_bytes, sequence_number, created_at,
+               expires_at, deleted_at
+        FROM agent_browser_artifacts
+        WHERE user_id = ? AND id = ? AND deleted_at IS NULL
+        LIMIT 1
+    """), (user_id, artifact_id))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def cleanup_expired_browser_artifacts():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, storage_path
+        FROM agent_browser_artifacts
+        WHERE deleted_at IS NULL AND expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP
+    """))
+    rows = cur.fetchall()
+    for artifact_id, storage_path in rows:
+        try:
+            if storage_path and os.path.exists(storage_path):
+                os.remove(storage_path)
+        except OSError:
+            pass
+        cur.execute(sql("""
+            UPDATE agent_browser_artifacts
+            SET deleted_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """), (artifact_id,))
+    conn.commit()
+    conn.close()
+
+
+def claim_next_browser_task(worker_id="browser-worker"):
+    config = get_browser_config()
+    if not config["enabled"] or not config["computer_model"]:
+        return None
+    conn = db()
+    cur = conn.cursor()
+    if using_postgres():
+        cur.execute(sql("""
+            SELECT id
+            FROM agent_browser_tasks
+            WHERE status = 'queued'
+            ORDER BY id ASC
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+        """))
+    else:
+        cur.execute(sql("""
+            SELECT id
+            FROM agent_browser_tasks
+            WHERE status = 'queued'
+            ORDER BY id ASC
+            LIMIT 1
+        """))
+    row = cur.fetchone()
+    if not row:
+        conn.commit()
+        conn.close()
+        return None
+    task_id = row[0]
+    cur.execute(sql("""
+        UPDATE agent_browser_tasks
+        SET status = 'starting', current_step = ?, started_at = COALESCE(started_at, CURRENT_TIMESTAMP),
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'queued'
+    """), (f"Claimed by {worker_id}.", task_id))
+    changed = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    if not changed:
+        return None
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, project_id, conversation_id, agent_task_id, background_job_id,
+               objective, start_url, allowed_domains_json, status, risk_level, current_step,
+               final_summary, error_message, requested_at, started_at, paused_at,
+               completed_at, cancelled_at, created_at, updated_at
+        FROM agent_browser_tasks
+        WHERE id = ?
+        LIMIT 1
+    """), (task_id,))
+    task = cur.fetchone()
+    conn.close()
+    return task
+
+
+def recover_stale_browser_tasks():
+    config = get_browser_config()
+    cutoff_seconds = config["task_timeout_seconds"] * 2
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, started_at
+        FROM agent_browser_tasks
+        WHERE status IN ('starting', 'running')
+    """))
+    rows = cur.fetchall()
+    for task_id, started_at in rows:
+        parsed = parse_db_datetime(started_at)
+        if parsed and (utc_now() - parsed).total_seconds() > cutoff_seconds:
+            cur.execute(sql("""
+                UPDATE agent_browser_tasks
+                SET status = 'timed_out', current_step = 'Recovered stale browser task.',
+                    error_message = 'Browser worker did not finish before timeout.',
+                    completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            """), (task_id,))
+    conn.commit()
+    conn.close()
+
+
+def save_browser_task_completion(task, status, summary, error_message=""):
+    update_browser_task_status(task[0], status, "Worker finished.", final_summary=summary, error_message=error_message or None)
+    if status == "completed":
+        create_agent_alert(task[1], task[2], "browser_task_completed", "Browser task completed", summary[:500] or "The browser inspection finished.", "success")
+    elif "prompt-injection" in (summary or "").lower() or "prompt injection" in (summary or "").lower():
+        create_agent_alert(task[1], task[2], "browser_prompt_injection", "Suspicious webpage instructions detected", summary[:500], "warning")
+    elif status in {"waiting_for_approval", "waiting_for_user", "blocked"}:
+        create_agent_alert(task[1], task[2], "browser_task_paused", "Browser task paused", summary[:500] or "The browser task paused for review.", "warning")
+    else:
+        create_agent_alert(task[1], task[2], "browser_task_failed", "Browser task failed", (error_message or summary)[:500], "warning")
+    save_checkpoint(
+        task[1], task[2], task[3], "browser_checkpoint",
+        summary[:1000] or f"Browser task {status}.",
+        {
+            "browser_task_id": task[0],
+            "status": status,
+            "allowed_domains": json.loads(task[8] or "[]"),
+            "start_url": task[7],
+            "timestamp": utc_now().isoformat()
+        }
+    )
+
+
+def browser_task_to_dict(task):
+    return {
+        "id": task[0],
+        "project_id": task[2],
+        "conversation_id": task[3],
+        "agent_task_id": task[4],
+        "objective": task[6],
+        "start_url": task[7],
+        "allowed_domains": json.loads(task[8] or "[]"),
+        "status": task[9],
+        "risk_level": task[10],
+        "current_step": task[11] or "",
+        "final_summary": task[12] or "",
+        "error_message": task[13] or "",
+        "created_at": str(task[19]) if task[19] else "",
+        "updated_at": str(task[20]) if task[20] else ""
+    }
+
+
+def is_browser_request(message):
+    text = (message or "").lower()
+    browser_terms = [
+        "inspect my website", "inspect this website", "test my homepage", "open this public website",
+        "check the navigation", "review the visible page", "verify whether this button exists",
+        "visually inspect", "visual inspection", "check mobile layout", "check desktop layout",
+        "broken links", "screenshot", "homepage navigation", "public website"
+    ]
+    research_terms = ["research", "find suppliers", "compare prices", "current price", "latest", "news"]
+    return any(term in text for term in browser_terms) and not any(term in text for term in research_terms)
 
 
 def get_agent_profile(user_id):
@@ -5329,6 +6053,62 @@ def run_businessbuilder_agent(user_id, conversation_id, user_message):
         return {
             "reply": reply,
             "visible_plan": visible_plan,
+            "approval_needed": False,
+            "approval_id": None,
+            "task_id": task_id,
+            "risk_level": "low"
+        }
+
+    if is_browser_request(user_message):
+        start_urls = re.findall(r"https?://[^\s)>\"]+", user_message)
+        start_url = start_urls[0].rstrip(".,") if start_urls else os.getenv("BUSINESSBUILDER_PUBLIC_URL", "https://www.businessbuilder.site")
+        allowed_domains, normalized_url = parse_allowed_domains(start_url)
+        ok, safe_url, host, url_error = validate_browser_url(normalized_url, allowed_domains)
+        browser_plan = safe_json_dumps({
+            "objective": user_message[:900],
+            "allowed_domain": host or allowed_domains[0] if allowed_domains else "",
+            "permitted_actions": ["open public pages", "scroll", "click navigation", "capture screenshots"],
+            "not_permitted": ["forms", "logins", "payments", "publishing", "messaging", "downloads", "credentials"]
+        })
+        if not ok:
+            reply = (
+                f"I can’t start a browser task for that URL: {url_error}\n\n"
+                "I can still help with text guidance, research, drafts, and checklists."
+            )
+            return {"reply": reply, "visible_plan": browser_plan, "approval_needed": False, "approval_id": None, "task_id": task_id, "risk_level": "low"}
+        allowed, message = can_create_browser_task(user_id)
+        if not allowed:
+            reply = (
+                f"{message}\n\n"
+                "Browser control is safe-disabled unless you configure the separate browser worker and OpenAI computer model. "
+                "Text, voice, research, and normal BusinessBuilder tools still work."
+            )
+            save_checkpoint(
+                user_id, project_id, conversation_id, "browser_checkpoint",
+                f"Browser task not started: {message}",
+                {"start_url": safe_url, "allowed_domains": allowed_domains, "agent_task_id": task_id}
+            )
+            return {"reply": reply, "visible_plan": browser_plan, "approval_needed": False, "approval_id": None, "task_id": task_id, "risk_level": "low"}
+        browser_task_id = create_browser_task(user_id, project_id, conversation_id, task_id, user_message, safe_url, allowed_domains)
+        save_checkpoint(
+            user_id, project_id, conversation_id, "browser_checkpoint",
+            f"Browser visual inspection queued for {host}.",
+            {"browser_task_id": browser_task_id, "start_url": safe_url, "allowed_domains": allowed_domains}
+        )
+        create_agent_alert(
+            user_id, project_id, "browser_task_queued", "Browser inspection queued",
+            "A read-only browser task was queued for the isolated browser worker.", "info"
+        )
+        return {
+            "reply": (
+                "I’ve queued a safe read-only browser inspection in your Command Center.\n\n"
+                f"Objective: {user_message[:220]}\n"
+                f"Allowed domain: {host}\n"
+                "Permitted: open public pages, scroll, click navigation, and capture screenshots.\n"
+                "Not permitted: forms, logins, payments, publishing, messaging, downloads, credentials, or leaving the allowlist.\n\n"
+                "Voice summary: I’ve started a read-only visual inspection. Review the Browser Tasks panel for status and screenshots."
+            ),
+            "visible_plan": browser_plan,
             "approval_needed": False,
             "approval_id": None,
             "task_id": task_id,
@@ -14743,7 +15523,8 @@ def command_center():
         progress=progress,
         current_package=current_package,
         connections=connections,
-        voice_config=get_voice_config()
+        voice_config=get_voice_config(),
+        browser_config=get_browser_config()
     )
 
 
@@ -15018,6 +15799,165 @@ def agent_approval_action(approval_id, status):
             {"approval_id": approval_id, "status": status}
         )
     return redirect("/command-center#approvals")
+
+
+def browser_action_to_dict(action):
+    return {
+        "id": action[0],
+        "browser_task_id": action[1],
+        "sequence_number": action[4],
+        "action_type": action[5],
+        "action_summary": action[6],
+        "target_url": action[7],
+        "target_domain": action[8],
+        "risk_level": action[9],
+        "validation": json.loads(action[10] or "{}"),
+        "approval_id": action[11],
+        "status": action[12],
+        "error_message": action[13],
+        "created_at": str(action[14]) if action[14] else "",
+        "executed_at": str(action[15]) if action[15] else ""
+    }
+
+
+def browser_artifact_to_dict(artifact):
+    return {
+        "id": artifact[0],
+        "browser_task_id": artifact[1],
+        "artifact_type": artifact[4],
+        "mime_type": artifact[6],
+        "size_bytes": artifact[7],
+        "sequence_number": artifact[8],
+        "created_at": str(artifact[9]) if artifact[9] else "",
+        "expires_at": str(artifact[10]) if artifact[10] else "",
+        "url": f"/api/browser/artifacts/{artifact[0]}"
+    }
+
+
+@app.route("/api/browser/tasks", methods=["GET", "POST"])
+def api_browser_tasks():
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+    user_id = session["user_id"]
+    if request.method == "GET":
+        cleanup_expired_browser_artifacts()
+        return jsonify({"browser_tasks": [browser_task_to_dict(task) for task in list_browser_tasks(user_id)]})
+
+    data = request.get_json(silent=True) or {}
+    objective = str(data.get("objective", "")).strip()
+    if not objective:
+        return jsonify({"error": "Browser task objective is required."}), 400
+    if len(objective) > 900:
+        return jsonify({"error": "Browser task objective is too long."}), 413
+    start_url = str(data.get("start_url", "")).strip()
+    requested_domains = data.get("allowed_domains") or []
+    if isinstance(requested_domains, str):
+        requested_domains = [requested_domains]
+    allowed_domains, normalized_url = parse_allowed_domains(start_url, requested_domains)
+    ok, safe_url, host, reason = validate_browser_url(normalized_url, allowed_domains)
+    if not ok:
+        return jsonify({"error": reason}), 400
+    allowed, message = can_create_browser_task(user_id)
+    if not allowed:
+        return jsonify({"error": message, "browser_control_enabled": get_browser_config()["enabled"]}), 503
+
+    active_project = get_active_project(user_id)
+    project_id = active_project[0] if active_project else None
+    conversation = get_or_create_agent_conversation(user_id, project_id)
+    agent_task_id = create_agent_task(
+        user_id, project_id, "Browser: " + objective[:70],
+        "Safe visual browser task queued for isolated worker.",
+        "queued", "normal",
+        {"objective": objective, "start_url": safe_url, "allowed_domains": allowed_domains},
+        {}
+    )
+    browser_task_id = create_browser_task(user_id, project_id, conversation[0], agent_task_id, objective, safe_url, allowed_domains)
+    create_agent_alert(
+        user_id, project_id, "browser_task_queued", "Browser task queued",
+        f"Read-only browser inspection queued for {host}.", "info"
+    )
+    save_checkpoint(
+        user_id, project_id, conversation[0], "browser_checkpoint",
+        f"Browser task queued for {host}.",
+        {"browser_task_id": browser_task_id, "allowed_domains": allowed_domains, "start_url": safe_url}
+    )
+    return jsonify({"browser_task": browser_task_to_dict(get_browser_task(user_id, browser_task_id))}), 201
+
+
+@app.route("/api/browser/tasks/<int:browser_task_id>")
+def api_browser_task_detail(browser_task_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+    task = get_browser_task(session["user_id"], browser_task_id)
+    if not task:
+        return jsonify({"error": "Browser task not found."}), 404
+    return jsonify({"browser_task": browser_task_to_dict(task)})
+
+
+@app.route("/api/browser/tasks/<int:browser_task_id>/cancel", methods=["POST"])
+def api_browser_task_cancel(browser_task_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+    task = get_browser_task(session["user_id"], browser_task_id)
+    if not task:
+        return jsonify({"error": "Browser task not found."}), 404
+    if task[9] in BROWSER_TERMINAL_STATUSES:
+        return jsonify({"error": "Browser task is already finished."}), 400
+    update_browser_task_status(browser_task_id, "cancelled", "Cancelled by user.", error_message="Cancelled by user.")
+    create_agent_alert(session["user_id"], task[2], "browser_task_cancelled", "Browser task cancelled", "The browser task was cancelled before any further action.", "info")
+    return jsonify({"browser_task": browser_task_to_dict(get_browser_task(session["user_id"], browser_task_id))})
+
+
+@app.route("/api/browser/tasks/<int:browser_task_id>/resume", methods=["POST"])
+def api_browser_task_resume(browser_task_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+    task = get_browser_task(session["user_id"], browser_task_id)
+    if not task:
+        return jsonify({"error": "Browser task not found."}), 404
+    if task[9] not in {"waiting_for_approval", "waiting_for_user"}:
+        return jsonify({"error": "Only paused browser tasks can be resumed."}), 400
+    update_browser_task_status(browser_task_id, "queued", "Resumed by user for worker review.")
+    return jsonify({"browser_task": browser_task_to_dict(get_browser_task(session["user_id"], browser_task_id))})
+
+
+@app.route("/api/browser/tasks/<int:browser_task_id>/actions")
+def api_browser_task_actions(browser_task_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+    if not get_browser_task(session["user_id"], browser_task_id):
+        return jsonify({"error": "Browser task not found."}), 404
+    return jsonify({"actions": [browser_action_to_dict(action) for action in get_browser_actions(session["user_id"], browser_task_id)]})
+
+
+@app.route("/api/browser/tasks/<int:browser_task_id>/artifacts")
+def api_browser_task_artifacts(browser_task_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+    if not get_browser_task(session["user_id"], browser_task_id):
+        return jsonify({"error": "Browser task not found."}), 404
+    cleanup_expired_browser_artifacts()
+    return jsonify({"artifacts": [browser_artifact_to_dict(artifact) for artifact in get_browser_artifacts(session["user_id"], browser_task_id)]})
+
+
+@app.route("/api/browser/artifacts/<int:artifact_id>")
+def api_browser_artifact(artifact_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+    artifact = get_browser_artifact(session["user_id"], artifact_id)
+    if not artifact:
+        return jsonify({"error": "Artifact not found or expired."}), 404
+    storage_path = os.path.abspath(artifact[5])
+    artifact_root = os.path.abspath(get_browser_config()["storage_dir"])
+    if os.path.commonpath([artifact_root, storage_path]) != artifact_root or not os.path.exists(storage_path):
+        return jsonify({"error": "Artifact unavailable."}), 404
+    return send_file(
+        storage_path,
+        mimetype=artifact[6] or "application/octet-stream",
+        as_attachment=False,
+        download_name=f"browser-artifact-{artifact[0]}.png",
+        max_age=0
+    )
 
 
 def research_job_to_dict(job):

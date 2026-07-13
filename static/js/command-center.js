@@ -32,10 +32,22 @@
     const refreshMonitoringButton = document.getElementById("refreshMonitoringButton");
     const agentAlerts = document.getElementById("agentAlerts");
     const markAllAlertsReadButton = document.getElementById("markAllAlertsReadButton");
+    const browserTaskForm = document.getElementById("browserTaskForm");
+    const browserObjective = document.getElementById("browserObjective");
+    const browserStartUrl = document.getElementById("browserStartUrl");
+    const browserAllowedDomain = document.getElementById("browserAllowedDomain");
+    const browserTaskStatus = document.getElementById("browserTaskStatus");
+    const browserTaskList = document.getElementById("browserTaskList");
+    const browserArtifactViewer = document.getElementById("browserArtifactViewer");
+    const browserActionTimeline = document.getElementById("browserActionTimeline");
+    const refreshBrowserTasksButton = document.getElementById("refreshBrowserTasksButton");
+    const cancelBrowserTaskButton = document.getElementById("cancelBrowserTaskButton");
 
     let voice = null;
     let voiceMode = false;
     let muted = false;
+    let activeBrowserTaskId = null;
+    let browserPollTimer = null;
 
     function formatDuration(seconds) {
         const safe = Math.max(0, Number(seconds) || 0);
@@ -63,6 +75,10 @@
 
     function terminalResearchStatus(status) {
         return ["completed", "failed", "cancelled"].includes(status);
+    }
+
+    function terminalBrowserStatus(status) {
+        return ["completed", "failed", "cancelled", "timed_out", "blocked"].includes(status);
     }
 
     function renderResearchJob(job) {
@@ -249,6 +265,119 @@
         }
     }
 
+    async function loadBrowserActions(taskId) {
+        if (!browserActionTimeline || !taskId) return;
+        try {
+            const response = await fetch(`${config.browserTasksUrl || "/api/browser/tasks"}/${taskId}/actions`);
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "Could not load browser actions.");
+            browserActionTimeline.replaceChildren();
+            if (!payload.actions.length) {
+                const empty = document.createElement("p");
+                empty.className = "empty-card";
+                empty.textContent = "No browser actions recorded yet.";
+                browserActionTimeline.appendChild(empty);
+                return;
+            }
+            payload.actions.forEach((action) => {
+                const item = document.createElement("div");
+                const badge = document.createElement("span");
+                badge.className = `build-status ${action.status}`;
+                badge.textContent = action.status;
+                const title = document.createElement("strong");
+                title.textContent = `${action.sequence_number}. ${action.action_type}`;
+                const copy = document.createElement("p");
+                copy.textContent = action.action_summary || action.validation.reason || "Browser action recorded.";
+                item.append(badge, title, copy);
+                browserActionTimeline.appendChild(item);
+            });
+        } catch (error) {
+            browserActionTimeline.textContent = error.message;
+        }
+    }
+
+    async function loadBrowserArtifacts(taskId) {
+        if (!browserArtifactViewer || !taskId) return;
+        try {
+            const response = await fetch(`${config.browserTasksUrl || "/api/browser/tasks"}/${taskId}/artifacts`);
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "Could not load browser screenshots.");
+            browserArtifactViewer.replaceChildren();
+            if (!payload.artifacts.length) {
+                const empty = document.createElement("p");
+                empty.className = "empty-card";
+                empty.textContent = "No screenshots yet.";
+                browserArtifactViewer.appendChild(empty);
+                return;
+            }
+            payload.artifacts.slice(-4).forEach((artifact) => {
+                const figure = document.createElement("figure");
+                const img = document.createElement("img");
+                img.src = artifact.url;
+                img.alt = `${artifact.artifact_type} ${artifact.sequence_number}`;
+                img.loading = "lazy";
+                const caption = document.createElement("figcaption");
+                caption.textContent = `${artifact.artifact_type} · expires ${artifact.expires_at || "soon"}`;
+                figure.append(img, caption);
+                browserArtifactViewer.appendChild(figure);
+            });
+        } catch (error) {
+            browserArtifactViewer.textContent = error.message;
+        }
+    }
+
+    async function loadBrowserTasks() {
+        if (!browserTaskList) return;
+        try {
+            const response = await fetch(config.browserTasksUrl || "/api/browser/tasks");
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "Could not load browser tasks.");
+            browserTaskList.replaceChildren();
+            const tasks = payload.browser_tasks || [];
+            if (!tasks.length) {
+                const empty = document.createElement("p");
+                empty.className = "empty-card";
+                empty.textContent = "No browser tasks yet.";
+                browserTaskList.appendChild(empty);
+                if (browserTaskStatus) browserTaskStatus.textContent = config.browserControlEnabled ? "Ready for a safe browser task." : "Browser control is disabled until configured.";
+                return;
+            }
+            const active = tasks.find((task) => !terminalBrowserStatus(task.status));
+            activeBrowserTaskId = active ? active.id : tasks[0].id;
+            if (cancelBrowserTaskButton) cancelBrowserTaskButton.disabled = !active;
+            tasks.slice(0, 8).forEach((task) => {
+                const item = document.createElement("button");
+                item.type = "button";
+                item.className = "research-history-item browser-task-item";
+                item.textContent = `${task.status} · ${task.objective}`;
+                item.addEventListener("click", () => {
+                    activeBrowserTaskId = task.id;
+                    loadBrowserActions(task.id);
+                    loadBrowserArtifacts(task.id);
+                    if (browserTaskStatus) browserTaskStatus.textContent = task.final_summary || task.current_step || `Browser task ${task.status}.`;
+                });
+                browserTaskList.appendChild(item);
+            });
+            const selected = tasks.find((task) => task.id === activeBrowserTaskId) || tasks[0];
+            if (browserTaskStatus) browserTaskStatus.textContent = selected.final_summary || selected.current_step || `Browser task ${selected.status}.`;
+            loadBrowserActions(selected.id);
+            loadBrowserArtifacts(selected.id);
+            if (active && !browserPollTimer) {
+                browserPollTimer = window.setInterval(async () => {
+                    await loadBrowserTasks();
+                    const detail = await fetch(`${config.browserTasksUrl || "/api/browser/tasks"}/${active.id}`).then((r) => r.json()).catch(() => null);
+                    if (!detail || !detail.browser_task || terminalBrowserStatus(detail.browser_task.status)) {
+                        window.clearInterval(browserPollTimer);
+                        browserPollTimer = null;
+                        loadAlerts();
+                    }
+                }, 5000);
+            }
+        } catch (error) {
+            if (browserTaskStatus) browserTaskStatus.textContent = error.message;
+        }
+    }
+
     function setVoiceState(state, detail) {
         if (voiceStateLabel) {
             voiceStateLabel.textContent = state.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -405,6 +534,52 @@
         });
     }
 
+    if (browserTaskForm) {
+        browserTaskForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const objective = browserObjective.value.trim();
+            const startUrl = browserStartUrl.value.trim();
+            const allowedDomain = browserAllowedDomain.value.trim();
+            if (!objective || !startUrl) return;
+            if (browserTaskStatus) browserTaskStatus.textContent = "Creating safe browser task...";
+            try {
+                const response = await fetch(config.browserTasksUrl || "/api/browser/tasks", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        objective,
+                        start_url: startUrl,
+                        allowed_domains: allowedDomain ? [allowedDomain] : []
+                    })
+                });
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || "Could not create browser task.");
+                activeBrowserTaskId = payload.browser_task.id;
+                if (browserTaskStatus) browserTaskStatus.textContent = "Browser task queued for the isolated worker.";
+                await loadBrowserTasks();
+            } catch (error) {
+                if (browserTaskStatus) browserTaskStatus.textContent = error.message;
+            }
+        });
+    }
+
+    if (refreshBrowserTasksButton) refreshBrowserTasksButton.addEventListener("click", loadBrowserTasks);
+
+    if (cancelBrowserTaskButton) {
+        cancelBrowserTaskButton.addEventListener("click", async () => {
+            if (!activeBrowserTaskId) return;
+            try {
+                const response = await fetch(`${config.browserTasksUrl || "/api/browser/tasks"}/${activeBrowserTaskId}/cancel`, {method: "POST"});
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || "Could not cancel browser task.");
+                if (browserTaskStatus) browserTaskStatus.textContent = "Browser task cancelled.";
+                await loadBrowserTasks();
+            } catch (error) {
+                if (browserTaskStatus) browserTaskStatus.textContent = error.message;
+            }
+        });
+    }
+
     window.addEventListener("beforeunload", () => {
         if (voice) voice.stop("page_unload");
     });
@@ -420,4 +595,5 @@
     loadResearchJobs();
     loadMonitorRules();
     loadAlerts();
+    loadBrowserTasks();
 })();
