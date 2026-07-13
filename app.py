@@ -1053,6 +1053,155 @@ def init_db():
     """)
 
     execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_profiles (
+            id {id_type},
+            user_id INTEGER NOT NULL UNIQUE,
+            preferred_name TEXT,
+            communication_style TEXT,
+            voice_enabled INTEGER NOT NULL DEFAULT 0,
+            selected_voice TEXT,
+            approval_mode TEXT NOT NULL DEFAULT 'standard',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_projects (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            business_idea TEXT,
+            target_customer TEXT,
+            budget TEXT,
+            country TEXT,
+            products TEXT,
+            chosen_brand_style TEXT,
+            shopify_store TEXT,
+            canva_connected INTEGER NOT NULL DEFAULT 0,
+            launch_progress INTEGER NOT NULL DEFAULT 0,
+            active INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_conversations (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            project_id INTEGER,
+            title TEXT NOT NULL DEFAULT 'Command Center Chat',
+            mode TEXT NOT NULL DEFAULT 'text',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_messages (
+            id {id_type},
+            conversation_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            content_type TEXT NOT NULL DEFAULT 'text',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_memories (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            project_id INTEGER,
+            memory_type TEXT NOT NULL,
+            memory_key TEXT NOT NULL,
+            memory_value TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 0.7,
+            source_message_id INTEGER,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_checkpoints (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            project_id INTEGER,
+            conversation_id INTEGER,
+            checkpoint_type TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            structured_state_json TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_tasks (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            project_id INTEGER,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'planned',
+            priority TEXT NOT NULL DEFAULT 'normal',
+            plan_json TEXT,
+            result_json TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_tool_runs (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            project_id INTEGER,
+            task_id INTEGER,
+            tool_name TEXT NOT NULL,
+            input_json TEXT,
+            output_json TEXT,
+            status TEXT NOT NULL DEFAULT 'planned',
+            error_message TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_approvals (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            project_id INTEGER,
+            task_id INTEGER,
+            action_type TEXT NOT NULL,
+            risk_level TEXT NOT NULL DEFAULT 'low',
+            proposed_action_json TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            warning_message TEXT,
+            approved_at TIMESTAMP,
+            executed_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_alerts (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            project_id INTEGER,
+            alert_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'info',
+            read INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS usage_logs (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -3317,6 +3466,802 @@ def build_project_context(user_id):
         f"Budget: {project[5] or 'Not provided'}\n"
         f"Notes: {project[6] or 'Not provided'}"
     )
+
+
+AGENT_APPROVAL_MODES = {
+    "standard": {
+        "label": "Standard Approval",
+        "description": "Ask before all external actions and any meaningful account changes."
+    },
+    "reduced": {
+        "label": "Reduced Approval",
+        "description": "Run read-only or reversible low-risk planning steps, but ask before medium and high-risk actions."
+    },
+    "autopilot": {
+        "label": "Low-Risk Autopilot",
+        "description": "Automatically create research, calculations, drafts, summaries, and non-destructive checks, while still asking before sensitive actions."
+    }
+}
+
+AGENT_NEVER_AUTOMATE = [
+    "payments", "purchases", "subscriptions", "publishing", "buying domains",
+    "sending messages to third parties", "deleting data", "changing account permissions",
+    "changing payment settings", "banking or identity information", "security settings"
+]
+
+AGENT_TOOL_DIRECTORY = [
+    {"name": "Business Launch Roadmap", "route": "/business_launch_assistant", "risk": "low", "approval": "No approval for guidance"},
+    {"name": "Product Finder", "route": "/product_finder", "risk": "low", "approval": "No approval for guidance"},
+    {"name": "Supplier Finder", "route": "/supplier_finder", "risk": "low", "approval": "No approval for guidance"},
+    {"name": "Pricing Advisor", "route": "/pricing_advisor", "risk": "low", "approval": "No approval for calculations"},
+    {"name": "Payment Guide", "route": "/payment_guide", "risk": "low", "approval": "No approval for guidance"},
+    {"name": "Shopify Drafts", "route": "/ai_store_agent", "risk": "medium", "approval": "Approval before creating or applying drafts"},
+    {"name": "Canva Briefs", "route": "/canva_settings", "risk": "medium", "approval": "Approval before connected draft actions"},
+    {"name": "Launch Readiness", "route": "/launch_readiness", "risk": "low", "approval": "No approval for scoring"}
+]
+
+
+def safe_json_dumps(data):
+    return json.dumps(data, ensure_ascii=False, default=str)
+
+
+def get_agent_profile(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, preferred_name, communication_style, voice_enabled,
+               selected_voice, approval_mode, created_at, updated_at
+        FROM agent_profiles
+        WHERE user_id = ?
+        LIMIT 1
+    """), (user_id,))
+    profile = cur.fetchone()
+    if not profile:
+        cur.execute(sql("""
+            INSERT INTO agent_profiles (
+                user_id, preferred_name, communication_style, voice_enabled,
+                selected_voice, approval_mode
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        """), (user_id, "", "calm, concise, beginner-friendly", 0, "builder", "standard"))
+        conn.commit()
+        cur.execute(sql("""
+            SELECT id, user_id, preferred_name, communication_style, voice_enabled,
+                   selected_voice, approval_mode, created_at, updated_at
+            FROM agent_profiles
+            WHERE user_id = ?
+            LIMIT 1
+        """), (user_id,))
+        profile = cur.fetchone()
+    conn.close()
+    return profile
+
+
+def update_agent_profile(user_id, preferred_name, communication_style, approval_mode, voice_enabled=0, selected_voice="builder"):
+    approval_mode = approval_mode if approval_mode in AGENT_APPROVAL_MODES else "standard"
+    conn = db()
+    cur = conn.cursor()
+    get_agent_profile(user_id)
+    cur.execute(sql("""
+        UPDATE agent_profiles
+        SET preferred_name = ?, communication_style = ?, voice_enabled = ?,
+            selected_voice = ?, approval_mode = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+    """), (
+        (preferred_name or "").strip(),
+        (communication_style or "calm, concise, beginner-friendly").strip(),
+        int(bool(voice_enabled)),
+        (selected_voice or "builder").strip(),
+        approval_mode,
+        user_id
+    ))
+    conn.commit()
+    conn.close()
+
+
+def create_agent_project(user_id, name, business_idea="", target_customer="", budget="", country="", active=True):
+    conn = db()
+    cur = conn.cursor()
+    if active:
+        cur.execute(sql("UPDATE agent_projects SET active = 0 WHERE user_id = ?"), (user_id,))
+    values = (
+        user_id,
+        (name or "My Business Project").strip()[:120],
+        (business_idea or "").strip(),
+        (target_customer or "").strip(),
+        (budget or "").strip(),
+        (country or "").strip(),
+        "",
+        "",
+        "",
+        0,
+        0,
+        int(bool(active))
+    )
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO agent_projects (
+                user_id, name, business_idea, target_customer, budget, country,
+                products, chosen_brand_style, shopify_store, canva_connected,
+                launch_progress, active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+        """), values)
+        project_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO agent_projects (
+                user_id, name, business_idea, target_customer, budget, country,
+                products, chosen_brand_style, shopify_store, canva_connected,
+                launch_progress, active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """), values)
+        project_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return project_id
+
+
+def get_agent_projects(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, name, business_idea, target_customer, budget, country,
+               products, chosen_brand_style, shopify_store, canva_connected,
+               launch_progress, active, created_at, updated_at
+        FROM agent_projects
+        WHERE user_id = ?
+        ORDER BY active DESC, id DESC
+    """), (user_id,))
+    projects = cur.fetchall()
+    conn.close()
+    return projects
+
+
+def get_active_project(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, name, business_idea, target_customer, budget, country,
+               products, chosen_brand_style, shopify_store, canva_connected,
+               launch_progress, active, created_at, updated_at
+        FROM agent_projects
+        WHERE user_id = ? AND active = 1
+        ORDER BY id DESC
+        LIMIT 1
+    """), (user_id,))
+    project = cur.fetchone()
+    conn.close()
+    if project:
+        return project
+
+    onboarding = onboarding_as_dict(get_user_onboarding(user_id))
+    legacy_project = get_active_business_project(user_id)
+    if onboarding.get("business_idea") or legacy_project:
+        project_id = create_agent_project(
+            user_id,
+            legacy_project[1] if legacy_project else "My Business Launch",
+            onboarding.get("business_idea") or (legacy_project[2] if legacy_project else ""),
+            onboarding.get("target_customer") or (legacy_project[3] if legacy_project else ""),
+            onboarding.get("budget") or (legacy_project[5] if legacy_project else ""),
+            onboarding.get("country") or (legacy_project[4] if legacy_project else ""),
+            True
+        )
+        return get_agent_project(user_id, project_id)
+    return None
+
+
+def get_agent_project(user_id, project_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, name, business_idea, target_customer, budget, country,
+               products, chosen_brand_style, shopify_store, canva_connected,
+               launch_progress, active, created_at, updated_at
+        FROM agent_projects
+        WHERE user_id = ? AND id = ?
+        LIMIT 1
+    """), (user_id, project_id))
+    project = cur.fetchone()
+    conn.close()
+    return project
+
+
+def update_project_state(user_id, project_id, **updates):
+    allowed = {
+        "name", "business_idea", "target_customer", "budget", "country",
+        "products", "chosen_brand_style", "shopify_store", "canva_connected",
+        "launch_progress", "active"
+    }
+    clean = {key: value for key, value in updates.items() if key in allowed}
+    if not clean:
+        return
+    assignments = ", ".join([f"{key} = ?" for key in clean])
+    params = list(clean.values()) + [user_id, project_id]
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql(f"""
+        UPDATE agent_projects
+        SET {assignments}, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND id = ?
+    """), params)
+    conn.commit()
+    conn.close()
+
+
+def save_memory(user_id, project_id, memory_type, memory_key, memory_value, confidence=0.7, source_message_id=None):
+    blocked = ["password", "otp", "card number", "banking password", "api secret", "secret key"]
+    combined = f"{memory_key} {memory_value}".lower()
+    if any(term in combined for term in blocked):
+        return None
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        UPDATE agent_memories
+        SET active = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND COALESCE(project_id, 0) = COALESCE(?, 0)
+        AND memory_key = ? AND active = 1
+    """), (user_id, project_id, memory_key))
+    values = (
+        user_id, project_id, memory_type, memory_key,
+        str(memory_value or "").strip()[:3000], float(confidence), source_message_id
+    )
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO agent_memories (
+                user_id, project_id, memory_type, memory_key, memory_value,
+                confidence, source_message_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+        """), values)
+        memory_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO agent_memories (
+                user_id, project_id, memory_type, memory_key, memory_value,
+                confidence, source_message_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """), values)
+        memory_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return memory_id
+
+
+def retrieve_relevant_memories(user_id, project_id, query, limit=8):
+    terms = [term.lower() for term in re.findall(r"[a-zA-Z0-9]{3,}", query or "")]
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, memory_type, memory_key, memory_value, confidence, created_at
+        FROM agent_memories
+        WHERE user_id = ? AND active = 1
+        AND (project_id IS NULL OR project_id = ?)
+        ORDER BY id DESC
+        LIMIT 50
+    """), (user_id, project_id))
+    rows = cur.fetchall()
+    conn.close()
+    scored = []
+    for row in rows:
+        haystack = f"{row[1]} {row[2]} {row[3]}".lower()
+        score = sum(1 for term in terms if term in haystack)
+        if score or len(scored) < limit:
+            scored.append((score, row))
+    scored.sort(key=lambda item: (item[0], item[1][0]), reverse=True)
+    return [row for score, row in scored[:limit]]
+
+
+def mark_memory_superseded(user_id, memory_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        UPDATE agent_memories
+        SET active = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND id = ?
+    """), (user_id, memory_id))
+    conn.commit()
+    conn.close()
+
+
+def delete_user_memory(user_id, memory_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("DELETE FROM agent_memories WHERE user_id = ? AND id = ?"), (user_id, memory_id))
+    conn.commit()
+    conn.close()
+
+
+def save_checkpoint(user_id, project_id, conversation_id, checkpoint_type, summary, structured_state=None):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        INSERT INTO agent_checkpoints (
+            user_id, project_id, conversation_id, checkpoint_type,
+            summary, structured_state_json
+        ) VALUES (?, ?, ?, ?, ?, ?)
+    """), (
+        user_id, project_id, conversation_id, checkpoint_type,
+        str(summary or "").strip()[:3000],
+        safe_json_dumps(structured_state or {})
+    ))
+    conn.commit()
+    conn.close()
+
+
+def summarize_conversation(user_id, conversation_id):
+    messages = get_agent_messages(user_id, conversation_id, limit=10)
+    if not messages:
+        return "No conversation yet."
+    summary_bits = []
+    for message in messages[-6:]:
+        summary_bits.append(f"{message[2]}: {message[3][:180]}")
+    return "\n".join(summary_bits)[:1200]
+
+
+def get_or_create_agent_conversation(user_id, project_id=None):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, project_id, title, mode, created_at, updated_at
+        FROM agent_conversations
+        WHERE user_id = ? AND COALESCE(project_id, 0) = COALESCE(?, 0)
+        ORDER BY id DESC
+        LIMIT 1
+    """), (user_id, project_id))
+    conversation = cur.fetchone()
+    if not conversation:
+        title = "Builder Command Chat"
+        if using_postgres():
+            cur.execute(sql("""
+                INSERT INTO agent_conversations (user_id, project_id, title, mode)
+                VALUES (?, ?, ?, ?)
+                RETURNING id
+            """), (user_id, project_id, title, "text"))
+            conversation_id = cur.fetchone()[0]
+        else:
+            cur.execute(sql("""
+                INSERT INTO agent_conversations (user_id, project_id, title, mode)
+                VALUES (?, ?, ?, ?)
+            """), (user_id, project_id, title, "text"))
+            conversation_id = cur.lastrowid
+        conn.commit()
+        cur.execute(sql("""
+            SELECT id, user_id, project_id, title, mode, created_at, updated_at
+            FROM agent_conversations
+            WHERE user_id = ? AND id = ?
+            LIMIT 1
+        """), (user_id, conversation_id))
+        conversation = cur.fetchone()
+    conn.close()
+    return conversation
+
+
+def get_agent_conversations(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, project_id, title, mode, created_at, updated_at
+        FROM agent_conversations
+        WHERE user_id = ?
+        ORDER BY id DESC
+    """), (user_id,))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def save_agent_message(user_id, conversation_id, role, content, content_type="text"):
+    conn = db()
+    cur = conn.cursor()
+    values = (conversation_id, user_id, role, str(content or "").strip(), content_type)
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO agent_messages (conversation_id, user_id, role, content, content_type)
+            VALUES (?, ?, ?, ?, ?)
+            RETURNING id
+        """), values)
+        message_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO agent_messages (conversation_id, user_id, role, content, content_type)
+            VALUES (?, ?, ?, ?, ?)
+        """), values)
+        message_id = cur.lastrowid
+    cur.execute(sql("""
+        UPDATE agent_conversations
+        SET updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND id = ?
+    """), (user_id, conversation_id))
+    conn.commit()
+    conn.close()
+    return message_id
+
+
+def get_agent_messages(user_id, conversation_id, limit=40):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, conversation_id, role, content, content_type, created_at
+        FROM agent_messages
+        WHERE user_id = ? AND conversation_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+    """), (user_id, conversation_id, limit))
+    rows = cur.fetchall()
+    conn.close()
+    return list(reversed(rows))
+
+
+def create_agent_task(user_id, project_id, title, description, status="planned", priority="normal", plan=None, result=None):
+    conn = db()
+    cur = conn.cursor()
+    values = (
+        user_id, project_id, title, description, status, priority,
+        safe_json_dumps(plan or {}), safe_json_dumps(result or {})
+    )
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO agent_tasks (
+                user_id, project_id, title, description, status, priority,
+                plan_json, result_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+        """), values)
+        task_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO agent_tasks (
+                user_id, project_id, title, description, status, priority,
+                plan_json, result_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """), values)
+        task_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return task_id
+
+
+def get_agent_tasks(user_id, project_id=None, limit=12):
+    conn = db()
+    cur = conn.cursor()
+    if project_id:
+        cur.execute(sql("""
+            SELECT id, user_id, project_id, title, description, status, priority,
+                   plan_json, result_json, created_at, updated_at
+            FROM agent_tasks
+            WHERE user_id = ? AND project_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+        """), (user_id, project_id, limit))
+    else:
+        cur.execute(sql("""
+            SELECT id, user_id, project_id, title, description, status, priority,
+                   plan_json, result_json, created_at, updated_at
+            FROM agent_tasks
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+        """), (user_id, limit))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def create_agent_approval(user_id, project_id, task_id, action_type, risk_level, proposed_action, warning_message):
+    conn = db()
+    cur = conn.cursor()
+    values = (
+        user_id, project_id, task_id, action_type, risk_level,
+        safe_json_dumps(proposed_action or {}), "pending", warning_message
+    )
+    if using_postgres():
+        cur.execute(sql("""
+            INSERT INTO agent_approvals (
+                user_id, project_id, task_id, action_type, risk_level,
+                proposed_action_json, status, warning_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
+        """), values)
+        approval_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql("""
+            INSERT INTO agent_approvals (
+                user_id, project_id, task_id, action_type, risk_level,
+                proposed_action_json, status, warning_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """), values)
+        approval_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return approval_id
+
+
+def get_agent_approvals(user_id, project_id=None, status=None):
+    conn = db()
+    cur = conn.cursor()
+    query = """
+        SELECT id, user_id, project_id, task_id, action_type, risk_level,
+               proposed_action_json, status, warning_message, approved_at,
+               executed_at, created_at
+        FROM agent_approvals
+        WHERE user_id = ?
+    """
+    params = [user_id]
+    if project_id:
+        query += " AND project_id = ?"
+        params.append(project_id)
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    query += " ORDER BY id DESC"
+    cur.execute(sql(query), tuple(params))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def update_agent_approval(user_id, approval_id, status):
+    if status not in {"approved", "rejected", "cancelled"}:
+        return False
+    timestamp_clause = ", approved_at = CURRENT_TIMESTAMP" if status == "approved" else ""
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql(f"""
+        UPDATE agent_approvals
+        SET status = ?{timestamp_clause}
+        WHERE user_id = ? AND id = ?
+    """), (status, user_id, approval_id))
+    changed = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return changed
+
+
+def create_agent_alert(user_id, project_id, alert_type, title, message, severity="info"):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        INSERT INTO agent_alerts (
+            user_id, project_id, alert_type, title, message, severity, read
+        ) VALUES (?, ?, ?, ?, ?, ?, 0)
+    """), (user_id, project_id, alert_type, title, message, severity))
+    conn.commit()
+    conn.close()
+
+
+def get_agent_alerts(user_id, unread_only=False, limit=8):
+    conn = db()
+    cur = conn.cursor()
+    if unread_only:
+        cur.execute(sql("""
+            SELECT id, user_id, project_id, alert_type, title, message, severity, read, created_at
+            FROM agent_alerts
+            WHERE user_id = ? AND read = 0
+            ORDER BY id DESC
+            LIMIT ?
+        """), (user_id, limit))
+    else:
+        cur.execute(sql("""
+            SELECT id, user_id, project_id, alert_type, title, message, severity, read, created_at
+            FROM agent_alerts
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+        """), (user_id, limit))
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+
+def approval_required_for_action(profile, action_type, risk_level):
+    mode = (profile[6] if profile else "standard") or "standard"
+    sensitive_actions = {
+        "publish", "purchase", "payment", "domain_purchase", "send_email",
+        "paid_ads", "delete_data", "account_permission", "security_change",
+        "shopify_apply", "canva_create", "external_message"
+    }
+    if action_type in sensitive_actions or risk_level in {"medium", "high"}:
+        return True
+    if mode == "standard":
+        return True
+    if mode == "reduced":
+        return risk_level != "low"
+    return False
+
+
+def classify_agent_request(message):
+    text = (message or "").lower()
+    risky_terms = {
+        "publish": ("publish", "high"),
+        "buy domain": ("domain_purchase", "high"),
+        "purchase": ("purchase", "high"),
+        "spend": ("paid_ads", "high"),
+        "run ads": ("paid_ads", "high"),
+        "send email": ("send_email", "high"),
+        "mass email": ("send_email", "high"),
+        "delete": ("delete_data", "high"),
+        "connect shopify": ("shopify_apply", "medium"),
+        "create shopify": ("shopify_apply", "medium"),
+        "connect canva": ("canva_create", "medium"),
+        "payment settings": ("payment", "high")
+    }
+    for term, result in risky_terms.items():
+        if term in text:
+            return result
+    if any(term in text for term in ["plan", "research", "calculate", "draft", "suggest", "compare", "checklist"]):
+        return "draft_guidance", "low"
+    return "conversation", "low"
+
+
+def build_agent_visible_plan(user_message, active_project, memories, action_type, risk_level):
+    project_name = active_project[2] if active_project else "your active business"
+    memory_lines = [f"- {memory[2]}: {memory[3]}" for memory in memories[:4]]
+    memory_text = "\n".join(memory_lines) if memory_lines else "- No saved matching memory yet."
+    approval_line = "Required before any external or consequential action." if risk_level in {"medium", "high"} else "Not needed for guidance or internal drafts."
+    return f"""Objective:
+Help with: {user_message}
+
+Project context:
+{project_name}
+
+Relevant memory:
+{memory_text}
+
+Visible plan:
+1. Clarify the business objective and missing information.
+2. Use existing BusinessBuilder tools where helpful.
+3. Create safe drafts, calculations, checklists, or recommendations first.
+4. Ask for approval before external actions, publishing, spending, purchases, messages, or account changes.
+5. Save a checkpoint so we can continue later.
+
+Risk level:
+{risk_level.title()}
+
+Approval:
+{approval_line}
+"""
+
+
+def local_agent_reply(user_message, active_project, memories, approval_needed):
+    project_label = active_project[2] if active_project else "your business"
+    lower = (user_message or "").lower()
+    if "shopify" in lower:
+        next_tool = "/shopify_settings"
+        action = "Open Shopify Settings or AI Store Agent to create draft products after review."
+    elif "canva" in lower or "brand" in lower or "logo" in lower:
+        next_tool = "/brand_agent"
+        action = "Open Brand Agent or Canva Settings to prepare a Canva-ready brief."
+    elif "payment" in lower or "paystack" in lower or "paypal" in lower:
+        next_tool = "/payment_guide"
+        action = "Open Payment Guide to compare Paystack, PayPal, EFT, cards, and checkout testing."
+    elif "supplier" in lower or "product" in lower:
+        next_tool = "/product_finder"
+        action = "Open Product Finder, then Supplier Finder once the first offer is clear."
+    elif "launch" in lower:
+        next_tool = "/launch_readiness"
+        action = "Open Launch Readiness to check missing items and next actions."
+    else:
+        next_tool = "/business_launch_assistant"
+        action = "Open Business Launch Assistant to turn the request into a launch roadmap."
+
+    approval_note = (
+        "I created an approval record because this may affect an external account, money, publishing, messaging, or connected tools."
+        if approval_needed else
+        "No approval is needed for this guidance because it stays inside BusinessBuilder AI."
+    )
+    return f"""Here’s the calm Builder version for {project_label}.
+
+What I can do now:
+- Turn this into a clear plan.
+- Create internal drafts, checklists, and recommendations.
+- Point you to the right BusinessBuilder tool.
+- Remember concise project facts and decisions for next time.
+
+Safety boundary:
+{approval_note}
+
+Recommended next step:
+{action}
+
+Open next:
+{next_tool}
+"""
+
+
+def run_businessbuilder_agent(user_id, conversation_id, user_message):
+    profile = get_agent_profile(user_id)
+    active_project = get_active_project(user_id)
+    project_id = active_project[0] if active_project else None
+    action_type, risk_level = classify_agent_request(user_message)
+    memories = retrieve_relevant_memories(user_id, project_id, user_message)
+    plan = build_agent_visible_plan(user_message, active_project, memories, action_type, risk_level)
+    approval_needed = approval_required_for_action(profile, action_type, risk_level)
+    task_id = create_agent_task(
+        user_id,
+        project_id,
+        "Plan: " + user_message[:70],
+        "Command Center planned this request before taking action.",
+        "needs_approval" if approval_needed else "completed",
+        "high" if risk_level == "high" else "normal",
+        {"message": user_message, "risk_level": risk_level, "approval_needed": approval_needed},
+        {}
+    )
+
+    approval_id = None
+    if approval_needed:
+        approval_id = create_agent_approval(
+            user_id,
+            project_id,
+            task_id,
+            action_type,
+            risk_level,
+            {
+                "requested_message": user_message,
+                "target_system": "BusinessBuilder AI or connected third-party platform",
+                "information_shared": "Only the business context needed for the approved action.",
+                "expected_result": "A draft, connection step, or external action after explicit confirmation."
+            },
+            "BusinessBuilder AI will not publish, spend money, buy domains, send mass emails, or change accounts without explicit approval."
+        )
+
+    model_name = os.getenv("OPENAI_REASONING_MODEL", "").strip()
+    reply = None
+    if client and model_name:
+        prompt = f"""{SYSTEM_PROMPT}
+
+You are Builder, the original BusinessBuilder AI command agent.
+Do not reveal private reasoning. Use a concise visible plan and a practical next action.
+Never claim an external action was completed. This milestone only plans, drafts, saves memory, and creates approval records.
+
+Visible plan:
+{plan}
+
+User request:
+{user_message}
+"""
+        try:
+            response = safe_openai_chat_completion(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": "You are Builder inside BusinessBuilder AI. Be calm, concise, and safety-first."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            reply = response.choices[0].message.content
+        except Exception as error:
+            logger.warning("Command Center agent fallback used: %s", error)
+
+    if not reply:
+        reply = local_agent_reply(user_message, active_project, memories, approval_needed)
+
+    if approval_id:
+        reply += f"\n\nApproval created: Review approval #{approval_id} in the Command Center before any consequential action."
+
+    save_memory(user_id, project_id, "tool_result", "latest_command_request", user_message[:1000], 0.65)
+    if active_project and active_project[3]:
+        save_memory(user_id, project_id, "project_state", "business_idea", active_project[3], 0.8)
+    save_checkpoint(
+        user_id,
+        project_id,
+        conversation_id,
+        "conversation_summary",
+        f"User asked: {user_message[:300]}. Builder responded with a plan and approval_needed={approval_needed}.",
+        {
+            "action_type": action_type,
+            "risk_level": risk_level,
+            "approval_needed": approval_needed,
+            "task_id": task_id,
+            "approval_id": approval_id
+        }
+    )
+    return {
+        "reply": reply,
+        "visible_plan": plan,
+        "approval_needed": approval_needed,
+        "approval_id": approval_id,
+        "task_id": task_id,
+        "risk_level": risk_level
+    }
 
 
 def get_business_progress(user_id):
@@ -6295,18 +7240,13 @@ def home():
     if "user_id" not in session:
         return redirect("/landing")
 
-    chats = get_chats(session["user_id"])
-
-    return render_template(
-        "index.html",
-        chats=chats
-    )
+    return redirect("/command-center")
 
 
 @app.route("/landing")
 def landing():
     if "user_id" in session:
-        return redirect("/dashboard")
+        return redirect("/command-center")
 
     return render_template("landing.html")
 
@@ -6441,7 +7381,7 @@ def login():
 
     if user and check_password_hash(user[1], password):
         session["user_id"] = user[0]
-        return redirect("/")
+        return redirect("/command-center")
 
     return render_template(
         "login.html",
@@ -12615,6 +13555,276 @@ User workflow answers:
         f"&created_count={created_count}"
         f"&failed_count={failed_count}"
     )
+
+
+# -----------------------------
+# BUSINESSBUILDER V2 COMMAND CENTER
+# -----------------------------
+
+@app.route("/command-center")
+def command_center():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    profile = get_agent_profile(user_id)
+    active_project = get_active_project(user_id)
+    project_id = active_project[0] if active_project else None
+    conversation = get_or_create_agent_conversation(user_id, project_id)
+    messages = get_agent_messages(user_id, conversation[0], limit=30)
+    pending_approvals = get_agent_approvals(user_id, project_id, "pending")
+    recent_tasks = get_agent_tasks(user_id, project_id)
+    alerts = get_agent_alerts(user_id)
+    progress = get_business_progress(user_id)
+    current_package = get_user_package(user_id)
+    connections = get_connected_app_summaries(user_id)
+
+    return render_template(
+        "command_center.html",
+        profile=profile,
+        approval_modes=AGENT_APPROVAL_MODES,
+        never_automate=AGENT_NEVER_AUTOMATE,
+        tool_directory=AGENT_TOOL_DIRECTORY,
+        active_project=active_project,
+        agent_projects=get_agent_projects(user_id),
+        conversation=conversation,
+        messages=messages,
+        pending_approvals=pending_approvals,
+        recent_tasks=recent_tasks,
+        alerts=alerts,
+        progress=progress,
+        current_package=current_package,
+        connections=connections
+    )
+
+
+@app.route("/command-center/settings", methods=["POST"])
+def update_command_center_settings():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    update_agent_profile(
+        user_id,
+        request.form.get("preferred_name", ""),
+        request.form.get("communication_style", ""),
+        request.form.get("approval_mode", "standard"),
+        1 if request.form.get("voice_enabled") == "on" else 0,
+        request.form.get("selected_voice", "builder")
+    )
+    active_project = get_active_project(user_id)
+    save_checkpoint(
+        user_id,
+        active_project[0] if active_project else None,
+        None,
+        "decision_checkpoint",
+        "User updated Builder command-center profile or approval preferences.",
+        {"approval_mode": request.form.get("approval_mode", "standard")}
+    )
+    return redirect("/command-center?settings=saved")
+
+
+@app.route("/command-center/project", methods=["POST"])
+def create_command_center_project():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    user_id = session["user_id"]
+    project_id = create_agent_project(
+        user_id,
+        request.form.get("name", "My Business Project"),
+        request.form.get("business_idea", ""),
+        request.form.get("target_customer", ""),
+        request.form.get("budget", ""),
+        request.form.get("country", ""),
+        True
+    )
+    save_memory(
+        user_id,
+        project_id,
+        "project_state",
+        "active_project",
+        request.form.get("name", "My Business Project"),
+        0.8
+    )
+    save_checkpoint(
+        user_id,
+        project_id,
+        None,
+        "project_checkpoint",
+        "A new active Builder project was created from the Command Center.",
+        {"project_id": project_id}
+    )
+    return redirect("/command-center?project=created")
+
+
+@app.route("/api/agent/message", methods=["POST"])
+def api_agent_message():
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+
+    user_id = session["user_id"]
+    data = request.get_json(silent=True) or {}
+    user_message = str(data.get("message", "")).strip()
+    if not user_message:
+        return jsonify({"error": "Enter a message first."}), 400
+
+    active_project = get_active_project(user_id)
+    project_id = active_project[0] if active_project else None
+    conversation_id = data.get("conversation_id")
+    if conversation_id:
+        try:
+            conversation_id = int(conversation_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid conversation id."}), 400
+        conversation = next(
+            (row for row in get_agent_conversations(user_id) if row[0] == conversation_id),
+            None
+        )
+        if not conversation:
+            return jsonify({"error": "Conversation not found."}), 404
+    else:
+        conversation = get_or_create_agent_conversation(user_id, project_id)
+        conversation_id = conversation[0]
+
+    save_agent_message(user_id, conversation_id, "user", user_message, "text")
+    result = run_businessbuilder_agent(user_id, conversation_id, user_message)
+    save_agent_message(user_id, conversation_id, "assistant", result["reply"], "text")
+
+    return jsonify({
+        "reply": result["reply"],
+        "visible_plan": result["visible_plan"],
+        "approval_needed": result["approval_needed"],
+        "approval_id": result["approval_id"],
+        "task_id": result["task_id"],
+        "risk_level": result["risk_level"],
+        "conversation_id": conversation_id,
+        "state": "waiting-for-approval" if result["approval_needed"] else "completed"
+    })
+
+
+@app.route("/api/agent/state")
+def api_agent_state():
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+
+    user_id = session["user_id"]
+    active_project = get_active_project(user_id)
+    project_id = active_project[0] if active_project else None
+    return jsonify({
+        "state": "ready",
+        "active_project": {
+            "id": active_project[0],
+            "name": active_project[2],
+            "business_idea": active_project[3],
+            "country": active_project[6],
+            "launch_progress": active_project[11]
+        } if active_project else None,
+        "pending_approvals": len(get_agent_approvals(user_id, project_id, "pending")),
+        "alerts": [
+            {"id": alert[0], "title": alert[4], "message": alert[5], "severity": alert[6]}
+            for alert in get_agent_alerts(user_id, unread_only=True)
+        ],
+        "approval_mode": get_agent_profile(user_id)[6],
+        "progress": get_business_progress(user_id)["percentage"]
+    })
+
+
+@app.route("/api/agent/stop", methods=["POST"])
+def api_agent_stop():
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+    return jsonify({
+        "state": "stopped",
+        "message": "Current response stopped. No external action was taken."
+    })
+
+
+@app.route("/api/realtime/session", methods=["POST"])
+def api_realtime_session():
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+
+    return jsonify({
+        "available": False,
+        "milestone": "Milestone 2",
+        "message": (
+            "Realtime voice is not enabled in this Milestone 1 build. "
+            "The permanent OpenAI API key is never exposed to browser JavaScript."
+        )
+    }), 501
+
+
+@app.route("/api/conversations")
+def api_conversations():
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+
+    rows = get_agent_conversations(session["user_id"])
+    return jsonify({
+        "conversations": [
+            {
+                "id": row[0],
+                "project_id": row[2],
+                "title": row[3],
+                "mode": row[4],
+                "created_at": str(row[5]),
+                "updated_at": str(row[6])
+            }
+            for row in rows
+        ]
+    })
+
+
+@app.route("/api/conversations/<int:conversation_id>")
+def api_conversation_detail(conversation_id):
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+
+    user_id = session["user_id"]
+    conversation = next(
+        (row for row in get_agent_conversations(user_id) if row[0] == conversation_id),
+        None
+    )
+    if not conversation:
+        return jsonify({"error": "Conversation not found."}), 404
+
+    return jsonify({
+        "conversation": {
+            "id": conversation[0],
+            "project_id": conversation[2],
+            "title": conversation[3],
+            "mode": conversation[4]
+        },
+        "messages": [
+            {
+                "id": row[0],
+                "role": row[2],
+                "content": row[3],
+                "content_type": row[4],
+                "created_at": str(row[5])
+            }
+            for row in get_agent_messages(user_id, conversation_id, limit=80)
+        ]
+    })
+
+
+@app.route("/agent_approval/<int:approval_id>/<status>", methods=["POST"])
+def agent_approval_action(approval_id, status):
+    if "user_id" not in session:
+        return redirect("/login")
+
+    if update_agent_approval(session["user_id"], approval_id, status):
+        active_project = get_active_project(session["user_id"])
+        save_checkpoint(
+            session["user_id"],
+            active_project[0] if active_project else None,
+            None,
+            "decision_checkpoint",
+            f"User marked approval #{approval_id} as {status}.",
+            {"approval_id": approval_id, "status": status}
+        )
+    return redirect("/command-center#approvals")
 
 
 # -----------------------------

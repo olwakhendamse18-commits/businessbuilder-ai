@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ current_user_theme }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command Center | BusinessBuilder AI</title>
+    {% include "_pwa_head.html" %}
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="dashboard command-center-shell">
+    <aside class="sidebar">
+        <h2>BusinessBuilder AI</h2>
+        <a href="/command-center" class="active">Command Center</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/business_progress">Progress</a>
+        <a href="/approval_center">Approval Center</a>
+        <a href="/settings">Settings</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main command-center-main">
+        {% include "_settings_menu.html" %}
+
+        <section class="command-hero">
+            <div>
+                <p class="eyebrow">V2 Agent Workspace</p>
+                <h1>BusinessBuilder AI Command Center</h1>
+                <p>Builder helps you plan, draft, remember decisions, route work to tools, and ask for approval before anything consequential happens.</p>
+                <div class="dashboard-hero-actions">
+                    <button type="button" class="primary-button" data-mode="text">Text Mode</button>
+                    <button type="button" class="secondary-button" data-mode="voice" aria-describedby="voiceModeNote">Voice Mode preview</button>
+                    <a href="/build_center" class="secondary-button">Open Build Center</a>
+                </div>
+                <small id="voiceModeNote">Voice sessions are planned for Milestone 2. This build does not expose the OpenAI API key to the browser.</small>
+            </div>
+            <div class="command-orb-card" aria-label="Builder agent state">
+                <div class="command-orb" data-agent-state="ready">
+                    <span></span>
+                    <strong>Builder</strong>
+                </div>
+                <p class="command-state-pill" id="agentStateLabel">Ready</p>
+                <p>{{ current_package }} plan · Approval mode: {{ approval_modes[profile[6]].label if profile[6] in approval_modes else "Standard Approval" }}</p>
+            </div>
+        </section>
+
+        <section class="command-grid">
+            <article class="project-form command-chat-card">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Conversation</p>
+                        <h2>Ask Builder what to do next</h2>
+                    </div>
+                    <span class="build-status in-progress">Local-first text agent</span>
+                </div>
+
+                <div class="command-transcript" id="commandTranscript" aria-live="polite">
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="command-message {{ message[2] }}">
+                                <span>{{ "You" if message[2] == "user" else "Builder" }}</span>
+                                <p>{{ message[3] }}</p>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="command-message assistant">
+                            <span>Builder</span>
+                            <p>Tell me what you want to build. Example: “Help me start a skincare business in South Africa with a low budget.”</p>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <form class="command-input" id="commandChatForm" data-conversation-id="{{ conversation[0] }}">
+                    <label for="commandMessage" class="sr-only">Message Builder</label>
+                    <textarea id="commandMessage" name="message" rows="3" placeholder="Ask Builder to plan, compare, draft, check, or continue where you left off..." required></textarea>
+                    <div class="generator-actions">
+                        <button type="submit" class="primary-button">Send to Builder</button>
+                        <button type="button" class="secondary-button" id="stopAgentButton">Stop</button>
+                    </div>
+                </form>
+            </article>
+
+            <aside class="project-form command-side-panel">
+                <p class="eyebrow">Active project</p>
+                {% if active_project %}
+                    <h2>{{ active_project[2] }}</h2>
+                    <p><strong>Idea:</strong> {{ active_project[3] or "Not added yet" }}</p>
+                    <p><strong>Customer:</strong> {{ active_project[4] or "Not added yet" }}</p>
+                    <p><strong>Budget:</strong> {{ active_project[5] or "Not added yet" }}</p>
+                    <p><strong>Country:</strong> {{ active_project[6] or "Not added yet" }}</p>
+                {% else %}
+                    <h2>No active Builder project yet</h2>
+                    <p>Create one below or complete onboarding so Builder has a business context to remember.</p>
+                {% endif %}
+                <div class="progress-bar"><span style="width: {{ progress.percentage }}%"></span></div>
+                <p>{{ progress.completed }} of {{ progress.total }} launch steps complete · Next: {{ progress.next_step.title }}</p>
+                <a href="{{ progress.next_step.url }}" class="secondary-button">{{ progress.next_step.action }} {{ progress.next_step.title }}</a>
+            </aside>
+        </section>
+
+        <section class="command-grid command-grid-small">
+            <article class="project-form">
+                <p class="eyebrow">Create active project</p>
+                <h2>Start or switch Builder’s focus</h2>
+                <form method="POST" action="/command-center/project" class="stacked-form">
+                    <label>Project name
+                        <input type="text" name="name" placeholder="Example: GlowCare Skincare Launch" required>
+                    </label>
+                    <label>Business idea
+                        <textarea name="business_idea" rows="3" placeholder="What are you building?"></textarea>
+                    </label>
+                    <label>Target customer
+                        <input type="text" name="target_customer" placeholder="Who is it for?">
+                    </label>
+                    <div class="form-grid two">
+                        <label>Budget
+                            <input type="text" name="budget" placeholder="Example: R2,000">
+                        </label>
+                        <label>Country
+                            <input type="text" name="country" placeholder="Example: South Africa">
+                        </label>
+                    </div>
+                    <button type="submit" class="primary-button">Create active project</button>
+                </form>
+            </article>
+
+            <article class="project-form">
+                <p class="eyebrow">Memory and approvals</p>
+                <h2>How Builder is allowed to act</h2>
+                <form method="POST" action="/command-center/settings" class="stacked-form">
+                    <label>Preferred name
+                        <input type="text" name="preferred_name" value="{{ profile[2] or '' }}" placeholder="What should Builder call you?">
+                    </label>
+                    <label>Communication style
+                        <input type="text" name="communication_style" value="{{ profile[3] or 'calm, concise, beginner-friendly' }}">
+                    </label>
+                    <label>Approval mode
+                        <select name="approval_mode">
+                            {% for key, mode in approval_modes.items() %}
+                                <option value="{{ key }}" {% if profile[6] == key %}selected{% endif %}>{{ mode.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="checkbox-line">
+                        <input type="checkbox" name="voice_enabled" {% if profile[4] %}checked{% endif %}>
+                        Enable voice when Milestone 2 is ready
+                    </label>
+                    <button type="submit" class="secondary-button">Save agent settings</button>
+                </form>
+                <div class="security-warning">
+                    <strong>Always requires approval:</strong>
+                    <p>{{ never_automate|join(", ") }}.</p>
+                </div>
+            </article>
+        </section>
+
+        <section class="command-grid command-grid-small" id="approvals">
+            <article class="project-form">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Pending approvals</p>
+                        <h2>Review before external action</h2>
+                    </div>
+                    <a href="/approval_center" class="secondary-button">Classic Approval Center</a>
+                </div>
+                {% if pending_approvals %}
+                    <div class="approval-task-grid">
+                        {% for approval in pending_approvals %}
+                            <div class="approval-task-card">
+                                <span class="build-status needs-approval">{{ approval[5]|title }} risk</span>
+                                <h3>{{ approval[4]|replace("_", " ")|title }}</h3>
+                                <p>{{ approval[8] }}</p>
+                                <details>
+                                    <summary>What Builder proposed</summary>
+                                    <pre class="approval-preview">{{ approval[6] }}</pre>
+                                </details>
+                                <div class="generator-actions">
+                                    <form method="POST" action="/agent_approval/{{ approval[0] }}/approved"><button type="submit" class="primary-button">Approve once</button></form>
+                                    <form method="POST" action="/agent_approval/{{ approval[0] }}/rejected"><button type="submit" class="secondary-button">Reject</button></form>
+                                    <form method="POST" action="/agent_approval/{{ approval[0] }}/cancelled"><button type="submit" class="secondary-button">Cancel</button></form>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-card">No pending Builder approvals. Guidance, calculations, and internal drafts can continue safely.</p>
+                {% endif %}
+            </article>
+
+            <article class="project-form">
+                <p class="eyebrow">Task timeline</p>
+                <h2>Recent Builder plans</h2>
+                {% if recent_tasks %}
+                    <div class="timeline-list">
+                        {% for task in recent_tasks %}
+                            <div>
+                                <span class="build-status {{ task[5]|replace('_', '-') }}">{{ task[5]|replace("_", " ")|title }}</span>
+                                <strong>{{ task[3] }}</strong>
+                                <p>{{ task[4] }}</p>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-card">Ask Builder a question and the visible plan will appear here.</p>
+                {% endif %}
+            </article>
+        </section>
+
+        <section class="project-form">
+            <div class="command-section-header">
+                <div>
+                    <p class="eyebrow">Connected tools and safe actions</p>
+                    <h2>Tool directory</h2>
+                </div>
+                <a href="/app_connection_agent" class="secondary-button">Open App Connection Agent</a>
+            </div>
+            <div class="workspace-tool-grid">
+                {% for tool in tool_directory %}
+                    <article class="workspace-tool-card">
+                        <span class="plan-requirement-badge">{{ tool.risk|title }} risk</span>
+                        <h3>{{ tool.name }}</h3>
+                        <p>{{ tool.approval }}</p>
+                        <a href="{{ tool.route }}" class="secondary-button">Open tool</a>
+                    </article>
+                {% endfor %}
+            </div>
+            <div class="integration-status-row">
+                {% for connection in connections %}
+                    <article>
+                        <strong>{{ connection.name }}</strong>
+                        <span>{{ connection.status }}</span>
+                        <small>{{ connection.category }}</small>
+                    </article>
+                {% else %}
+                    <article>
+                        <strong>No connected apps yet</strong>
+                        <span>Connect only when you choose to.</span>
+                        <small>Builder can still create internal plans and drafts.</small>
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="project-form">
+            <p class="eyebrow">Privacy controls</p>
+            <h2>Memory disclosure</h2>
+            <p>Builder saves concise user/project facts, decisions, task state, and checkpoints so it can continue later. It does not save private chain-of-thought and must not store passwords, OTPs, banking credentials, card details, API secret keys, or full authentication cookies as memory.</p>
+            <div class="generator-actions">
+                <a href="/settings" class="secondary-button">Account settings</a>
+                <a href="/privacy" class="secondary-button">Privacy policy</a>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script>
+(() => {
+    const form = document.getElementById("commandChatForm");
+    const input = document.getElementById("commandMessage");
+    const transcript = document.getElementById("commandTranscript");
+    const stateLabel = document.getElementById("agentStateLabel");
+    const stopButton = document.getElementById("stopAgentButton");
+
+    function addMessage(role, content) {
+        const wrapper = document.createElement("div");
+        wrapper.className = `command-message ${role}`;
+        const label = document.createElement("span");
+        label.textContent = role === "user" ? "You" : "Builder";
+        const paragraph = document.createElement("p");
+        paragraph.textContent = content;
+        wrapper.append(label, paragraph);
+        transcript.appendChild(wrapper);
+        transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    function setState(label) {
+        stateLabel.textContent = label;
+        document.body.dataset.agentState = label.toLowerCase().replace(/\s+/g, "-");
+    }
+
+    if (form) {
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const message = input.value.trim();
+            if (!message) return;
+            addMessage("user", message);
+            input.value = "";
+            setState("Thinking");
+            try {
+                const response = await fetch("/api/agent/message", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        message,
+                        conversation_id: form.dataset.conversationId
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || "Builder could not respond.");
+                }
+                form.dataset.conversationId = data.conversation_id;
+                addMessage("assistant", data.reply);
+                setState(data.approval_needed ? "Waiting for approval" : "Completed");
+            } catch (error) {
+                addMessage("assistant", error.message);
+                setState("Error");
+            }
+        });
+    }
+
+    if (stopButton) {
+        stopButton.addEventListener("click", async () => {
+            await fetch("/api/agent/stop", {method: "POST"});
+            setState("Stopped");
+        });
+    }
+
+    document.querySelectorAll("[data-mode='voice']").forEach((button) => {
+        button.addEventListener("click", async () => {
+            setState("Voice preview");
+            addMessage("assistant", "Voice mode is planned for Milestone 2. For this Milestone 1 build, use text mode; no microphone permission is requested yet.");
+        });
+    });
+})();
+</script>
+
+{% include "_app_scripts.html" %}
+</body>
+</html>
