@@ -230,6 +230,108 @@
             </article>
         </section>
 
+        <section class="command-grid command-grid-small" id="research">
+            <article class="project-form">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Deep business research</p>
+                        <h2>Research with citations</h2>
+                    </div>
+                    <span class="build-status in-progress">Read-only</span>
+                </div>
+                <form class="stacked-form" id="researchForm">
+                    <label>Research question
+                        <textarea id="researchQuery" rows="3" maxlength="900" placeholder="Example: Research affordable skincare suppliers that ship to South Africa." required></textarea>
+                    </label>
+                    <label>Depth
+                        <select id="researchDepth">
+                            <option value="standard">Standard</option>
+                            <option value="quick">Quick</option>
+                            <option value="deep">Deep — queue for worker</option>
+                        </select>
+                    </label>
+                    <div class="generator-actions">
+                        <button type="submit" class="primary-button">Start Research</button>
+                        <button type="button" class="secondary-button" id="refreshResearchButton">Refresh Research</button>
+                    </div>
+                </form>
+                <div class="research-status-card" id="researchStatus" aria-live="polite">
+                    Ask a current business question. Sources will appear here when available.
+                </div>
+                <div class="research-result-card" id="researchResult"></div>
+            </article>
+
+            <article class="project-form">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Research history</p>
+                        <h2>Recent cited results</h2>
+                    </div>
+                </div>
+                <div class="timeline-list" id="researchHistory">
+                    <p class="empty-card">No research loaded yet.</p>
+                </div>
+            </article>
+        </section>
+
+        <section class="command-grid command-grid-small" id="monitoring">
+            <article class="project-form">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Project monitoring</p>
+                        <h2>Safe in-app monitors</h2>
+                    </div>
+                    <button type="button" class="secondary-button" id="refreshMonitoringButton">Refresh</button>
+                </div>
+                <form class="stacked-form" id="monitorRuleForm">
+                    <label>Monitor type
+                        <select id="monitorType">
+                            <option value="launch_readiness">Launch readiness</option>
+                            <option value="pending_approvals">Pending approvals</option>
+                            <option value="shopify_connection_health">Shopify connection health</option>
+                            <option value="canva_connection_health">Canva connection health</option>
+                            <option value="paystack_mode_status">Paystack mode status</option>
+                            <option value="project_inactivity">Project inactivity</option>
+                        </select>
+                    </label>
+                    <label>Frequency
+                        <select id="monitorFrequency">
+                            <option value="1440">Daily</option>
+                            <option value="10080">Weekly</option>
+                            <option value="60">Hourly minimum</option>
+                        </select>
+                    </label>
+                    <button type="submit" class="primary-button">Enable Monitor</button>
+                </form>
+                <div class="timeline-list" id="monitorRules">
+                    <p class="empty-card">No monitor rules loaded yet.</p>
+                </div>
+            </article>
+
+            <article class="project-form">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">In-app alerts</p>
+                        <h2>Recent alerts</h2>
+                    </div>
+                    <button type="button" class="secondary-button" id="markAllAlertsReadButton">Mark all read</button>
+                </div>
+                <div class="timeline-list" id="agentAlerts">
+                    {% if alerts %}
+                        {% for alert in alerts %}
+                            <div>
+                                <span class="build-status {{ alert[6] }}">{{ alert[6]|title }}</span>
+                                <strong>{{ alert[4] }}</strong>
+                                <p>{{ alert[5] }}</p>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="empty-card">No alerts yet.</p>
+                    {% endif %}
+                </div>
+            </article>
+        </section>
+
         <section class="project-form">
             <div class="command-section-header">
                 <div>
@@ -284,6 +386,9 @@ window.BB_COMMAND_CENTER = {
     realtimeEndUrl: "/api/realtime/session/end",
     agentMessageUrl: "/api/agent/message",
     agentStopUrl: "/api/agent/stop",
+    researchUrl: "/api/research",
+    monitoringRulesUrl: "/api/monitoring/rules",
+    alertsUrl: "/api/alerts",
     maxVoiceSeconds: {{ voice_config.session_max_seconds }},
     idleTimeoutSeconds: {{ voice_config.idle_timeout_seconds }}
 };

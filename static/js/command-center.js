@@ -18,6 +18,20 @@
     const form = document.getElementById("commandChatForm");
     const canvas = document.getElementById("voiceWaveform");
     const remoteAudio = document.getElementById("voiceRemoteAudio");
+    const researchForm = document.getElementById("researchForm");
+    const researchQuery = document.getElementById("researchQuery");
+    const researchDepth = document.getElementById("researchDepth");
+    const researchStatus = document.getElementById("researchStatus");
+    const researchResult = document.getElementById("researchResult");
+    const researchHistory = document.getElementById("researchHistory");
+    const refreshResearchButton = document.getElementById("refreshResearchButton");
+    const monitorRuleForm = document.getElementById("monitorRuleForm");
+    const monitorType = document.getElementById("monitorType");
+    const monitorFrequency = document.getElementById("monitorFrequency");
+    const monitorRules = document.getElementById("monitorRules");
+    const refreshMonitoringButton = document.getElementById("refreshMonitoringButton");
+    const agentAlerts = document.getElementById("agentAlerts");
+    const markAllAlertsReadButton = document.getElementById("markAllAlertsReadButton");
 
     let voice = null;
     let voiceMode = false;
@@ -41,6 +55,198 @@
         wrapper.append(label, paragraph);
         transcript.appendChild(wrapper);
         transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    function safeText(value) {
+        return String(value || "");
+    }
+
+    function terminalResearchStatus(status) {
+        return ["completed", "failed", "cancelled"].includes(status);
+    }
+
+    function renderResearchJob(job) {
+        if (!researchResult || !job) return;
+        researchStatus.textContent = `Research ${job.status}: ${job.query}`;
+        const result = job.result || {};
+        const sources = result.sources || [];
+        const findings = result.key_findings || [];
+        const risks = result.risks || result.uncertainties || [];
+        researchResult.replaceChildren();
+        const card = document.createElement("div");
+        card.className = "research-output-card";
+        const title = document.createElement("h3");
+        title.textContent = job.query;
+        const status = document.createElement("span");
+        status.className = "build-status " + job.status;
+        status.textContent = job.status;
+        const answer = document.createElement("p");
+        answer.textContent = safeText(result.answer || job.result_summary || job.error_message || "Research status updated.");
+        card.append(status, title, answer);
+        if (findings.length) {
+            const list = document.createElement("ul");
+            findings.slice(0, 8).forEach((item) => {
+                const li = document.createElement("li");
+                li.textContent = safeText(item);
+                list.appendChild(li);
+            });
+            card.appendChild(list);
+        }
+        if (result.recommendation) {
+            const rec = document.createElement("p");
+            rec.innerHTML = "<strong>Recommendation:</strong> ";
+            rec.appendChild(document.createTextNode(result.recommendation));
+            card.appendChild(rec);
+        }
+        if (risks.length) {
+            const risk = document.createElement("p");
+            risk.innerHTML = "<strong>Risks / uncertainty:</strong> ";
+            risk.appendChild(document.createTextNode(risks.slice(0, 4).join(" ")));
+            card.appendChild(risk);
+        }
+        if (sources.length) {
+            const sourceTitle = document.createElement("h4");
+            sourceTitle.textContent = "Sources";
+            const sourceList = document.createElement("ul");
+            sources.forEach((source) => {
+                const li = document.createElement("li");
+                const link = document.createElement("a");
+                link.href = source.url;
+                link.target = "_blank";
+                link.rel = "noopener noreferrer";
+                link.textContent = `[${source.citation_label || "S"}] ${source.title || source.domain || "Source"}`;
+                li.appendChild(link);
+                sourceList.appendChild(li);
+            });
+            card.append(sourceTitle, sourceList);
+        }
+        researchResult.appendChild(card);
+    }
+
+    async function loadResearchJobs() {
+        if (!researchHistory) return;
+        try {
+            const response = await fetch(config.researchUrl || "/api/research");
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "Could not load research.");
+            researchHistory.replaceChildren();
+            if (!payload.research_jobs.length) {
+                const empty = document.createElement("p");
+                empty.className = "empty-card";
+                empty.textContent = "No research yet.";
+                researchHistory.appendChild(empty);
+                return;
+            }
+            payload.research_jobs.slice(0, 8).forEach((job) => {
+                const item = document.createElement("button");
+                item.type = "button";
+                item.className = "research-history-item";
+                item.textContent = `${job.status} · ${job.research_type} · ${job.query}`;
+                item.addEventListener("click", () => renderResearchJob(job));
+                researchHistory.appendChild(item);
+            });
+        } catch (error) {
+            if (researchStatus) researchStatus.textContent = error.message;
+        }
+    }
+
+    async function pollResearchJob(jobId) {
+        const interval = window.setInterval(async () => {
+            try {
+                const response = await fetch(`${config.researchUrl || "/api/research"}/${jobId}`);
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || "Could not refresh research.");
+                renderResearchJob(payload.research_job);
+                if (terminalResearchStatus(payload.research_job.status)) {
+                    window.clearInterval(interval);
+                    loadResearchJobs();
+                    loadAlerts();
+                }
+            } catch (error) {
+                window.clearInterval(interval);
+                if (researchStatus) researchStatus.textContent = error.message;
+            }
+        }, 7000);
+    }
+
+    async function loadMonitorRules() {
+        if (!monitorRules) return;
+        try {
+            const response = await fetch(config.monitoringRulesUrl || "/api/monitoring/rules");
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "Could not load monitor rules.");
+            monitorRules.replaceChildren();
+            if (!payload.rules.length) {
+                const empty = document.createElement("p");
+                empty.className = "empty-card";
+                empty.textContent = "No monitor rules yet.";
+                monitorRules.appendChild(empty);
+                return;
+            }
+            payload.rules.forEach((rule) => {
+                const item = document.createElement("div");
+                const title = document.createElement("strong");
+                title.textContent = rule.name;
+                const copy = document.createElement("p");
+                copy.textContent = `${rule.enabled ? "Enabled" : "Disabled"} · every ${rule.frequency_minutes} minutes`;
+                const toggle = document.createElement("button");
+                toggle.type = "button";
+                toggle.className = "secondary-button";
+                toggle.textContent = rule.enabled ? "Disable" : "Enable";
+                toggle.addEventListener("click", async () => {
+                    await fetch(`${config.monitoringRulesUrl || "/api/monitoring/rules"}/${rule.id}`, {
+                        method: "PATCH",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({enabled: !rule.enabled})
+                    });
+                    loadMonitorRules();
+                });
+                item.append(title, copy, toggle);
+                monitorRules.appendChild(item);
+            });
+        } catch (error) {
+            monitorRules.textContent = error.message;
+        }
+    }
+
+    async function loadAlerts() {
+        if (!agentAlerts) return;
+        try {
+            const response = await fetch(config.alertsUrl || "/api/alerts");
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "Could not load alerts.");
+            agentAlerts.replaceChildren();
+            if (!payload.alerts.length) {
+                const empty = document.createElement("p");
+                empty.className = "empty-card";
+                empty.textContent = "No alerts yet.";
+                agentAlerts.appendChild(empty);
+                return;
+            }
+            payload.alerts.slice(0, 8).forEach((alert) => {
+                const item = document.createElement("div");
+                const badge = document.createElement("span");
+                badge.className = "build-status " + alert.severity;
+                badge.textContent = alert.severity;
+                const title = document.createElement("strong");
+                title.textContent = alert.title;
+                const copy = document.createElement("p");
+                copy.textContent = alert.message;
+                const read = document.createElement("button");
+                read.type = "button";
+                read.className = "secondary-button";
+                read.textContent = alert.read ? "Read" : "Mark read";
+                read.disabled = alert.read;
+                read.addEventListener("click", async () => {
+                    await fetch(`${config.alertsUrl || "/api/alerts"}/${alert.id}/read`, {method: "POST"});
+                    loadAlerts();
+                });
+                item.append(badge, title, copy, read);
+                agentAlerts.appendChild(item);
+            });
+        } catch (error) {
+            agentAlerts.textContent = error.message;
+        }
     }
 
     function setVoiceState(state, detail) {
@@ -147,6 +353,58 @@
         });
     }
 
+    if (researchForm) {
+        researchForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const query = researchQuery.value.trim();
+            if (!query) return;
+            researchStatus.textContent = "Creating research plan...";
+            researchResult.replaceChildren();
+            try {
+                const response = await fetch(config.researchUrl || "/api/research", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({query, research_type: researchDepth.value})
+                });
+                const payload = await response.json();
+                if (!response.ok && !payload.research_job) throw new Error(payload.error || "Research failed.");
+                renderResearchJob(payload.research_job);
+                loadResearchJobs();
+                if (payload.queued || !terminalResearchStatus(payload.research_job.status)) {
+                    pollResearchJob(payload.research_job.id);
+                }
+            } catch (error) {
+                researchStatus.textContent = error.message;
+            }
+        });
+    }
+
+    if (refreshResearchButton) refreshResearchButton.addEventListener("click", loadResearchJobs);
+
+    if (monitorRuleForm) {
+        monitorRuleForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await fetch(config.monitoringRulesUrl || "/api/monitoring/rules", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    monitor_type: monitorType.value,
+                    frequency_minutes: Number(monitorFrequency.value),
+                    enabled: true
+                })
+            });
+            loadMonitorRules();
+        });
+    }
+
+    if (refreshMonitoringButton) refreshMonitoringButton.addEventListener("click", () => { loadMonitorRules(); loadAlerts(); });
+    if (markAllAlertsReadButton) {
+        markAllAlertsReadButton.addEventListener("click", async () => {
+            await fetch("/api/alerts/read-all", {method: "POST"});
+            loadAlerts();
+        });
+    }
+
     window.addEventListener("beforeunload", () => {
         if (voice) voice.stop("page_unload");
     });
@@ -159,4 +417,7 @@
 
     setMode("text");
     setVoiceState("idle", "Voice is idle. Click Voice, then Start Voice when you are ready.");
+    loadResearchJobs();
+    loadMonitorRules();
+    loadAlerts();
 })();
