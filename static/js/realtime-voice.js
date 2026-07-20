@@ -7,6 +7,13 @@
         return String(value || "").trim();
     }
 
+    function createClientRequestId() {
+        if (window.crypto && typeof window.crypto.randomUUID === "function") {
+            return window.crypto.randomUUID();
+        }
+        return `bb-voice-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
     class BusinessBuilderRealtimeVoice {
         constructor(options) {
             this.options = options || {};
@@ -185,11 +192,13 @@
             try {
                 const response = await fetch(config.agentMessageUrl || "/api/agent/message", {
                     method: "POST",
-                    headers: {"Content-Type": "application/json"},
+                    credentials: "same-origin",
+                    headers: {"Accept": "application/json", "Content-Type": "application/json"},
                     body: JSON.stringify({
                         message,
                         conversation_id: this.conversationId,
-                        mode: "voice"
+                        mode: "voice",
+                        request_id: createClientRequestId()
                     })
                 });
                 const payload = await response.json();

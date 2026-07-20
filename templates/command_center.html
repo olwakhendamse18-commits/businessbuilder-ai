@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="/static/css/command-center.css">
     <link rel="stylesheet" href="/static/css/command-visuals.css">
 </head>
-<body data-command-state="{{ visual_state.primary_state }}" data-visual-mode="{{ visual_preferences.visual_mode }}" data-motion-level="{{ visual_preferences.motion_level }}">
+<body class="command-center-page" data-command-state="{{ visual_state.primary_state }}" data-visual-mode="{{ visual_preferences.visual_mode }}" data-motion-level="{{ visual_preferences.motion_level }}">
 <a href="#commandMessage" class="skip-link">Skip to Builder message box</a>
 <div class="dashboard command-center-shell">
     <aside class="sidebar">
@@ -235,6 +235,7 @@
                 <form class="command-input" id="commandChatForm" data-conversation-id="{{ conversation[0] }}">
                     <label for="commandMessage" class="sr-only">Message Builder</label>
                     <textarea id="commandMessage" name="message" rows="3" placeholder="Ask Builder to plan, compare, draft, check, or continue where you left off..." required></textarea>
+                    <p class="command-chat-status" id="commandChatStatus" aria-live="polite"></p>
                     <div class="generator-actions">
                         <button type="submit" class="primary-button">Send to Builder</button>
                         <button type="button" class="secondary-button" id="stopAgentButton">Stop</button>

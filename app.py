@@ -1114,6 +1114,20 @@ def init_db():
     """)
 
     execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_message_requests (
+            id {id_type},
+            user_id INTEGER NOT NULL,
+            request_id TEXT NOT NULL,
+            conversation_id INTEGER,
+            status TEXT NOT NULL DEFAULT 'processing',
+            response_json TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, request_id)
+        )
+    """)
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS agent_memories (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -1477,6 +1491,11 @@ def init_db():
     cur.execute(sql("""
         CREATE INDEX IF NOT EXISTS idx_agent_visual_preferences_user
         ON agent_visual_preferences (user_id)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_agent_message_requests_user_request
+        ON agent_message_requests (user_id, request_id)
     """))
 
     conn.commit()
@@ -3873,12 +3892,17 @@ def get_voice_config():
         "enabled": env_bool("VOICE_ENABLED", True),
         "model": os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime-2.1").strip() or "gpt-realtime-2.1",
         "voice": os.getenv("OPENAI_REALTIME_VOICE", "marin").strip() or "marin",
+        "handshake_timeout_seconds": env_int("VOICE_HANDSHAKE_TIMEOUT_SECONDS", 12, minimum=5, maximum=30),
         "session_max_minutes": max_minutes,
         "daily_max_minutes": daily_minutes,
         "idle_timeout_seconds": idle_timeout,
         "session_max_seconds": max_minutes * 60,
         "daily_max_seconds": daily_minutes * 60
     }
+
+
+def command_center_live_model_enabled():
+    return env_bool("COMMAND_CENTER_LIVE_MODEL_ENABLED", False)
 
 
 def get_research_config():
@@ -5119,6 +5143,80 @@ def get_agent_messages(user_id, conversation_id, limit=40):
     return list(reversed(rows))
 
 
+def normalize_agent_request_id(value):
+    request_id = str(value or "").strip()
+    if not request_id:
+        return ""
+    request_id = request_id[:120]
+    if not re.match(r"^[A-Za-z0-9_.:-]+$", request_id):
+        return ""
+    return request_id
+
+
+def get_agent_message_request(user_id, request_id):
+    if not request_id:
+        return None
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, request_id, conversation_id, status, response_json,
+               created_at, updated_at
+        FROM agent_message_requests
+        WHERE user_id = ? AND request_id = ?
+        LIMIT 1
+    """), (user_id, request_id))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+
+def reserve_agent_message_request(user_id, request_id):
+    if not request_id:
+        return True, None
+    conn = db()
+    cur = conn.cursor()
+    try:
+        cur.execute(sql("""
+            INSERT INTO agent_message_requests (user_id, request_id, status)
+            VALUES (?, ?, ?)
+        """), (user_id, request_id, "processing"))
+        conn.commit()
+        conn.close()
+        return True, None
+    except (sqlite3.IntegrityError, psycopg2.IntegrityError):
+        conn.rollback()
+        conn.close()
+        return False, get_agent_message_request(user_id, request_id)
+
+
+def complete_agent_message_request(user_id, request_id, conversation_id, response_payload):
+    if not request_id:
+        return
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        UPDATE agent_message_requests
+        SET conversation_id = ?, status = ?, response_json = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND request_id = ?
+    """), (conversation_id, "completed", safe_json_dumps(response_payload), user_id, request_id))
+    conn.commit()
+    conn.close()
+
+
+def fail_agent_message_request(user_id, request_id, error_message):
+    if not request_id:
+        return
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        UPDATE agent_message_requests
+        SET status = ?, response_json = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND request_id = ?
+    """), ("failed", safe_json_dumps({"error": str(error_message or "Builder failed safely.")[:500]}), user_id, request_id))
+    conn.commit()
+    conn.close()
+
+
 def create_agent_task(user_id, project_id, title, description, status="planned", priority="normal", plan=None, result=None):
     conn = db()
     cur = conn.cursor()
@@ -5429,19 +5527,14 @@ def create_realtime_sdp_answer(user_id, offer_sdp):
     config = get_voice_config()
     api_key = os.getenv("OPENAI_API_KEY")
     endpoint = os.getenv("OPENAI_REALTIME_WEBRTC_URL", "https://api.openai.com/v1/realtime/calls")
-    params = {
-        "model": config["model"],
-        "voice": config["voice"],
-        "modalities": "audio,text"
-    }
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/sdp",
-        "OpenAI-Beta": "realtime=v1",
         "X-OpenAI-Safety-Identifier": voice_safety_identifier(user_id)
     }
     # Server-controlled session settings. The client cannot override these.
     session_config = {
+        "type": "realtime",
+        "model": config["model"],
         "instructions": realtime_voice_instructions(),
         "voice": config["voice"],
         "modalities": ["audio", "text"],
@@ -5455,19 +5548,18 @@ def create_realtime_sdp_answer(user_id, offer_sdp):
         "max_response_output_tokens": 900,
         "tool_choice": "none"
     }
-    headers["X-BusinessBuilder-Realtime-Config"] = base64.urlsafe_b64encode(
-        safe_json_dumps(session_config).encode("utf-8")
-    ).decode("utf-8")
     try:
         response = requests.post(
             endpoint,
             headers=headers,
-            params=params,
-            data=offer_sdp,
-            timeout=25
+            files={
+                "sdp": ("offer.sdp", offer_sdp, "application/sdp"),
+                "session": (None, safe_json_dumps(session_config), "application/json")
+            },
+            timeout=config["handshake_timeout_seconds"]
         )
     except requests.RequestException:
-        return None, "Could not reach the OpenAI Realtime service."
+        return None, "Voice could not connect quickly enough. Text mode is still available."
     if response.status_code >= 400:
         if response.status_code == 401:
             return None, "Voice authentication failed on the server. Check the OpenAI API key."
@@ -5586,7 +5678,7 @@ def create_research_job(user_id, project_id, conversation_id, task_id, query, re
     cur = conn.cursor()
     values = (
         user_id, project_id, conversation_id, task_id, query[:RESEARCH_QUERY_MAX_CHARS],
-        research_type, "queued" if research_type == "deep" else "planned",
+        research_type, "queued",
         config["model"], config["context_size"], safe_json_dumps(plan)
     )
     if using_postgres():
@@ -6300,26 +6392,17 @@ def run_businessbuilder_agent(user_id, conversation_id, user_message):
         research_job_id = create_research_job(user_id, project_id, conversation_id, task_id, user_message, research_type)
         research_job = get_research_job(user_id, research_job_id)
         visible_plan = research_job[11] if research_job else safe_json_dumps(visible_research_plan(user_message, research_type, active_project))
-        if research_type == "deep":
-            queue_background_job(user_id, project_id, "deep_research", research_job_id, {"query": user_message})
-            reply = (
-                "I’ve queued a deep research task and saved the visible research plan in your Command Center. "
-                "The worker can continue it without freezing Flask. I’ll show an in-app alert when it completes.\n\n"
-                "Voice summary: I’ve started the research task. The citations will appear in your Command Center when ready."
-            )
-            save_checkpoint(
-                user_id, project_id, conversation_id, "tool_checkpoint",
-                f"Deep research queued: {user_message[:220]}",
-                {"research_job_id": research_job_id, "research_type": research_type, "task_id": task_id}
-            )
-        else:
-            result, error = run_research_job(user_id, research_job_id)
-            if error:
-                reply = error
-            else:
-                reply = format_cited_research_result(result)
-                if len(reply) > 7000:
-                    reply = reply[:7000] + "\n\nResult shortened for display. Open the research card for saved sources."
+        queue_background_job(user_id, project_id, "deep_research", research_job_id, {"query": user_message, "research_type": research_type})
+        reply = (
+            f"I\'ve queued a {research_type} research task and saved the visible research plan in your Command Center. "
+            "The worker can continue it without freezing the page. I\'ll show an in-app alert when it completes.\n\n"
+            "Voice summary: I\'ve started the research task. The citations will appear in your Command Center when ready."
+        )
+        save_checkpoint(
+            user_id, project_id, conversation_id, "tool_checkpoint",
+            f"Research queued: {user_message[:220]}",
+            {"research_job_id": research_job_id, "research_type": research_type, "task_id": task_id}
+        )
         return {
             "reply": reply,
             "visible_plan": visible_plan,
@@ -6404,7 +6487,7 @@ def run_businessbuilder_agent(user_id, conversation_id, user_message):
 
     model_name = os.getenv("OPENAI_REASONING_MODEL", "").strip()
     reply = None
-    if client and model_name:
+    if command_center_live_model_enabled() and client and model_name:
         prompt = f"""{SYSTEM_PROMPT}
 
 You are Builder, the original BusinessBuilder AI command agent.
@@ -15882,6 +15965,20 @@ def api_agent_message():
     user_message = str(data.get("message", "")).strip()
     if not user_message:
         return jsonify({"error": "Enter a message first."}), 400
+    request_id = normalize_agent_request_id(data.get("request_id"))
+    reserved, existing_request = reserve_agent_message_request(user_id, request_id)
+    if not reserved:
+        if existing_request and existing_request[4] == "completed" and existing_request[5]:
+            try:
+                cached_payload = json.loads(existing_request[5])
+            except (TypeError, ValueError):
+                cached_payload = {"error": "Builder already handled that message, but the cached response could not be read."}
+            cached_payload["deduplicated"] = True
+            return jsonify(cached_payload)
+        return jsonify({
+            "error": "That message is already being processed. Please wait for Builder to finish.",
+            "deduplicated": True
+        }), 409
 
     active_project = get_active_project(user_id)
     project_id = active_project[0] if active_project else None
@@ -15903,20 +16000,25 @@ def api_agent_message():
 
     message_mode = str(data.get("mode", "text")).strip().lower()
     content_type = "voice" if message_mode == "voice" else "text"
-    save_agent_message(user_id, conversation_id, "user", user_message, content_type)
-    result = run_businessbuilder_agent(user_id, conversation_id, user_message)
-    save_agent_message(user_id, conversation_id, "assistant", result["reply"], content_type)
-
-    return jsonify({
-        "reply": result["reply"],
-        "visible_plan": result["visible_plan"],
-        "approval_needed": result["approval_needed"],
-        "approval_id": result["approval_id"],
-        "task_id": result["task_id"],
-        "risk_level": result["risk_level"],
-        "conversation_id": conversation_id,
-        "state": "waiting-for-approval" if result["approval_needed"] else "completed"
-    })
+    try:
+        save_agent_message(user_id, conversation_id, "user", user_message, content_type)
+        result = run_businessbuilder_agent(user_id, conversation_id, user_message)
+        save_agent_message(user_id, conversation_id, "assistant", result["reply"], content_type)
+        response_payload = {
+            "reply": result["reply"],
+            "visible_plan": result["visible_plan"],
+            "approval_needed": result["approval_needed"],
+            "approval_id": result["approval_id"],
+            "task_id": result["task_id"],
+            "risk_level": result["risk_level"],
+            "conversation_id": conversation_id,
+            "state": "waiting-for-approval" if result["approval_needed"] else "completed"
+        }
+        complete_agent_message_request(user_id, request_id, conversation_id, response_payload)
+        return jsonify(response_payload)
+    except Exception as error:
+        fail_agent_message_request(user_id, request_id, error)
+        raise
 
 
 @app.route("/api/agent/state")
@@ -16360,17 +16462,16 @@ def api_research():
     task_id = create_agent_task(
         user_id, project_id, "Research: " + query[:70],
         "Read-only business research with visible citations.",
-        "queued" if research_type == "deep" else "running",
+        "queued",
         "normal", {"research_type": research_type}, {}
     )
     job_id = create_research_job(user_id, project_id, conversation[0], task_id, query, research_type)
-    if research_type == "deep":
-        queue_background_job(user_id, project_id, "deep_research", job_id, {"query": query})
-        return jsonify({"research_job": research_job_to_dict(get_research_job(user_id, job_id)), "queued": True}), 202
-    result, error = run_research_job(user_id, job_id)
-    if error:
-        return jsonify({"research_job": research_job_to_dict(get_research_job(user_id, job_id)), "error": error}), 503
-    return jsonify({"research_job": research_job_to_dict(get_research_job(user_id, job_id)), "result": result})
+    queue_background_job(user_id, project_id, "deep_research", job_id, {"query": query, "research_type": research_type})
+    return jsonify({
+        "research_job": research_job_to_dict(get_research_job(user_id, job_id)),
+        "queued": True,
+        "message": "Research queued. The worker will complete it without freezing the page."
+    }), 202
 
 
 @app.route("/api/research/<int:research_job_id>")

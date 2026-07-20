@@ -17,6 +17,7 @@
     const transcript = document.getElementById("commandTranscript");
     const form = document.getElementById("commandChatForm");
     const messageInput = document.getElementById("commandMessage");
+    const chatStatus = document.getElementById("commandChatStatus");
     const stopAgentButton = document.getElementById("stopAgentButton");
     const canvas = document.getElementById("voiceWaveform");
     const remoteAudio = document.getElementById("voiceRemoteAudio");
@@ -48,7 +49,7 @@
     const resetVisualPreferencesButton = document.getElementById("resetVisualPreferencesButton");
     const visualPreferencesStatus = document.getElementById("visualPreferencesStatus");
     const VisualStateController = window.BusinessBuilderVisualStateController;
-    const visualController = VisualStateController ? new VisualStateController(config.initialVisualState, config.visualPreferences) : null;
+    let visualController = null;
 
     let voice = null;
     let voiceMode = false;
@@ -56,9 +57,21 @@
     let activeBrowserTaskId = null;
     let browserPollTimer = null;
     let visualStatePollTimer = null;
+    let builderMessageInFlight = false;
+
+    try {
+        visualController = VisualStateController ? new VisualStateController(config.initialVisualState, config.visualPreferences) : null;
+    } catch (error) {
+        console.warn("Builder visuals could not start. Text chat remains available.", error);
+        visualController = null;
+    }
 
     if (window.BusinessBuilderCore && visualController) {
-        window.BusinessBuilderCore.init(visualController);
+        try {
+            window.BusinessBuilderCore.init(visualController);
+        } catch (error) {
+            console.warn("Builder core visual failed safely. Text chat remains available.", error);
+        }
     }
 
     function setVisualState(primaryState, label, severity) {
@@ -143,31 +156,82 @@
         transcript.scrollTop = transcript.scrollHeight;
     }
 
-    async function sendBuilderMessage(message) {
-        if (!form || !message) return;
-        const submitButton = form.querySelector("button[type='submit']");
-        const originalButtonText = submitButton ? submitButton.textContent : "";
-        if (submitButton) {
-            submitButton.disabled = true;
-            submitButton.textContent = "Builder is thinking...";
+    function setChatStatus(message, tone) {
+        if (!chatStatus) return;
+        chatStatus.textContent = message || "";
+        chatStatus.dataset.tone = tone || "";
+    }
+
+    function createClientRequestId() {
+        if (window.crypto && typeof window.crypto.randomUUID === "function") {
+            return window.crypto.randomUUID();
         }
+        return `bb-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    async function parseJsonResponse(response) {
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+            return response.json();
+        }
+        const text = await response.text();
+        return {error: text || "Builder returned an unreadable response."};
+    }
+
+    function setComposerBusy(isBusy) {
+        const submitButton = form ? form.querySelector("button[type='submit']") : null;
+        if (submitButton) {
+            submitButton.disabled = isBusy;
+            submitButton.textContent = isBusy ? "Builder is thinking..." : (submitButton.dataset.readyLabel || "Send to Builder");
+        }
+        if (messageInput) {
+            messageInput.disabled = isBusy;
+            messageInput.setAttribute("aria-busy", isBusy ? "true" : "false");
+        }
+    }
+
+    async function submitBuilderMessage(message, options) {
+        const settings = options || {};
+        const cleanMessage = safeText(message).trim();
+        if (!form) return;
+        if (!cleanMessage) {
+            setChatStatus("Type a message before sending.", "warning");
+            if (messageInput) messageInput.focus();
+            return;
+        }
+        if (builderMessageInFlight) {
+            setChatStatus("Builder is already working on your last message. Please wait a moment.", "warning");
+            return;
+        }
+        builderMessageInFlight = true;
+        setComposerBusy(true);
+        setChatStatus("Sending to Builder...", "info");
         setVisualState("thinking", "Builder is planning a safe response");
         try {
+            addTranscriptMessage("user", cleanMessage);
             const response = await fetch(config.agentMessageUrl || "/api/agent/message", {
                 method: "POST",
-                headers: {"Content-Type": "application/json"},
+                credentials: "same-origin",
+                headers: {"Accept": "application/json", "Content-Type": "application/json"},
                 body: JSON.stringify({
-                    message,
+                    message: cleanMessage,
                     conversation_id: form.dataset.conversationId || config.conversationId,
-                    mode: "text"
+                    mode: settings.mode || "text",
+                    request_id: createClientRequestId()
                 })
             });
-            const payload = await response.json();
+            const payload = await parseJsonResponse(response);
             if (!response.ok) throw new Error(payload.error || "Builder could not reply.");
             if (payload.conversation_id) {
                 form.dataset.conversationId = payload.conversation_id;
+                config.conversationId = payload.conversation_id;
+                if (voice) voice.conversationId = payload.conversation_id;
             }
             addTranscriptMessage("assistant", payload.reply || "I created a safe next step.");
+            if (settings.clearInputOnSuccess && messageInput) {
+                messageInput.value = "";
+            }
+            setChatStatus("Builder replied.", "success");
             if (payload.approval_needed) {
                 setVisualState("waiting_for_approval", "A draft is waiting for your approval", "warning");
                 await loadAlerts();
@@ -177,12 +241,12 @@
             await refreshVisualState();
         } catch (error) {
             addTranscriptMessage("assistant", error.message || "Something went wrong. No external action was taken.");
+            setChatStatus(error.message || "Builder could not reply. Your message was not sent again.", "error");
             setVisualState("error", "Builder hit a safe error", "error");
         } finally {
-            if (submitButton) {
-                submitButton.disabled = false;
-                submitButton.textContent = originalButtonText || "Send to Builder";
-            }
+            builderMessageInFlight = false;
+            setComposerBusy(false);
+            if (messageInput) messageInput.focus();
         }
     }
 
@@ -605,14 +669,31 @@
         return voice;
     }
 
-    if (form) {
+    if (form && form.dataset.builderSubmitBound !== "true") {
+        form.dataset.builderSubmitBound = "true";
+        const submitButton = form.querySelector("button[type='submit']");
+        if (submitButton && !submitButton.dataset.readyLabel) {
+            submitButton.dataset.readyLabel = submitButton.textContent || "Send to Builder";
+        }
         form.addEventListener("submit", async (event) => {
             event.preventDefault();
             const message = messageInput ? messageInput.value.trim() : "";
-            if (!message) return;
-            addTranscriptMessage("user", message);
-            if (messageInput) messageInput.value = "";
-            await sendBuilderMessage(message);
+            await submitBuilderMessage(message, {mode: "text", clearInputOnSuccess: true});
+        });
+    }
+
+    if (messageInput && messageInput.dataset.builderKeyBound !== "true") {
+        messageInput.dataset.builderKeyBound = "true";
+        messageInput.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
+                return;
+            }
+            event.preventDefault();
+            if (form && typeof form.requestSubmit === "function") {
+                form.requestSubmit();
+            } else if (form) {
+                form.dispatchEvent(new Event("submit", {bubbles: true, cancelable: true}));
+            }
         });
     }
 
