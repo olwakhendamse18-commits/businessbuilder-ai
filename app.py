@@ -1421,6 +1421,21 @@ def init_db():
     """)
 
     execute_schema(f"""
+        CREATE TABLE IF NOT EXISTS agent_visual_preferences (
+            id {id_type},
+            user_id INTEGER NOT NULL UNIQUE,
+            visual_mode TEXT NOT NULL DEFAULT 'balanced',
+            motion_level TEXT NOT NULL DEFAULT 'normal',
+            visual_quality TEXT NOT NULL DEFAULT 'auto',
+            show_floating_panels INTEGER NOT NULL DEFAULT 1,
+            show_3d INTEGER NOT NULL DEFAULT 1,
+            show_particles INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    execute_schema(f"""
         CREATE TABLE IF NOT EXISTS usage_logs (
             id {id_type},
             user_id INTEGER NOT NULL,
@@ -1457,6 +1472,11 @@ def init_db():
     cur.execute(sql("""
         CREATE INDEX IF NOT EXISTS idx_agent_browser_permissions_user_domain
         ON agent_browser_domain_permissions (user_id, domain, enabled)
+    """))
+
+    cur.execute(sql("""
+        CREATE INDEX IF NOT EXISTS idx_agent_visual_preferences_user
+        ON agent_visual_preferences (user_id)
     """))
 
     conn.commit()
@@ -3912,6 +3932,103 @@ def get_browser_config():
     }
 
 
+VISUAL_MODES = {"full", "balanced", "minimal"}
+VISUAL_MOTION_LEVELS = {"normal", "reduced", "none"}
+VISUAL_QUALITIES = {"auto", "high", "medium", "low"}
+
+
+def visual_preferences_to_dict(row):
+    return {
+        "visual_mode": row[2],
+        "motion_level": row[3],
+        "visual_quality": row[4],
+        "show_floating_panels": bool(row[5]),
+        "show_3d": bool(row[6]),
+        "show_particles": bool(row[7]),
+        "created_at": str(row[8]) if row[8] else "",
+        "updated_at": str(row[9]) if row[9] else ""
+    }
+
+
+def get_visual_preferences(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        SELECT id, user_id, visual_mode, motion_level, visual_quality,
+               show_floating_panels, show_3d, show_particles, created_at, updated_at
+        FROM agent_visual_preferences
+        WHERE user_id = ?
+        LIMIT 1
+    """), (user_id,))
+    row = cur.fetchone()
+    if not row:
+        values = (user_id, "balanced", "normal", "auto", 1, 1, 1)
+        if using_postgres():
+            cur.execute(sql("""
+                INSERT INTO agent_visual_preferences (
+                    user_id, visual_mode, motion_level, visual_quality,
+                    show_floating_panels, show_3d, show_particles
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                RETURNING id
+            """), values)
+            cur.fetchone()
+        else:
+            cur.execute(sql("""
+                INSERT INTO agent_visual_preferences (
+                    user_id, visual_mode, motion_level, visual_quality,
+                    show_floating_panels, show_3d, show_particles
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """), values)
+        conn.commit()
+        cur.execute(sql("""
+            SELECT id, user_id, visual_mode, motion_level, visual_quality,
+                   show_floating_panels, show_3d, show_particles, created_at, updated_at
+            FROM agent_visual_preferences
+            WHERE user_id = ?
+            LIMIT 1
+        """), (user_id,))
+        row = cur.fetchone()
+    conn.close()
+    return visual_preferences_to_dict(row)
+
+
+def update_visual_preferences(user_id, payload):
+    current = get_visual_preferences(user_id)
+    visual_mode = str(payload.get("visual_mode", current["visual_mode"])).strip().lower()
+    motion_level = str(payload.get("motion_level", current["motion_level"])).strip().lower()
+    visual_quality = str(payload.get("visual_quality", current["visual_quality"])).strip().lower()
+    if visual_mode not in VISUAL_MODES:
+        raise ValueError("Invalid visual mode.")
+    if motion_level not in VISUAL_MOTION_LEVELS:
+        raise ValueError("Invalid motion level.")
+    if visual_quality not in VISUAL_QUALITIES:
+        raise ValueError("Invalid visual quality.")
+    show_floating_panels = 1 if payload.get("show_floating_panels", current["show_floating_panels"]) else 0
+    show_3d = 1 if payload.get("show_3d", current["show_3d"]) else 0
+    show_particles = 1 if payload.get("show_particles", current["show_particles"]) else 0
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("""
+        UPDATE agent_visual_preferences
+        SET visual_mode = ?, motion_level = ?, visual_quality = ?,
+            show_floating_panels = ?, show_3d = ?, show_particles = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+    """), (visual_mode, motion_level, visual_quality, show_floating_panels, show_3d, show_particles, user_id))
+    conn.commit()
+    conn.close()
+    return get_visual_preferences(user_id)
+
+
+def reset_visual_preferences(user_id):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(sql("DELETE FROM agent_visual_preferences WHERE user_id = ?"), (user_id,))
+    conn.commit()
+    conn.close()
+    return get_visual_preferences(user_id)
+
+
 def browser_daily_max_tasks():
     return env_int("BROWSER_DAILY_MAX_TASKS", 3, minimum=1, maximum=50)
 
@@ -4460,6 +4577,159 @@ def is_browser_request(message):
     ]
     research_terms = ["research", "find suppliers", "compare prices", "current price", "latest", "news"]
     return any(term in text for term in browser_terms) and not any(term in text for term in research_terms)
+
+
+def command_center_project_map(user_id, progress):
+    mapping = {
+        "idea": "Onboarding",
+        "target_market": "Validate idea",
+        "product": "Product or service",
+        "supplier": "Supplier or fulfilment",
+        "brand": "Brand and business name",
+        "store": "Store content",
+        "payments": "Payments",
+        "marketing": "Marketing",
+        "launch": "Launch readiness"
+    }
+    step_by_title = {step["title"]: step for step in progress.get("steps", [])}
+    nodes = []
+    for key, title in mapping.items():
+        step = step_by_title.get(title, {})
+        status = step.get("status", "Not started")
+        nodes.append({
+            "key": key,
+            "label": title,
+            "status": status,
+            "url": step.get("url", "/build_center")
+        })
+    return nodes
+
+
+def command_center_tool_status(user_id, connections):
+    connected = {item["platform"]: item for item in connections}
+    browser_config = get_browser_config()
+    research_config = get_research_config()
+    statuses = [
+        {"key": "shopify", "label": "Shopify", "state": "connected" if "shopify" in connected else "disconnected"},
+        {"key": "canva", "label": "Canva", "state": "connected" if "canva" in connected else "disconnected"},
+        {"key": "paystack", "label": "Paystack", "state": "could_not_verify"},
+        {"key": "web_research", "label": "Web Research", "state": "available" if research_config["enabled"] else "disabled"},
+        {"key": "browser", "label": "Browser Inspector", "state": "available" if browser_config["enabled"] else "disabled"},
+        {"key": "product_finder", "label": "Product Finder", "state": "available"},
+        {"key": "supplier_finder", "label": "Supplier Finder", "state": "available"},
+        {"key": "pricing_advisor", "label": "Pricing Advisor", "state": "available"},
+        {"key": "payment_guide", "label": "Payment Guide", "state": "available"}
+    ]
+    return statuses
+
+
+def command_center_product_pipeline(progress, recent_tasks):
+    step_by_title = {step["title"]: step for step in progress.get("steps", [])}
+    task_statuses = {str(task[3]).lower(): task[5] for task in recent_tasks or []}
+    stages = [
+        ("proposed", "Proposed", step_by_title.get("Onboarding", {}).get("status", "Not started")),
+        ("researched", "Researched", step_by_title.get("Validate idea", {}).get("status", "Not started")),
+        ("selected", "Selected", step_by_title.get("Product or service", {}).get("status", "Not started")),
+        ("drafted", "Drafted", step_by_title.get("Store content", {}).get("status", task_statuses.get("store content", "Not started"))),
+        ("approved", "Approved", step_by_title.get("Launch readiness", {}).get("status", "Not started")),
+        ("created", "Created", step_by_title.get("Shopify Assets", {}).get("status", "Not started")),
+        ("launch_ready", "Launch-ready", step_by_title.get("Launch readiness", {}).get("status", "Not started"))
+    ]
+    return [
+        {
+            "key": key,
+            "label": label,
+            "status": status,
+            "complete": str(status).lower() in {"done", "completed", "complete"}
+        }
+        for key, label, status in stages
+    ]
+
+
+def command_center_alert_radar(alerts):
+    return [
+        {
+            "title": alert[4],
+            "message": alert[5],
+            "severity": alert[6],
+            "read": bool(alert[7]) if len(alert) > 7 else False
+        }
+        for alert in (alerts or [])[:5]
+    ]
+
+
+def command_center_diagnostics(user_id):
+    shopify = get_shopify_connection(user_id)
+    canva = get_canva_connection(user_id)
+    browser_config = get_browser_config()
+    voice_config = get_voice_config()
+    research_config = get_research_config()
+    return [
+        {"label": "OpenAI text", "state": "available" if bool(client) else "unavailable"},
+        {"label": "Voice", "state": "available" if voice_config["enabled"] and bool(os.getenv("OPENAI_API_KEY")) else "disabled"},
+        {"label": "Research", "state": "available" if research_config["enabled"] else "disabled"},
+        {"label": "Worker", "state": "could_not_verify"},
+        {"label": "Browser control", "state": "enabled" if browser_config["enabled"] else "disabled"},
+        {"label": "Shopify", "state": "connected" if shopify and shopify[3] == "connected" else "disconnected"},
+        {"label": "Canva", "state": "connected" if canva and canva[2] == "connected" else "disconnected"},
+        {"label": "Paystack", "state": "could_not_verify"},
+        {"label": "PWA", "state": "available"}
+    ]
+
+
+def build_command_visual_state(user_id, project_id, progress=None, pending_approvals=None, alerts=None, recent_tasks=None):
+    progress = progress or get_business_progress(user_id)
+    pending_approvals = pending_approvals if pending_approvals is not None else get_agent_approvals(user_id, project_id, "pending")
+    alerts = alerts if alerts is not None else get_agent_alerts(user_id)
+    recent_tasks = recent_tasks if recent_tasks is not None else get_agent_tasks(user_id, project_id)
+    research_jobs = list_research_jobs(user_id, 8)
+    browser_tasks = list_browser_tasks(user_id, 8)
+
+    primary_state = "idle"
+    label = "Builder is ready"
+    severity = "info"
+    active_tool = ""
+    approval_required = False
+
+    if any(alert[6] in {"critical", "error"} for alert in alerts):
+        primary_state = "error"
+        label = "A critical alert needs attention"
+        severity = "critical"
+    elif pending_approvals:
+        primary_state = "waiting_for_approval"
+        label = f"{len(pending_approvals)} approval request{'s' if len(pending_approvals) != 1 else ''} waiting"
+        severity = "warning"
+        approval_required = True
+    elif any(task[9] in {"running", "starting", "queued"} for task in browser_tasks):
+        primary_state = "browser_running"
+        label = "Restricted browser inspection is active"
+        active_tool = "browser_inspector"
+    elif any(job[7] in {"queued", "researching", "synthesizing"} for job in research_jobs):
+        primary_state = "researching"
+        label = "Research is running"
+        active_tool = "web_research"
+    elif any(task[5] in {"running", "queued", "in_progress"} for task in recent_tasks):
+        primary_state = "tool_running"
+        label = "A Builder task is running"
+        active_tool = "builder_task"
+    elif recent_tasks and recent_tasks[0][5] == "completed":
+        primary_state = "completed"
+        label = "Latest Builder task completed"
+
+    return {
+        "primary_state": primary_state,
+        "secondary_state": active_tool or "",
+        "label": label,
+        "severity": severity,
+        "progress_type": "real_score" if progress else "none",
+        "launch_progress": progress.get("percentage") if progress else None,
+        "active_tool": active_tool,
+        "approval_required": approval_required,
+        "pending_approval_count": len(pending_approvals),
+        "active_research_count": len([job for job in research_jobs if job[7] in {"queued", "researching", "synthesizing"}]),
+        "active_browser_count": len([task for task in browser_tasks if task[9] not in BROWSER_TERMINAL_STATUSES]),
+        "updated_at": utc_now().isoformat()
+    }
 
 
 def get_agent_profile(user_id):
@@ -15506,6 +15776,13 @@ def command_center():
     progress = get_business_progress(user_id)
     current_package = get_user_package(user_id)
     connections = get_connected_app_summaries(user_id)
+    visual_preferences = get_visual_preferences(user_id)
+    visual_state = build_command_visual_state(user_id, project_id, progress, pending_approvals, alerts, recent_tasks)
+    project_map = command_center_project_map(user_id, progress)
+    tool_statuses = command_center_tool_status(user_id, connections)
+    diagnostics = command_center_diagnostics(user_id)
+    product_pipeline = command_center_product_pipeline(progress, recent_tasks)
+    alert_radar = command_center_alert_radar(alerts)
 
     return render_template(
         "command_center.html",
@@ -15524,7 +15801,14 @@ def command_center():
         current_package=current_package,
         connections=connections,
         voice_config=get_voice_config(),
-        browser_config=get_browser_config()
+        browser_config=get_browser_config(),
+        visual_preferences=visual_preferences,
+        visual_state=visual_state,
+        project_map=project_map,
+        tool_statuses=tool_statuses,
+        diagnostics=diagnostics,
+        product_pipeline=product_pipeline,
+        alert_radar=alert_radar
     )
 
 
@@ -15659,6 +15943,52 @@ def api_agent_state():
         ],
         "approval_mode": get_agent_profile(user_id)[6],
         "progress": get_business_progress(user_id)["percentage"]
+    })
+
+
+@app.route("/api/visual/preferences", methods=["GET", "PATCH"])
+def api_visual_preferences():
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+    user_id = session["user_id"]
+    if request.method == "GET":
+        return jsonify({"preferences": get_visual_preferences(user_id)})
+    data = request.get_json(silent=True) or {}
+    if data.get("reset"):
+        return jsonify({"preferences": reset_visual_preferences(user_id)})
+    allowed_keys = {
+        "visual_mode", "motion_level", "visual_quality",
+        "show_floating_panels", "show_3d", "show_particles"
+    }
+    if any(key not in allowed_keys for key in data):
+        return jsonify({"error": "Unsupported visual preference field."}), 400
+    try:
+        preferences = update_visual_preferences(user_id, data)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    return jsonify({"preferences": preferences})
+
+
+@app.route("/api/visual/state")
+def api_visual_state():
+    if "user_id" not in session:
+        return jsonify({"error": "Login required."}), 401
+    user_id = session["user_id"]
+    active_project = get_active_project(user_id)
+    project_id = active_project[0] if active_project else None
+    progress = get_business_progress(user_id)
+    pending_approvals = get_agent_approvals(user_id, project_id, "pending")
+    alerts = get_agent_alerts(user_id)
+    recent_tasks = get_agent_tasks(user_id, project_id)
+    connections = get_connected_app_summaries(user_id)
+    return jsonify({
+        "visual_state": build_command_visual_state(user_id, project_id, progress, pending_approvals, alerts, recent_tasks),
+        "project_map": command_center_project_map(user_id, progress),
+        "tool_statuses": command_center_tool_status(user_id, connections),
+        "diagnostics": command_center_diagnostics(user_id),
+        "product_pipeline": command_center_product_pipeline(progress, recent_tasks),
+        "alert_radar": command_center_alert_radar(alerts),
+        "preferences": get_visual_preferences(user_id)
     })
 
 

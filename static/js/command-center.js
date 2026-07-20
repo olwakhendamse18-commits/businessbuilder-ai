@@ -16,6 +16,8 @@
     const voiceDuration = document.getElementById("voiceDuration");
     const transcript = document.getElementById("commandTranscript");
     const form = document.getElementById("commandChatForm");
+    const messageInput = document.getElementById("commandMessage");
+    const stopAgentButton = document.getElementById("stopAgentButton");
     const canvas = document.getElementById("voiceWaveform");
     const remoteAudio = document.getElementById("voiceRemoteAudio");
     const researchForm = document.getElementById("researchForm");
@@ -42,12 +44,84 @@
     const browserActionTimeline = document.getElementById("browserActionTimeline");
     const refreshBrowserTasksButton = document.getElementById("refreshBrowserTasksButton");
     const cancelBrowserTaskButton = document.getElementById("cancelBrowserTaskButton");
+    const visualPreferencesForm = document.getElementById("visualPreferencesForm");
+    const resetVisualPreferencesButton = document.getElementById("resetVisualPreferencesButton");
+    const visualPreferencesStatus = document.getElementById("visualPreferencesStatus");
+    const VisualStateController = window.BusinessBuilderVisualStateController;
+    const visualController = VisualStateController ? new VisualStateController(config.initialVisualState, config.visualPreferences) : null;
 
     let voice = null;
     let voiceMode = false;
     let muted = false;
     let activeBrowserTaskId = null;
     let browserPollTimer = null;
+    let visualStatePollTimer = null;
+
+    if (window.BusinessBuilderCore && visualController) {
+        window.BusinessBuilderCore.init(visualController);
+    }
+
+    function setVisualState(primaryState, label, severity) {
+        if (!visualController || !primaryState) return;
+        visualController.setState({
+            primary_state: primaryState,
+            label: label || primaryState.replace(/_/g, " "),
+            severity: severity || "info",
+            updated_at: new Date().toISOString()
+        });
+    }
+
+    function applyVisualPayload(payload) {
+        if (!payload) return;
+        if (visualController && payload.visual_state) {
+            visualController.setState(payload.visual_state);
+        }
+        if (window.BusinessBuilderVisualisations) {
+            window.BusinessBuilderVisualisations.update({
+                projectMap: payload.project_map,
+                toolStatuses: payload.tool_statuses,
+                diagnostics: payload.diagnostics,
+                productPipeline: payload.product_pipeline,
+                alertRadar: payload.alert_radar
+            });
+        }
+        if (payload.preferences) {
+            applyVisualPreferences(payload.preferences, false);
+        }
+    }
+
+    function applyVisualPreferences(preferences, updateForm) {
+        if (!preferences) return;
+        if (visualController) visualController.setPreferences(preferences);
+        document.body.dataset.visualMode = preferences.visual_mode || "balanced";
+        document.body.dataset.motionLevel = preferences.motion_level || "normal";
+        if (!updateForm || !visualPreferencesForm) return;
+        ["visual_mode", "motion_level", "visual_quality"].forEach((name) => {
+            const field = visualPreferencesForm.elements[name];
+            if (field && preferences[name]) field.value = preferences[name];
+        });
+        ["show_floating_panels", "show_3d", "show_particles"].forEach((name) => {
+            const field = visualPreferencesForm.elements[name];
+            if (field) field.checked = Boolean(preferences[name]);
+        });
+    }
+
+    async function refreshVisualState() {
+        if (!config.visualStateUrl) return;
+        try {
+            const response = await fetch(config.visualStateUrl, {headers: {"Accept": "application/json"}});
+            if (!response.ok) return;
+            const payload = await response.json();
+            applyVisualPayload(payload);
+        } catch (error) {
+            // Visual refresh is non-critical; text, voice, approvals, and tools must keep working.
+        }
+    }
+
+    function startVisualStatePolling() {
+        if (visualStatePollTimer || !config.visualStateUrl) return;
+        visualStatePollTimer = window.setInterval(refreshVisualState, 10000);
+    }
 
     function formatDuration(seconds) {
         const safe = Math.max(0, Number(seconds) || 0);
@@ -67,6 +141,49 @@
         wrapper.append(label, paragraph);
         transcript.appendChild(wrapper);
         transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    async function sendBuilderMessage(message) {
+        if (!form || !message) return;
+        const submitButton = form.querySelector("button[type='submit']");
+        const originalButtonText = submitButton ? submitButton.textContent : "";
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = "Builder is thinking...";
+        }
+        setVisualState("thinking", "Builder is planning a safe response");
+        try {
+            const response = await fetch(config.agentMessageUrl || "/api/agent/message", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    message,
+                    conversation_id: form.dataset.conversationId || config.conversationId,
+                    mode: "text"
+                })
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "Builder could not reply.");
+            if (payload.conversation_id) {
+                form.dataset.conversationId = payload.conversation_id;
+            }
+            addTranscriptMessage("assistant", payload.reply || "I created a safe next step.");
+            if (payload.approval_needed) {
+                setVisualState("waiting_for_approval", "A draft is waiting for your approval", "warning");
+                await loadAlerts();
+            } else {
+                setVisualState("completed", "Builder response completed", "success");
+            }
+            await refreshVisualState();
+        } catch (error) {
+            addTranscriptMessage("assistant", error.message || "Something went wrong. No external action was taken.");
+            setVisualState("error", "Builder hit a safe error", "error");
+        } finally {
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = originalButtonText || "Send to Builder";
+            }
+        }
     }
 
     function safeText(value) {
@@ -110,17 +227,31 @@
         }
         if (result.recommendation) {
             const rec = document.createElement("p");
-            rec.innerHTML = "<strong>Recommendation:</strong> ";
+            const recLabel = document.createElement("strong");
+            recLabel.textContent = "Recommendation: ";
+            rec.appendChild(recLabel);
             rec.appendChild(document.createTextNode(result.recommendation));
             card.appendChild(rec);
         }
         if (risks.length) {
             const risk = document.createElement("p");
-            risk.innerHTML = "<strong>Risks / uncertainty:</strong> ";
+            const riskLabel = document.createElement("strong");
+            riskLabel.textContent = "Risks / uncertainty: ";
+            risk.appendChild(riskLabel);
             risk.appendChild(document.createTextNode(risks.slice(0, 4).join(" ")));
             card.appendChild(risk);
         }
         if (sources.length) {
+            const sourceMap = document.createElement("div");
+            sourceMap.className = "research-source-map";
+            sourceMap.setAttribute("aria-label", "Research source map");
+            sources.slice(0, 10).forEach((source) => {
+                const node = document.createElement("span");
+                node.dataset.sourceType = source.source_type || "supporting";
+                node.textContent = source.domain || source.title || "Source";
+                sourceMap.appendChild(node);
+            });
+            card.appendChild(sourceMap);
             const sourceTitle = document.createElement("h4");
             sourceTitle.textContent = "Sources";
             const sourceList = document.createElement("ul");
@@ -175,12 +306,19 @@
                 renderResearchJob(payload.research_job);
                 if (terminalResearchStatus(payload.research_job.status)) {
                     window.clearInterval(interval);
+                    setVisualState(
+                        payload.research_job.status === "completed" ? "completed" : "error",
+                        payload.research_job.status === "completed" ? "Research completed" : "Research stopped safely",
+                        payload.research_job.status === "completed" ? "success" : "warning"
+                    );
                     loadResearchJobs();
                     loadAlerts();
+                    refreshVisualState();
                 }
             } catch (error) {
                 window.clearInterval(interval);
                 if (researchStatus) researchStatus.textContent = error.message;
+                setVisualState("error", "Research could not refresh", "error");
             }
         }, 7000);
     }
@@ -344,6 +482,9 @@
             }
             const active = tasks.find((task) => !terminalBrowserStatus(task.status));
             activeBrowserTaskId = active ? active.id : tasks[0].id;
+            if (active) {
+                setVisualState("browser_running", "Restricted browser inspection is active", "info");
+            }
             if (cancelBrowserTaskButton) cancelBrowserTaskButton.disabled = !active;
             tasks.slice(0, 8).forEach((task) => {
                 const item = document.createElement("button");
@@ -370,11 +511,13 @@
                         window.clearInterval(browserPollTimer);
                         browserPollTimer = null;
                         loadAlerts();
+                        refreshVisualState();
                     }
                 }, 5000);
             }
         } catch (error) {
             if (browserTaskStatus) browserTaskStatus.textContent = error.message;
+            setVisualState("error", "Browser task status could not load", "error");
         }
     }
 
@@ -394,6 +537,24 @@
         if (stopVoiceButton) stopVoiceButton.disabled = !connected;
         if (muteVoiceButton) muteVoiceButton.disabled = !connected;
         if (interruptVoiceButton) interruptVoiceButton.disabled = !connected;
+        const voiceVisualMap = {
+            connected: "listening",
+            listening: "listening",
+            user_speaking: "user_speaking",
+            processing_transcript: "thinking",
+            thinking: "thinking",
+            waiting_for_approval: "waiting_for_approval",
+            speaking: "speaking",
+            muted: "muted",
+            idle: "idle"
+        };
+        if (voiceVisualMap[state]) {
+            setVisualState(
+                voiceVisualMap[state],
+                detail || `Voice mode: ${state.replace(/_/g, " ")}`,
+                state === "waiting_for_approval" ? "warning" : "info"
+            );
+        }
         if (state === "waiting_for_approval") {
             addTranscriptMessage("assistant", "I’ve prepared that action, but it requires your approval. Please review the approval card before I continue.");
         }
@@ -428,6 +589,8 @@
                         form.dataset.conversationId = payload.conversation_id;
                     }
                     addTranscriptMessage("assistant", payload.reply || "");
+                    setVisualState(payload.approval_needed ? "waiting_for_approval" : "completed", payload.approval_needed ? "Voice draft is waiting for approval" : "Voice response completed", payload.approval_needed ? "warning" : "success");
+                    refreshVisualState();
                 },
                 onDuration: (seconds, maxSeconds) => {
                     if (voiceDuration) {
@@ -440,6 +603,31 @@
             });
         }
         return voice;
+    }
+
+    if (form) {
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const message = messageInput ? messageInput.value.trim() : "";
+            if (!message) return;
+            addTranscriptMessage("user", message);
+            if (messageInput) messageInput.value = "";
+            await sendBuilderMessage(message);
+        });
+    }
+
+    if (stopAgentButton) {
+        stopAgentButton.addEventListener("click", async () => {
+            try {
+                const response = await fetch(config.agentStopUrl || "/api/agent/stop", {method: "POST"});
+                const payload = await response.json();
+                if (!response.ok) throw new Error(payload.error || "Could not stop Builder.");
+                addTranscriptMessage("assistant", payload.message || "Stopped safely. No external action was taken.");
+                setVisualState("idle", "Builder stopped safely");
+            } catch (error) {
+                addTranscriptMessage("assistant", error.message || "Could not stop the current response.");
+            }
+        });
     }
 
     if (voiceModeButton) {
@@ -489,6 +677,7 @@
             if (!query) return;
             researchStatus.textContent = "Creating research plan...";
             researchResult.replaceChildren();
+            setVisualState("researching", "Business research is running");
             try {
                 const response = await fetch(config.researchUrl || "/api/research", {
                     method: "POST",
@@ -501,9 +690,13 @@
                 loadResearchJobs();
                 if (payload.queued || !terminalResearchStatus(payload.research_job.status)) {
                     pollResearchJob(payload.research_job.id);
+                } else {
+                    setVisualState("completed", "Research completed", "success");
+                    refreshVisualState();
                 }
             } catch (error) {
                 researchStatus.textContent = error.message;
+                setVisualState("error", "Research failed safely", "error");
             }
         });
     }
@@ -542,6 +735,7 @@
             const allowedDomain = browserAllowedDomain.value.trim();
             if (!objective || !startUrl) return;
             if (browserTaskStatus) browserTaskStatus.textContent = "Creating safe browser task...";
+            setVisualState("browser_running", "Creating a restricted browser inspection");
             try {
                 const response = await fetch(config.browserTasksUrl || "/api/browser/tasks", {
                     method: "POST",
@@ -557,8 +751,10 @@
                 activeBrowserTaskId = payload.browser_task.id;
                 if (browserTaskStatus) browserTaskStatus.textContent = "Browser task queued for the isolated worker.";
                 await loadBrowserTasks();
+                await refreshVisualState();
             } catch (error) {
                 if (browserTaskStatus) browserTaskStatus.textContent = error.message;
+                setVisualState("error", "Browser task was blocked safely", "error");
             }
         });
     }
@@ -574,14 +770,64 @@
                 if (!response.ok) throw new Error(payload.error || "Could not cancel browser task.");
                 if (browserTaskStatus) browserTaskStatus.textContent = "Browser task cancelled.";
                 await loadBrowserTasks();
+                await refreshVisualState();
             } catch (error) {
                 if (browserTaskStatus) browserTaskStatus.textContent = error.message;
             }
         });
     }
 
+    if (visualPreferencesForm) {
+        visualPreferencesForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const formData = new FormData(visualPreferencesForm);
+            const payload = {
+                visual_mode: formData.get("visual_mode"),
+                motion_level: formData.get("motion_level"),
+                visual_quality: formData.get("visual_quality"),
+                show_floating_panels: formData.has("show_floating_panels"),
+                show_3d: formData.has("show_3d"),
+                show_particles: formData.has("show_particles")
+            };
+            if (visualPreferencesStatus) visualPreferencesStatus.textContent = "Saving visual preferences...";
+            try {
+                const response = await fetch(config.visualPreferencesUrl || "/api/visual/preferences", {
+                    method: "PATCH",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || "Could not save visual preferences.");
+                applyVisualPreferences(result.preferences, true);
+                if (visualPreferencesStatus) visualPreferencesStatus.textContent = "Visual preferences saved.";
+            } catch (error) {
+                if (visualPreferencesStatus) visualPreferencesStatus.textContent = error.message;
+            }
+        });
+    }
+
+    if (resetVisualPreferencesButton) {
+        resetVisualPreferencesButton.addEventListener("click", async () => {
+            if (visualPreferencesStatus) visualPreferencesStatus.textContent = "Resetting visual preferences...";
+            try {
+                const response = await fetch(config.visualPreferencesUrl || "/api/visual/preferences", {
+                    method: "PATCH",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({reset: true})
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || "Could not reset visual preferences.");
+                applyVisualPreferences(result.preferences, true);
+                if (visualPreferencesStatus) visualPreferencesStatus.textContent = "Visual preferences reset.";
+            } catch (error) {
+                if (visualPreferencesStatus) visualPreferencesStatus.textContent = error.message;
+            }
+        });
+    }
+
     window.addEventListener("beforeunload", () => {
         if (voice) voice.stop("page_unload");
+        if (visualStatePollTimer) window.clearInterval(visualStatePollTimer);
     });
 
     document.addEventListener("visibilitychange", () => {
@@ -596,4 +842,16 @@
     loadMonitorRules();
     loadAlerts();
     loadBrowserTasks();
+    applyVisualPreferences(config.visualPreferences, true);
+    applyVisualPayload({
+        visual_state: config.initialVisualState,
+        project_map: config.initialProjectMap,
+        tool_statuses: config.initialToolStatuses,
+        diagnostics: config.initialDiagnostics,
+        product_pipeline: config.initialProductPipeline,
+        alert_radar: config.initialAlertRadar,
+        preferences: config.visualPreferences
+    });
+    refreshVisualState();
+    startVisualStatePolling();
 })();

@@ -7,8 +7,10 @@
     {% include "_pwa_head.html" %}
     <link rel="stylesheet" href="/static/style.css">
     <link rel="stylesheet" href="/static/css/command-center.css">
+    <link rel="stylesheet" href="/static/css/command-visuals.css">
 </head>
-<body>
+<body data-command-state="{{ visual_state.primary_state }}" data-visual-mode="{{ visual_preferences.visual_mode }}" data-motion-level="{{ visual_preferences.motion_level }}">
+<a href="#commandMessage" class="skip-link">Skip to Builder message box</a>
 <div class="dashboard command-center-shell">
     <aside class="sidebar">
         <h2>BusinessBuilder AI</h2>
@@ -36,13 +38,171 @@
                 </div>
                 <small id="voiceModeNote">Microphone access is requested only after you click Start Voice. Text mode remains available if voice fails.</small>
             </div>
-            <div class="command-orb-card" aria-label="Builder agent state">
-                <div class="command-orb" data-agent-state="ready">
-                    <span></span>
-                    <strong>Builder</strong>
-                </div>
-                <p class="command-state-pill" id="agentStateLabel">Ready</p>
+            <div class="command-orb-card command-status-summary" aria-label="Builder agent state summary">
+                <p class="eyebrow">Live state</p>
+                <p class="command-state-pill" id="agentStateLabel" aria-live="polite">{{ visual_state.label }}</p>
                 <p>{{ current_package }} plan · Approval mode: {{ approval_modes[profile[6]].label if profile[6] in approval_modes else "Standard Approval" }}</p>
+                <p><strong>Launch:</strong> {{ progress.percentage }}% · <strong>Approvals:</strong> {{ pending_approvals|length }} · <strong>Alerts:</strong> {{ alerts|length }}</p>
+            </div>
+        </section>
+
+        <section class="command-visual-workspace" aria-labelledby="visualWorkspaceTitle">
+            <div class="visual-zone visual-zone-left">
+                <article class="visual-card">
+                    <p class="eyebrow">Active business</p>
+                    <h2 id="visualWorkspaceTitle">{{ active_project[2] if active_project else "Create your Builder project" }}</h2>
+                    <dl class="visual-fact-list">
+                        <div><dt>Customer</dt><dd>{{ active_project[4] if active_project and active_project[4] else "Not set" }}</dd></div>
+                        <div><dt>Budget</dt><dd>{{ active_project[5] if active_project and active_project[5] else "Not set" }}</dd></div>
+                        <div><dt>Country</dt><dd>{{ active_project[6] if active_project and active_project[6] else "Not set" }}</dd></div>
+                        <div><dt>Phase</dt><dd>{{ progress.next_step.title }}</dd></div>
+                    </dl>
+                    <div class="visual-progress-ring" role="img" aria-label="Launch progress {{ progress.percentage }} percent" style="--progress: {{ progress.percentage }}">
+                        <span>{{ progress.percentage }}%</span>
+                    </div>
+                    <a href="{{ progress.next_step.url }}" class="secondary-button">{{ progress.next_step.action }} {{ progress.next_step.title }}</a>
+                </article>
+
+                <article class="visual-card builder-memory-card">
+                    <p class="eyebrow">Builder remembers</p>
+                    <h3>Project context</h3>
+                    <ul>
+                        <li>Idea: {{ active_project[3] if active_project and active_project[3] else "Not provided yet" }}</li>
+                        <li>Products: {{ active_project[7] if active_project and active_project[7] else "Not selected yet" }}</li>
+                        <li>Brand style: {{ active_project[8] if active_project and active_project[8] else "Not chosen yet" }}</li>
+                        <li>Shopify: {{ "Connected" if connections|selectattr("platform", "equalto", "shopify")|list else "Not connected" }}</li>
+                        <li>Canva: {{ "Connected" if connections|selectattr("platform", "equalto", "canva")|list else "Not connected" }}</li>
+                    </ul>
+                    <a href="/settings" class="secondary-button">Memory settings</a>
+                </article>
+
+                <article class="visual-card">
+                    <p class="eyebrow">Project map</p>
+                    <div class="project-map" id="projectMap" aria-label="Business launch project map">
+                        {% for node in project_map %}
+                            <a href="{{ node.url }}" class="project-node" data-status="{{ node.status|lower|replace(' ', '-') }}">
+                                <span></span>{{ node.label }}
+                            </a>
+                        {% endfor %}
+                    </div>
+                </article>
+
+                <article class="visual-card">
+                    <p class="eyebrow">Product pipeline</p>
+                    <div class="product-pipeline" id="productPipeline" aria-label="Product readiness pipeline">
+                        {% for stage in product_pipeline %}
+                            <span data-status="{{ stage.status|lower|replace(' ', '-') }}">{{ stage.label }} · {{ stage.status }}</span>
+                        {% endfor %}
+                    </div>
+                </article>
+            </div>
+
+            <section class="visual-zone visual-zone-center" aria-label="Builder visual core and conversation controls">
+                <article class="builder-core-shell" id="builderCoreShell" data-state="{{ visual_state.primary_state }}">
+                    <div class="builder-core-status">
+                        <p class="eyebrow">Builder core</p>
+                        <h2 id="builderCoreLabel">{{ visual_state.label }}</h2>
+                        <p id="builderCoreDetail">State: {{ visual_state.primary_state|replace("_", " ")|title }}</p>
+                    </div>
+                    <div class="builder-core-stage" aria-hidden="true">
+                        <canvas id="builderCoreCanvas" width="420" height="420"></canvas>
+                        <div class="builder-core-fallback">
+                            <span></span>
+                            <strong>Builder</strong>
+                        </div>
+                    </div>
+                    <div class="builder-core-metrics" aria-label="Current Builder metrics">
+                        <div><strong>{{ pending_approvals|length }}</strong><span>Approvals</span></div>
+                        <div><strong>{{ visual_state.active_research_count }}</strong><span>Research</span></div>
+                        <div><strong>{{ visual_state.active_browser_count }}</strong><span>Browser</span></div>
+                    </div>
+                </article>
+
+                <article class="visual-card plan-orbit-card">
+                    <p class="eyebrow">Plan orbit</p>
+                    <ol class="plan-orbit" id="planOrbit">
+                        {% for step in progress.steps[:6] %}
+                            <li data-status="{{ step.status|lower|replace(' ', '-') }}">
+                                <span>{{ step.number }}</span>
+                                <a href="{{ step.url }}">{{ step.title }}</a>
+                            </li>
+                        {% endfor %}
+                    </ol>
+                </article>
+            </section>
+
+            <div class="visual-zone visual-zone-right">
+                <article class="visual-card approval-radar-card" data-severity="{{ 'warning' if pending_approvals else 'info' }}">
+                    <p class="eyebrow">Approval ring</p>
+                    <h3>{{ pending_approvals|length }} pending</h3>
+                    <p>No external action can proceed without explicit approval.</p>
+                    <a href="#approvals" class="secondary-button">Review approvals</a>
+                </article>
+
+                <article class="visual-card">
+                    <p class="eyebrow">Tool constellation</p>
+                    <div class="tool-constellation" id="toolConstellation">
+                        {% for tool in tool_statuses %}
+                            <span data-state="{{ tool.state }}">{{ tool.label }} · {{ tool.state|replace("_", " ") }}</span>
+                        {% endfor %}
+                    </div>
+                </article>
+
+                <article class="visual-card">
+                    <p class="eyebrow">Diagnostics</p>
+                    <ul class="diagnostic-list" id="diagnosticList">
+                        {% for item in diagnostics %}
+                            <li data-state="{{ item.state }}"><span>{{ item.label }}</span><strong>{{ item.state|replace("_", " ") }}</strong></li>
+                        {% endfor %}
+                    </ul>
+                </article>
+
+                <article class="visual-card">
+                    <p class="eyebrow">Alert radar</p>
+                    <div class="alert-radar" id="alertRadar" aria-label="Recent Builder alerts">
+                        {% for alert in alert_radar %}
+                            <span data-severity="{{ alert.severity }}">{{ alert.title }}</span>
+                        {% else %}
+                            <span data-severity="info">No recent alerts</span>
+                        {% endfor %}
+                    </div>
+                </article>
+
+                <article class="visual-card visual-preferences-card">
+                    <p class="eyebrow">Visual preferences</p>
+                    <h3>Display mode</h3>
+                    <form id="visualPreferencesForm" class="visual-preference-grid">
+                        <label>Mode
+                            <select name="visual_mode">
+                                {% for mode in ["full", "balanced", "minimal"] %}
+                                    <option value="{{ mode }}" {% if visual_preferences.visual_mode == mode %}selected{% endif %}>{{ mode|title }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label>Motion
+                            <select name="motion_level">
+                                {% for mode in ["normal", "reduced", "none"] %}
+                                    <option value="{{ mode }}" {% if visual_preferences.motion_level == mode %}selected{% endif %}>{{ mode|title }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label>Quality
+                            <select name="visual_quality">
+                                {% for quality in ["auto", "high", "medium", "low"] %}
+                                    <option value="{{ quality }}" {% if visual_preferences.visual_quality == quality %}selected{% endif %}>{{ quality|title }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label class="checkbox-line"><input type="checkbox" name="show_floating_panels" {% if visual_preferences.show_floating_panels %}checked{% endif %}> Floating panels</label>
+                        <label class="checkbox-line"><input type="checkbox" name="show_3d" {% if visual_preferences.show_3d %}checked{% endif %}> 3D when supported</label>
+                        <label class="checkbox-line"><input type="checkbox" name="show_particles" {% if visual_preferences.show_particles %}checked{% endif %}> Particles</label>
+                        <div class="generator-actions">
+                            <button type="submit" class="secondary-button">Save visuals</button>
+                            <button type="button" class="secondary-button" id="resetVisualPreferencesButton">Reset</button>
+                        </div>
+                    </form>
+                    <p id="visualPreferencesStatus" aria-live="polite"></p>
+                </article>
             </div>
         </section>
 
@@ -446,76 +606,28 @@ window.BB_COMMAND_CENTER = {
     monitoringRulesUrl: "/api/monitoring/rules",
     alertsUrl: "/api/alerts",
     browserTasksUrl: "/api/browser/tasks",
+    visualStateUrl: "/api/visual/state",
+    visualPreferencesUrl: "/api/visual/preferences",
     maxVoiceSeconds: {{ voice_config.session_max_seconds }},
     idleTimeoutSeconds: {{ voice_config.idle_timeout_seconds }},
-    browserControlEnabled: {{ "true" if browser_config.enabled else "false" }}
+    browserControlEnabled: {{ "true" if browser_config.enabled else "false" }},
+    initialVisualState: {{ visual_state|tojson }},
+    visualPreferences: {{ visual_preferences|tojson }},
+    initialProjectMap: {{ project_map|tojson }},
+    initialToolStatuses: {{ tool_statuses|tojson }},
+    initialDiagnostics: {{ diagnostics|tojson }},
+    initialProductPipeline: {{ product_pipeline|tojson }},
+    initialAlertRadar: {{ alert_radar|tojson }}
 };
-(() => {
-    const form = document.getElementById("commandChatForm");
-    const input = document.getElementById("commandMessage");
-    const transcript = document.getElementById("commandTranscript");
-    const stateLabel = document.getElementById("agentStateLabel");
-    const stopButton = document.getElementById("stopAgentButton");
-
-    function addMessage(role, content) {
-        const wrapper = document.createElement("div");
-        wrapper.className = `command-message ${role}`;
-        const label = document.createElement("span");
-        label.textContent = role === "user" ? "You" : "Builder";
-        const paragraph = document.createElement("p");
-        paragraph.textContent = content;
-        wrapper.append(label, paragraph);
-        transcript.appendChild(wrapper);
-        transcript.scrollTop = transcript.scrollHeight;
-    }
-
-    function setState(label) {
-        stateLabel.textContent = label;
-        document.body.dataset.agentState = label.toLowerCase().replace(/\s+/g, "-");
-    }
-
-    if (form) {
-        form.addEventListener("submit", async (event) => {
-            event.preventDefault();
-            const message = input.value.trim();
-            if (!message) return;
-            addMessage("user", message);
-            input.value = "";
-            setState("Thinking");
-            try {
-                const response = await fetch("/api/agent/message", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({
-                        message,
-                        conversation_id: form.dataset.conversationId
-                    })
-                });
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.error || "Builder could not respond.");
-                }
-                form.dataset.conversationId = data.conversation_id;
-                addMessage("assistant", data.reply);
-                setState(data.approval_needed ? "Waiting for approval" : "Completed");
-            } catch (error) {
-                addMessage("assistant", error.message);
-                setState("Error");
-            }
-        });
-    }
-
-    if (stopButton) {
-        stopButton.addEventListener("click", async () => {
-            await fetch("/api/agent/stop", {method: "POST"});
-            setState("Stopped");
-        });
-    }
-
-})();
 </script>
 <script src="/static/js/waveform.js"></script>
 <script src="/static/js/realtime-voice.js"></script>
+<script src="/static/js/visual-performance.js"></script>
+<script src="/static/js/command-visual-state.js"></script>
+<script src="/static/js/builder-core-2d.js"></script>
+<script src="/static/js/builder-core-3d.js"></script>
+<script src="/static/js/builder-core.js"></script>
+<script src="/static/js/business-visualisations.js"></script>
 <script src="/static/js/command-center.js"></script>
 
 {% include "_app_scripts.html" %}
