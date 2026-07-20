@@ -3,3 +3,5 @@ myenv/
 __pycache__/
 *.db
 uploads/
+browser_artifacts/
+debug.log

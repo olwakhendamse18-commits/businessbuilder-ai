@@ -17,10 +17,10 @@ def save_screenshot_bytes(browser_task_id, browser_session_id, user_id, data, se
     filename = f"{sequence_number:04d}-{secrets.token_urlsafe(18)}.png"
     path = directory / filename
     path.write_bytes(data)
-    if not str(path.resolve()).startswith(str(Path(get_browser_config()["storage_dir"]).resolve())):
+    artifact_root = Path(get_browser_config()["storage_dir"]).resolve()
+    if os.path.commonpath([os.fspath(artifact_root), os.fspath(path.resolve())]) != os.fspath(artifact_root):
         raise RuntimeError("Artifact path escaped browser storage root.")
     return record_browser_artifact(
         browser_task_id, browser_session_id, user_id,
         artifact_type, os.fspath(path.resolve()), sequence_number
     )
-
