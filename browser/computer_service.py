@@ -58,4 +58,3 @@ def extract_computer_actions(response):
             else:
                 actions.append({key: getattr(raw, key) for key in dir(raw) if not key.startswith("_") and key in {"type", "x", "y", "text", "button", "url"}})
     return actions
-
