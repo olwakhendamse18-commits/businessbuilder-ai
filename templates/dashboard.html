@@ -21,6 +21,7 @@
             </div>
         </div>
 
+        <a href="/command-center">Command Center</a>
         <a href="/dashboard">Dashboard</a>
         <a href="/build_center">Build Center</a>
         <a href="/ai_store_agent">AI Store Agent</a>
@@ -59,7 +60,8 @@
                 {% endif %}
             </p></div><span class="workspace-plan-badge">{{ current_package or "No active plan" }}</span></div>
             <div class="generator-actions dashboard-hero-actions">
-                <a href="{{ '/onboarding' if not onboarding or not onboarding[9] else next_action['url'] }}" class="primary-button">Continue Building</a>
+                <a href="/command-center" class="primary-button">Open Command Center</a>
+                <a href="{{ '/onboarding' if not onboarding or not onboarding[9] else next_action['url'] }}" class="secondary-button">Continue Building</a>
                 <a href="{{ '/store_builder' if pro_package else '/pricing' }}" class="secondary-button">Generate My Store</a>
             </div>
         </div>

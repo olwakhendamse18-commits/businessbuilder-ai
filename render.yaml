@@ -1,0 +1,45 @@
+previews:
+  generation: "off"
+
+services:
+  - type: web
+    name: businessbuilder-ai
+    runtime: python
+    repo: https://github.com/olwakhendamse18-commits/businessbuilder-ai.git
+    branch: master
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    autoDeployTrigger: "off"
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: BROWSER_CONTROL_ENABLED
+        value: "false"
+      - key: RESEARCH_USE_OPENAI_BACKGROUND_MODE
+        value: "false"
+
+  - type: worker
+    name: businessbuilder-ai-worker
+    runtime: python
+    repo: https://github.com/olwakhendamse18-commits/businessbuilder-ai.git
+    branch: master
+    buildCommand: pip install -r requirements.txt
+    startCommand: python worker.py
+    autoDeployTrigger: "off"
+    numInstances: 1
+    maxShutdownDelaySeconds: 300
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: BROWSER_CONTROL_ENABLED
+        value: "false"
+      - key: RESEARCH_USE_OPENAI_BACKGROUND_MODE
+        value: "false"

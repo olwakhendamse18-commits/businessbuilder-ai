@@ -1,0 +1,264 @@
+/* Milestone 2 voice layer for the original BusinessBuilder AI Command Center. */
+.voice-console {
+    background: rgba(2, 6, 23, .54);
+    border: 1px solid rgba(45, 212, 191, .22);
+    border-radius: 22px;
+    margin-top: 16px;
+    padding: 16px;
+}
+
+.voice-status-row {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.voice-indicator {
+    background: #64748b;
+    border-radius: 999px;
+    box-shadow: 0 0 0 6px rgba(100, 116, 139, .14);
+    display: inline-block;
+    flex: 0 0 auto;
+    height: 12px;
+    width: 12px;
+}
+
+.voice-indicator[data-state="connected"],
+.voice-indicator[data-state="listening"],
+.voice-indicator[data-state="user_speaking"] {
+    background: #14b8a6;
+    box-shadow: 0 0 0 7px rgba(20, 184, 166, .16), 0 0 22px rgba(20, 184, 166, .55);
+}
+
+.voice-indicator[data-state="thinking"],
+.voice-indicator[data-state="speaking"] {
+    background: #60a5fa;
+    box-shadow: 0 0 0 7px rgba(96, 165, 250, .16), 0 0 22px rgba(96, 165, 250, .55);
+}
+
+.voice-indicator[data-state="waiting_for_approval"] {
+    background: #fb923c;
+    box-shadow: 0 0 0 7px rgba(251, 146, 60, .16), 0 0 22px rgba(251, 146, 60, .55);
+}
+
+.voice-indicator[data-state="error"] {
+    background: #fb7185;
+    box-shadow: 0 0 0 7px rgba(251, 113, 133, .16), 0 0 22px rgba(251, 113, 133, .55);
+}
+
+#voiceStateLabel {
+    color: #f8fafc;
+    flex: 1;
+}
+
+#voiceDuration {
+    color: #bfd0e6;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+}
+
+#voiceWaveform {
+    background: rgba(2, 6, 23, .5);
+    border: 1px solid rgba(148, 163, 184, .16);
+    border-radius: 18px;
+    display: block;
+    height: 96px;
+    max-width: 100%;
+    width: 100%;
+}
+
+.voice-caption {
+    color: #dbeafe !important;
+    margin: 12px 0;
+}
+
+.voice-actions button {
+    min-height: 44px;
+}
+
+.research-status-card,
+.research-output-card,
+.research-history-item {
+    background: rgba(2, 6, 23, .46);
+    border: 1px solid rgba(148, 163, 184, .18);
+    border-radius: 18px;
+    color: #dbeafe;
+    margin-top: 12px;
+    padding: 14px;
+    text-align: left;
+    width: 100%;
+}
+
+.research-history-item {
+    cursor: pointer;
+}
+
+.research-history-item:hover,
+.research-history-item:focus-visible {
+    border-color: rgba(45, 212, 191, .55);
+}
+
+.research-output-card h3,
+.research-output-card h4 {
+    color: #f8fafc;
+    margin: 10px 0 8px;
+}
+
+.research-output-card ul {
+    margin: 10px 0 0;
+    padding-left: 20px;
+}
+
+.research-output-card li {
+    margin-bottom: 8px;
+}
+
+.research-output-card a {
+    color: #93c5fd;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.research-output-card a:hover {
+    color: #67e8f9;
+}
+
+#monitorRules .secondary-button,
+#agentAlerts .secondary-button {
+    margin-top: 8px;
+    min-height: 38px;
+}
+
+.browser-task-panel .security-warning {
+    margin-top: 10px;
+}
+
+.browser-task-list {
+    max-height: 320px;
+    overflow: auto;
+}
+
+.browser-task-item {
+    white-space: normal;
+}
+
+.browser-artifact-viewer {
+    display: grid;
+    gap: 12px;
+    margin: 14px 0;
+}
+
+.browser-artifact-viewer figure {
+    background: rgba(2, 6, 23, .46);
+    border: 1px solid rgba(148, 163, 184, .2);
+    border-radius: 18px;
+    margin: 0;
+    overflow: hidden;
+}
+
+.browser-artifact-viewer img {
+    display: block;
+    height: auto;
+    max-height: 420px;
+    object-fit: contain;
+    width: 100%;
+}
+
+.browser-artifact-viewer figcaption {
+    color: #cbd5e1;
+    font-size: .86rem;
+    padding: 10px 12px;
+}
+
+#browserActionTimeline {
+    max-height: 360px;
+    overflow: auto;
+}
+
+.build-status.completed,
+.build-status.success {
+    background: rgba(20, 184, 166, .16);
+    color: #99f6e4;
+}
+
+.build-status.failed,
+.build-status.critical {
+    background: rgba(244, 63, 94, .16);
+    color: #fecdd3;
+}
+
+.build-status.queued,
+.build-status.starting,
+.build-status.running,
+.build-status.waiting_for_approval,
+.build-status.waiting_for_user,
+.build-status.researching,
+.build-status.synthesizing,
+.build-status.warning {
+    background: rgba(251, 146, 60, .16);
+    color: #fed7aa;
+}
+
+.build-status.cancelled,
+.build-status.info {
+    background: rgba(148, 163, 184, .16);
+    color: #dbeafe;
+}
+
+body[data-voice-state="listening"] .command-orb,
+body[data-voice-state="user_speaking"] .command-orb {
+    box-shadow: 0 0 0 10px rgba(20, 184, 166, .12), 0 0 64px rgba(20, 184, 166, .62), inset 0 0 30px rgba(255,255,255,.16);
+}
+
+body[data-voice-state="thinking"] .command-orb {
+    animation-duration: 1.6s;
+}
+
+body[data-voice-state="speaking"] .command-orb {
+    box-shadow: 0 0 0 10px rgba(96, 165, 250, .12), 0 0 72px rgba(96, 165, 250, .64), inset 0 0 30px rgba(255,255,255,.16);
+}
+
+body[data-voice-state="waiting_for_approval"] .command-orb {
+    border-color: rgba(251, 146, 60, .9);
+    box-shadow: 0 0 0 10px rgba(251, 146, 60, .10), 0 0 58px rgba(251, 146, 60, .38), inset 0 0 30px rgba(255,255,255,.12);
+}
+
+body[data-voice-state="muted"] .voice-console {
+    border-color: rgba(148, 163, 184, .34);
+}
+
+.command-center-main button:focus-visible,
+.command-center-main a:focus-visible,
+.voice-console button:focus-visible {
+    outline: 3px solid rgba(45, 212, 191, .75);
+    outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body[data-voice-state] .command-orb {
+        animation: none;
+    }
+}
+
+@media (max-width: 720px) {
+    .voice-status-row {
+        align-items: flex-start;
+        display: grid;
+        grid-template-columns: auto 1fr;
+    }
+
+    #voiceDuration {
+        grid-column: 1 / -1;
+    }
+
+    .voice-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    #voiceWaveform {
+        height: 76px;
+    }
+}

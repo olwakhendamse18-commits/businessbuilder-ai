@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ current_user_theme }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command Center | BusinessBuilder AI</title>
+    {% include "_pwa_head.html" %}
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/css/command-center.css">
+    <link rel="stylesheet" href="/static/css/command-visuals.css">
+</head>
+<body class="command-center-page" data-command-state="{{ visual_state.primary_state }}" data-visual-mode="{{ visual_preferences.visual_mode }}" data-motion-level="{{ visual_preferences.motion_level }}">
+<a href="#commandMessage" class="skip-link">Skip to Builder message box</a>
+<div class="dashboard command-center-shell">
+    <aside class="sidebar">
+        <h2>BusinessBuilder AI</h2>
+        <a href="/command-center" class="active">Command Center</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/build_center">Build Center</a>
+        <a href="/business_progress">Progress</a>
+        <a href="/approval_center">Approval Center</a>
+        <a href="/settings">Settings</a>
+        <a href="/logout">Logout</a>
+    </aside>
+
+    <main class="dashboard-main command-center-main">
+        {% include "_settings_menu.html" %}
+
+        <section class="command-hero">
+            <div>
+                <p class="eyebrow">V2 Agent Workspace</p>
+                <h1>BusinessBuilder AI Command Center</h1>
+                <p>Builder helps you plan, draft, remember decisions, route work to tools, and ask for approval before anything consequential happens.</p>
+                <div class="dashboard-hero-actions">
+                    <button type="button" class="primary-button" id="textModeButton" data-mode="text">Type</button>
+                    <button type="button" class="secondary-button" id="voiceModeButton" data-mode="voice" aria-describedby="voiceModeNote">Voice</button>
+                    <a href="/build_center" class="secondary-button">Open Build Center</a>
+                </div>
+                <small id="voiceModeNote">Microphone access is requested only after you click Start Voice. Text mode remains available if voice fails.</small>
+            </div>
+            <div class="command-orb-card command-status-summary" aria-label="Builder agent state summary">
+                <p class="eyebrow">Live state</p>
+                <p class="command-state-pill" id="agentStateLabel" aria-live="polite">{{ visual_state.label }}</p>
+                <p>{{ current_package }} plan · Approval mode: {{ approval_modes[profile[6]].label if profile[6] in approval_modes else "Standard Approval" }}</p>
+                <p><strong>Launch:</strong> {{ progress.percentage }}% · <strong>Approvals:</strong> {{ pending_approvals|length }} · <strong>Alerts:</strong> {{ alerts|length }}</p>
+            </div>
+        </section>
+
+        <section class="command-visual-workspace" aria-labelledby="visualWorkspaceTitle">
+            <div class="visual-zone visual-zone-left">
+                <article class="visual-card">
+                    <p class="eyebrow">Active business</p>
+                    <h2 id="visualWorkspaceTitle">{{ active_project[2] if active_project else "Create your Builder project" }}</h2>
+                    <dl class="visual-fact-list">
+                        <div><dt>Customer</dt><dd>{{ active_project[4] if active_project and active_project[4] else "Not set" }}</dd></div>
+                        <div><dt>Budget</dt><dd>{{ active_project[5] if active_project and active_project[5] else "Not set" }}</dd></div>
+                        <div><dt>Country</dt><dd>{{ active_project[6] if active_project and active_project[6] else "Not set" }}</dd></div>
+                        <div><dt>Phase</dt><dd>{{ progress.next_step.title }}</dd></div>
+                    </dl>
+                    <div class="visual-progress-ring" role="img" aria-label="Launch progress {{ progress.percentage }} percent" style="--progress: {{ progress.percentage }}">
+                        <span>{{ progress.percentage }}%</span>
+                    </div>
+                    <a href="{{ progress.next_step.url }}" class="secondary-button">{{ progress.next_step.action }} {{ progress.next_step.title }}</a>
+                </article>
+
+                <article class="visual-card builder-memory-card">
+                    <p class="eyebrow">Builder remembers</p>
+                    <h3>Project context</h3>
+                    <ul>
+                        <li>Idea: {{ active_project[3] if active_project and active_project[3] else "Not provided yet" }}</li>
+                        <li>Products: {{ active_project[7] if active_project and active_project[7] else "Not selected yet" }}</li>
+                        <li>Brand style: {{ active_project[8] if active_project and active_project[8] else "Not chosen yet" }}</li>
+                        <li>Shopify: {{ "Connected" if connections|selectattr("platform", "equalto", "shopify")|list else "Not connected" }}</li>
+                        <li>Canva: {{ "Connected" if connections|selectattr("platform", "equalto", "canva")|list else "Not connected" }}</li>
+                    </ul>
+                    <a href="/settings" class="secondary-button">Memory settings</a>
+                </article>
+
+                <article class="visual-card">
+                    <p class="eyebrow">Project map</p>
+                    <div class="project-map" id="projectMap" aria-label="Business launch project map">
+                        {% for node in project_map %}
+                            <a href="{{ node.url }}" class="project-node" data-status="{{ node.status|lower|replace(' ', '-') }}">
+                                <span></span>{{ node.label }}
+                            </a>
+                        {% endfor %}
+                    </div>
+                </article>
+
+                <article class="visual-card">
+                    <p class="eyebrow">Product pipeline</p>
+                    <div class="product-pipeline" id="productPipeline" aria-label="Product readiness pipeline">
+                        {% for stage in product_pipeline %}
+                            <span data-status="{{ stage.status|lower|replace(' ', '-') }}">{{ stage.label }} · {{ stage.status }}</span>
+                        {% endfor %}
+                    </div>
+                </article>
+            </div>
+
+            <section class="visual-zone visual-zone-center" aria-label="Builder visual core and conversation controls">
+                <article class="builder-core-shell" id="builderCoreShell" data-state="{{ visual_state.primary_state }}">
+                    <div class="builder-core-status">
+                        <p class="eyebrow">Builder core</p>
+                        <h2 id="builderCoreLabel">{{ visual_state.label }}</h2>
+                        <p id="builderCoreDetail">State: {{ visual_state.primary_state|replace("_", " ")|title }}</p>
+                    </div>
+                    <div class="builder-core-stage" aria-hidden="true">
+                        <canvas id="builderCoreCanvas" width="420" height="420"></canvas>
+                        <div class="builder-core-fallback">
+                            <span></span>
+                            <strong>Builder</strong>
+                        </div>
+                    </div>
+                    <div class="builder-core-metrics" aria-label="Current Builder metrics">
+                        <div><strong>{{ pending_approvals|length }}</strong><span>Approvals</span></div>
+                        <div><strong>{{ visual_state.active_research_count }}</strong><span>Research</span></div>
+                        <div><strong>{{ visual_state.active_browser_count }}</strong><span>Browser</span></div>
+                    </div>
+                </article>
+
+                <article class="visual-card plan-orbit-card">
+                    <p class="eyebrow">Plan orbit</p>
+                    <ol class="plan-orbit" id="planOrbit">
+                        {% for step in progress.steps[:6] %}
+                            <li data-status="{{ step.status|lower|replace(' ', '-') }}">
+                                <span>{{ step.number }}</span>
+                                <a href="{{ step.url }}">{{ step.title }}</a>
+                            </li>
+                        {% endfor %}
+                    </ol>
+                </article>
+            </section>
+
+            <div class="visual-zone visual-zone-right">
+                <article class="visual-card approval-radar-card" data-severity="{{ 'warning' if pending_approvals else 'info' }}">
+                    <p class="eyebrow">Approval ring</p>
+                    <h3>{{ pending_approvals|length }} pending</h3>
+                    <p>No external action can proceed without explicit approval.</p>
+                    <a href="#approvals" class="secondary-button">Review approvals</a>
+                </article>
+
+                <article class="visual-card">
+                    <p class="eyebrow">Tool constellation</p>
+                    <div class="tool-constellation" id="toolConstellation">
+                        {% for tool in tool_statuses %}
+                            <span data-state="{{ tool.state }}">{{ tool.label }} · {{ tool.state|replace("_", " ") }}</span>
+                        {% endfor %}
+                    </div>
+                </article>
+
+                <article class="visual-card">
+                    <p class="eyebrow">Diagnostics</p>
+                    <ul class="diagnostic-list" id="diagnosticList">
+                        {% for item in diagnostics %}
+                            <li data-state="{{ item.state }}"><span>{{ item.label }}</span><strong>{{ item.state|replace("_", " ") }}</strong></li>
+                        {% endfor %}
+                    </ul>
+                </article>
+
+                <article class="visual-card">
+                    <p class="eyebrow">Alert radar</p>
+                    <div class="alert-radar" id="alertRadar" aria-label="Recent Builder alerts">
+                        {% for alert in alert_radar %}
+                            <span data-severity="{{ alert.severity }}">{{ alert.title }}</span>
+                        {% else %}
+                            <span data-severity="info">No recent alerts</span>
+                        {% endfor %}
+                    </div>
+                </article>
+
+                <article class="visual-card visual-preferences-card">
+                    <p class="eyebrow">Visual preferences</p>
+                    <h3>Display mode</h3>
+                    <form id="visualPreferencesForm" class="visual-preference-grid">
+                        <label>Mode
+                            <select name="visual_mode">
+                                {% for mode in ["full", "balanced", "minimal"] %}
+                                    <option value="{{ mode }}" {% if visual_preferences.visual_mode == mode %}selected{% endif %}>{{ mode|title }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label>Motion
+                            <select name="motion_level">
+                                {% for mode in ["normal", "reduced", "none"] %}
+                                    <option value="{{ mode }}" {% if visual_preferences.motion_level == mode %}selected{% endif %}>{{ mode|title }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label>Quality
+                            <select name="visual_quality">
+                                {% for quality in ["auto", "high", "medium", "low"] %}
+                                    <option value="{{ quality }}" {% if visual_preferences.visual_quality == quality %}selected{% endif %}>{{ quality|title }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label class="checkbox-line"><input type="checkbox" name="show_floating_panels" {% if visual_preferences.show_floating_panels %}checked{% endif %}> Floating panels</label>
+                        <label class="checkbox-line"><input type="checkbox" name="show_3d" {% if visual_preferences.show_3d %}checked{% endif %}> 3D when supported</label>
+                        <label class="checkbox-line"><input type="checkbox" name="show_particles" {% if visual_preferences.show_particles %}checked{% endif %}> Particles</label>
+                        <div class="generator-actions">
+                            <button type="submit" class="secondary-button">Save visuals</button>
+                            <button type="button" class="secondary-button" id="resetVisualPreferencesButton">Reset</button>
+                        </div>
+                    </form>
+                    <p id="visualPreferencesStatus" aria-live="polite"></p>
+                </article>
+            </div>
+        </section>
+
+        <section class="command-grid">
+            <article class="project-form command-chat-card">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Conversation</p>
+                        <h2>Ask Builder what to do next</h2>
+                    </div>
+                    <span class="build-status in-progress">Local-first text agent</span>
+                </div>
+
+                <div class="command-transcript" id="commandTranscript" aria-live="polite">
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="command-message {{ message[2] }}">
+                                <span>{{ "You" if message[2] == "user" else "Builder" }}</span>
+                                <p>{{ message[3] }}</p>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="command-message assistant">
+                            <span>Builder</span>
+                            <p>Tell me what you want to build. Example: “Help me start a skincare business in South Africa with a low budget.”</p>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <form class="command-input" id="commandChatForm" data-conversation-id="{{ conversation[0] }}">
+                    <label for="commandMessage" class="sr-only">Message Builder</label>
+                    <textarea id="commandMessage" name="message" rows="3" placeholder="Ask Builder to plan, compare, draft, check, or continue where you left off..." required></textarea>
+                    <p class="command-chat-status" id="commandChatStatus" aria-live="polite"></p>
+                    <div class="generator-actions">
+                        <button type="submit" class="primary-button">Send to Builder</button>
+                        <button type="button" class="secondary-button" id="stopAgentButton">Stop</button>
+                    </div>
+                </form>
+
+                <section class="voice-console" id="voiceConsole" hidden aria-label="Voice controls">
+                    <div class="voice-status-row">
+                        <span class="voice-indicator" id="voiceIndicator" aria-hidden="true"></span>
+                        <strong id="voiceStateLabel" aria-live="polite">Idle</strong>
+                        <span id="voiceDuration">00:00</span>
+                    </div>
+                    <canvas id="voiceWaveform" width="640" height="96" aria-label="Voice activity waveform"></canvas>
+                    <audio id="voiceRemoteAudio" autoplay></audio>
+                    <p id="voiceCaption" class="voice-caption" aria-live="polite">Start Voice when you are ready. Builder will use the same project, memory, approvals, and transcript.</p>
+                    <div class="generator-actions voice-actions">
+                        <button type="button" class="primary-button" id="startVoiceButton">Start Voice</button>
+                        <button type="button" class="secondary-button" id="stopVoiceButton" disabled>Stop Voice</button>
+                        <button type="button" class="secondary-button" id="muteVoiceButton" disabled>Mute</button>
+                        <button type="button" class="secondary-button" id="interruptVoiceButton" disabled>Stop Speaking</button>
+                        <button type="button" class="secondary-button" id="fallbackTextButton">Use Text Instead</button>
+                    </div>
+                    <div class="security-warning">
+                        <strong>Voice safety:</strong>
+                        <p>No raw audio is saved. Completed voice transcripts are sent once through the same backend agent used by text chat.</p>
+                    </div>
+                </section>
+            </article>
+
+            <aside class="project-form command-side-panel">
+                <p class="eyebrow">Active project</p>
+                {% if active_project %}
+                    <h2>{{ active_project[2] }}</h2>
+                    <p><strong>Idea:</strong> {{ active_project[3] or "Not added yet" }}</p>
+                    <p><strong>Customer:</strong> {{ active_project[4] or "Not added yet" }}</p>
+                    <p><strong>Budget:</strong> {{ active_project[5] or "Not added yet" }}</p>
+                    <p><strong>Country:</strong> {{ active_project[6] or "Not added yet" }}</p>
+                {% else %}
+                    <h2>No active Builder project yet</h2>
+                    <p>Create one below or complete onboarding so Builder has a business context to remember.</p>
+                {% endif %}
+                <div class="progress-bar"><span style="width: {{ progress.percentage }}%"></span></div>
+                <p>{{ progress.completed }} of {{ progress.total }} launch steps complete · Next: {{ progress.next_step.title }}</p>
+                <a href="{{ progress.next_step.url }}" class="secondary-button">{{ progress.next_step.action }} {{ progress.next_step.title }}</a>
+            </aside>
+        </section>
+
+        <section class="command-grid command-grid-small">
+            <article class="project-form">
+                <p class="eyebrow">Create active project</p>
+                <h2>Start or switch Builder’s focus</h2>
+                <form method="POST" action="/command-center/project" class="stacked-form">
+                    <label>Project name
+                        <input type="text" name="name" placeholder="Example: GlowCare Skincare Launch" required>
+                    </label>
+                    <label>Business idea
+                        <textarea name="business_idea" rows="3" placeholder="What are you building?"></textarea>
+                    </label>
+                    <label>Target customer
+                        <input type="text" name="target_customer" placeholder="Who is it for?">
+                    </label>
+                    <div class="form-grid two">
+                        <label>Budget
+                            <input type="text" name="budget" placeholder="Example: R2,000">
+                        </label>
+                        <label>Country
+                            <input type="text" name="country" placeholder="Example: South Africa">
+                        </label>
+                    </div>
+                    <button type="submit" class="primary-button">Create active project</button>
+                </form>
+            </article>
+
+            <article class="project-form">
+                <p class="eyebrow">Memory and approvals</p>
+                <h2>How Builder is allowed to act</h2>
+                <form method="POST" action="/command-center/settings" class="stacked-form">
+                    <label>Preferred name
+                        <input type="text" name="preferred_name" value="{{ profile[2] or '' }}" placeholder="What should Builder call you?">
+                    </label>
+                    <label>Communication style
+                        <input type="text" name="communication_style" value="{{ profile[3] or 'calm, concise, beginner-friendly' }}">
+                    </label>
+                    <label>Approval mode
+                        <select name="approval_mode">
+                            {% for key, mode in approval_modes.items() %}
+                                <option value="{{ key }}" {% if profile[6] == key %}selected{% endif %}>{{ mode.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="checkbox-line">
+                        <input type="checkbox" name="voice_enabled" {% if profile[4] %}checked{% endif %}>
+                        Enable voice when Milestone 2 is ready
+                    </label>
+                    <button type="submit" class="secondary-button">Save agent settings</button>
+                </form>
+                <div class="security-warning">
+                    <strong>Always requires approval:</strong>
+                    <p>{{ never_automate|join(", ") }}.</p>
+                </div>
+            </article>
+        </section>
+
+        <section class="command-grid command-grid-small" id="approvals">
+            <article class="project-form">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Pending approvals</p>
+                        <h2>Review before external action</h2>
+                    </div>
+                    <a href="/approval_center" class="secondary-button">Classic Approval Center</a>
+                </div>
+                {% if pending_approvals %}
+                    <div class="approval-task-grid">
+                        {% for approval in pending_approvals %}
+                            <div class="approval-task-card">
+                                <span class="build-status needs-approval">{{ approval[5]|title }} risk</span>
+                                <h3>{{ approval[4]|replace("_", " ")|title }}</h3>
+                                <p>{{ approval[8] }}</p>
+                                <details>
+                                    <summary>What Builder proposed</summary>
+                                    <pre class="approval-preview">{{ approval[6] }}</pre>
+                                </details>
+                                <div class="generator-actions">
+                                    <form method="POST" action="/agent_approval/{{ approval[0] }}/approved"><button type="submit" class="primary-button">Approve once</button></form>
+                                    <form method="POST" action="/agent_approval/{{ approval[0] }}/rejected"><button type="submit" class="secondary-button">Reject</button></form>
+                                    <form method="POST" action="/agent_approval/{{ approval[0] }}/cancelled"><button type="submit" class="secondary-button">Cancel</button></form>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-card">No pending Builder approvals. Guidance, calculations, and internal drafts can continue safely.</p>
+                {% endif %}
+            </article>
+
+            <article class="project-form">
+                <p class="eyebrow">Task timeline</p>
+                <h2>Recent Builder plans</h2>
+                {% if recent_tasks %}
+                    <div class="timeline-list">
+                        {% for task in recent_tasks %}
+                            <div>
+                                <span class="build-status {{ task[5]|replace('_', '-') }}">{{ task[5]|replace("_", " ")|title }}</span>
+                                <strong>{{ task[3] }}</strong>
+                                <p>{{ task[4] }}</p>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="empty-card">Ask Builder a question and the visible plan will appear here.</p>
+                {% endif %}
+            </article>
+        </section>
+
+        <section class="command-grid command-grid-small" id="research">
+            <article class="project-form">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Deep business research</p>
+                        <h2>Research with citations</h2>
+                    </div>
+                    <span class="build-status in-progress">Read-only</span>
+                </div>
+                <form class="stacked-form" id="researchForm">
+                    <label>Research question
+                        <textarea id="researchQuery" rows="3" maxlength="900" placeholder="Example: Research affordable skincare suppliers that ship to South Africa." required></textarea>
+                    </label>
+                    <label>Depth
+                        <select id="researchDepth">
+                            <option value="standard">Standard</option>
+                            <option value="quick">Quick</option>
+                            <option value="deep">Deep — queue for worker</option>
+                        </select>
+                    </label>
+                    <div class="generator-actions">
+                        <button type="submit" class="primary-button">Start Research</button>
+                        <button type="button" class="secondary-button" id="refreshResearchButton">Refresh Research</button>
+                    </div>
+                </form>
+                <div class="research-status-card" id="researchStatus" aria-live="polite">
+                    Ask a current business question. Sources will appear here when available.
+                </div>
+                <div class="research-result-card" id="researchResult"></div>
+            </article>
+
+            <article class="project-form">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Research history</p>
+                        <h2>Recent cited results</h2>
+                    </div>
+                </div>
+                <div class="timeline-list" id="researchHistory">
+                    <p class="empty-card">No research loaded yet.</p>
+                </div>
+            </article>
+        </section>
+
+        <section class="command-grid command-grid-small" id="monitoring">
+            <article class="project-form">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Project monitoring</p>
+                        <h2>Safe in-app monitors</h2>
+                    </div>
+                    <button type="button" class="secondary-button" id="refreshMonitoringButton">Refresh</button>
+                </div>
+                <form class="stacked-form" id="monitorRuleForm">
+                    <label>Monitor type
+                        <select id="monitorType">
+                            <option value="launch_readiness">Launch readiness</option>
+                            <option value="pending_approvals">Pending approvals</option>
+                            <option value="shopify_connection_health">Shopify connection health</option>
+                            <option value="canva_connection_health">Canva connection health</option>
+                            <option value="paystack_mode_status">Paystack mode status</option>
+                            <option value="project_inactivity">Project inactivity</option>
+                        </select>
+                    </label>
+                    <label>Frequency
+                        <select id="monitorFrequency">
+                            <option value="1440">Daily</option>
+                            <option value="10080">Weekly</option>
+                            <option value="60">Hourly minimum</option>
+                        </select>
+                    </label>
+                    <button type="submit" class="primary-button">Enable Monitor</button>
+                </form>
+                <div class="timeline-list" id="monitorRules">
+                    <p class="empty-card">No monitor rules loaded yet.</p>
+                </div>
+            </article>
+
+            <article class="project-form">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">In-app alerts</p>
+                        <h2>Recent alerts</h2>
+                    </div>
+                    <button type="button" class="secondary-button" id="markAllAlertsReadButton">Mark all read</button>
+                </div>
+                <div class="timeline-list" id="agentAlerts">
+                    {% if alerts %}
+                        {% for alert in alerts %}
+                            <div>
+                                <span class="build-status {{ alert[6] }}">{{ alert[6]|title }}</span>
+                                <strong>{{ alert[4] }}</strong>
+                                <p>{{ alert[5] }}</p>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="empty-card">No alerts yet.</p>
+                    {% endif %}
+                </div>
+            </article>
+        </section>
+
+        <section class="command-grid command-grid-small" id="browser-tasks">
+            <article class="project-form browser-task-panel">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Restricted browser tasks</p>
+                        <h2>Inspect public pages safely</h2>
+                    </div>
+                    <span class="build-status {{ 'success' if browser_config.enabled else 'cancelled' }}">
+                        {{ "Enabled" if browser_config.enabled else "Disabled by default" }}
+                    </span>
+                </div>
+                <p>Use this for read-only visual checks like homepage clarity, navigation, broken buttons, or public layout review. Browser control runs in a separate worker and never enters passwords, pays, publishes, sends, deletes, or submits forms.</p>
+                <form class="stacked-form" id="browserTaskForm">
+                    <label>Objective
+                        <textarea id="browserObjective" rows="3" maxlength="900" placeholder="Inspect https://www.businessbuilder.site and review homepage navigation. Do not submit anything." required></textarea>
+                    </label>
+                    <label>Start URL
+                        <input id="browserStartUrl" type="url" placeholder="https://www.businessbuilder.site" required>
+                    </label>
+                    <label>Allowed domain
+                        <input id="browserAllowedDomain" type="text" placeholder="businessbuilder.site">
+                    </label>
+                    <div class="security-warning">
+                        <strong>Safety rules:</strong>
+                        <p>Allowed: public navigation, scrolling and screenshots. Pauses/blocks: forms, login, payments, publishing, messaging, downloads, credentials, prompt injection, or leaving the allowlist.</p>
+                    </div>
+                    <div class="generator-actions">
+                        <button type="submit" class="primary-button">Start browser task</button>
+                        <button type="button" class="secondary-button" id="refreshBrowserTasksButton">Refresh</button>
+                    </div>
+                </form>
+                <div class="research-status-card" id="browserTaskStatus" aria-live="polite">
+                    Browser tasks are disabled until the separate worker and model are configured.
+                </div>
+            </article>
+
+            <article class="project-form browser-task-panel">
+                <div class="command-section-header">
+                    <div>
+                        <p class="eyebrow">Browser history</p>
+                        <h2>Tasks, screenshots and actions</h2>
+                    </div>
+                    <button type="button" class="secondary-button" id="cancelBrowserTaskButton" disabled>Cancel active task</button>
+                </div>
+                <div class="timeline-list browser-task-list" id="browserTaskList">
+                    <p class="empty-card">No browser tasks loaded yet.</p>
+                </div>
+                <div class="browser-artifact-viewer" id="browserArtifactViewer">
+                    <p class="empty-card">Screenshots appear here after the browser worker runs.</p>
+                </div>
+                <div class="timeline-list" id="browserActionTimeline">
+                    <p class="empty-card">Action timeline will appear here.</p>
+                </div>
+            </article>
+        </section>
+
+        <section class="project-form">
+            <div class="command-section-header">
+                <div>
+                    <p class="eyebrow">Connected tools and safe actions</p>
+                    <h2>Tool directory</h2>
+                </div>
+                <a href="/app_connection_agent" class="secondary-button">Open App Connection Agent</a>
+            </div>
+            <div class="workspace-tool-grid">
+                {% for tool in tool_directory %}
+                    <article class="workspace-tool-card">
+                        <span class="plan-requirement-badge">{{ tool.risk|title }} risk</span>
+                        <h3>{{ tool.name }}</h3>
+                        <p>{{ tool.approval }}</p>
+                        <a href="{{ tool.route }}" class="secondary-button">Open tool</a>
+                    </article>
+                {% endfor %}
+            </div>
+            <div class="integration-status-row">
+                {% for connection in connections %}
+                    <article>
+                        <strong>{{ connection.name }}</strong>
+                        <span>{{ connection.status }}</span>
+                        <small>{{ connection.category }}</small>
+                    </article>
+                {% else %}
+                    <article>
+                        <strong>No connected apps yet</strong>
+                        <span>Connect only when you choose to.</span>
+                        <small>Builder can still create internal plans and drafts.</small>
+                    </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="project-form">
+            <p class="eyebrow">Privacy controls</p>
+            <h2>Memory disclosure</h2>
+            <p>Builder saves concise user/project facts, decisions, task state, and checkpoints so it can continue later. It does not save private chain-of-thought and must not store passwords, OTPs, banking credentials, card details, API secret keys, or full authentication cookies as memory.</p>
+            <div class="generator-actions">
+                <a href="/settings" class="secondary-button">Account settings</a>
+                <a href="/privacy" class="secondary-button">Privacy policy</a>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script>
+window.BB_COMMAND_CENTER = {
+    conversationId: {{ conversation[0] }},
+    realtimeSessionUrl: "/api/realtime/session",
+    realtimeEndUrl: "/api/realtime/session/end",
+    agentMessageUrl: "/api/agent/message",
+    agentStopUrl: "/api/agent/stop",
+    researchUrl: "/api/research",
+    monitoringRulesUrl: "/api/monitoring/rules",
+    alertsUrl: "/api/alerts",
+    browserTasksUrl: "/api/browser/tasks",
+    visualStateUrl: "/api/visual/state",
+    visualPreferencesUrl: "/api/visual/preferences",
+    maxVoiceSeconds: {{ voice_config.session_max_seconds }},
+    idleTimeoutSeconds: {{ voice_config.idle_timeout_seconds }},
+    browserControlEnabled: {{ "true" if browser_config.enabled else "false" }},
+    initialVisualState: {{ visual_state|tojson }},
+    visualPreferences: {{ visual_preferences|tojson }},
+    initialProjectMap: {{ project_map|tojson }},
+    initialToolStatuses: {{ tool_statuses|tojson }},
+    initialDiagnostics: {{ diagnostics|tojson }},
+    initialProductPipeline: {{ product_pipeline|tojson }},
+    initialAlertRadar: {{ alert_radar|tojson }}
+};
+</script>
+<script src="/static/js/waveform.js"></script>
+<script src="/static/js/realtime-voice.js"></script>
+<script src="/static/js/visual-performance.js"></script>
+<script src="/static/js/command-visual-state.js"></script>
+<script src="/static/js/builder-core-2d.js"></script>
+<script src="/static/js/builder-core-3d.js"></script>
+<script src="/static/js/builder-core.js"></script>
+<script src="/static/js/business-visualisations.js"></script>
+<script src="/static/js/command-center.js"></script>
+
+{% include "_app_scripts.html" %}
+</body>
+</html>
