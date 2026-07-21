@@ -1,6 +1,7 @@
 import argparse
 import os
-import time
+import signal
+import threading
 
 from app import get_monitoring_config, init_db, run_background_job_once
 
@@ -18,15 +19,24 @@ def main():
         print("processed" if processed else "no queued jobs")
         return
 
-    print("BusinessBuilder AI worker started. For local SQLite, run only one worker.")
+    stop_requested = threading.Event()
+
+    def request_stop(signum, frame):
+        del signum, frame
+        print("BusinessBuilder AI worker stopping after the current job.", flush=True)
+        stop_requested.set()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+
+    print("BusinessBuilder AI worker started. For local SQLite, run only one worker.", flush=True)
     poll_seconds = get_monitoring_config()["worker_poll_seconds"]
-    try:
-        while True:
-            processed = run_background_job_once(worker_id)
-            if not processed:
-                time.sleep(poll_seconds)
-    except KeyboardInterrupt:
-        print("BusinessBuilder AI worker stopped.")
+    while not stop_requested.is_set():
+        processed = run_background_job_once(worker_id)
+        if not processed:
+            stop_requested.wait(poll_seconds)
+
+    print("BusinessBuilder AI worker stopped.", flush=True)
 
 
 if __name__ == "__main__":
