@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="{{ current_user_theme }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Command Center | BusinessBuilder AI</title>
+    {% include "_pwa_head.html" %}
+    <link rel="stylesheet" href="/static/css/voice-command-center.css">
+</head>
+<body class="voice-command-page" data-voice-state="idle" data-motion-level="{{ visual_preferences.motion_level }}">
+<a class="voice-skip-link" href="#voiceCoreTitle">Skip to voice status</a>
+
+<div class="voice-boot-screen" id="voiceBootScreen" aria-hidden="true">
+    <span></span><span></span><span></span><span></span>
+</div>
+
+<main class="voice-shell" id="voiceShell">
+    <header class="voice-topbar">
+        <a class="voice-brand" href="/command-center" aria-label="Return to BusinessBuilder AI Command Center">
+            <span class="voice-brand-mark" aria-hidden="true">BB</span>
+            <span><strong>BusinessBuilder AI</strong><small>Voice Command Center · Phase 1</small></span>
+        </a>
+        <div class="voice-topbar-status" aria-label="Prototype connection status">
+            <span class="voice-status-light" aria-hidden="true"></span>
+            <span><strong id="connectionLabel">Prototype ready</strong><small>No microphone or AI connection</small></span>
+        </div>
+        <button class="voice-exit-button" id="exitVoiceButton" type="button">
+            <span aria-hidden="true">×</span> Exit Voice Panel
+        </button>
+    </header>
+
+    <div class="voice-mobile-tools" aria-label="Voice panel controls">
+        <button type="button" data-panel-target="voiceProjectPanel" aria-expanded="false">Project context</button>
+        <button type="button" data-panel-target="voiceOperationsPanel" aria-expanded="false">Operations</button>
+    </div>
+
+    <div class="voice-layout">
+        <aside class="voice-panel voice-panel-left" id="voiceProjectPanel" aria-labelledby="projectPanelTitle">
+            <div class="voice-panel-heading">
+                <div><p class="voice-kicker">Project intelligence</p><h2 id="projectPanelTitle">Active business</h2></div>
+                <button class="voice-panel-close" type="button" data-close-panel aria-label="Close project context">×</button>
+            </div>
+
+            <section class="voice-data-card voice-project-card">
+                <span class="voice-card-index">01</span>
+                <p class="voice-kicker">Active project</p>
+                <h3>{{ active_project[2] if active_project else "No active project" }}</h3>
+                <dl class="voice-data-list">
+                    <div><dt>Business idea</dt><dd>{{ active_project[3] if active_project and active_project[3] else "Not provided" }}</dd></div>
+                    <div><dt>Target customer</dt><dd>{{ active_project[4] if active_project and active_project[4] else "Not provided" }}</dd></div>
+                    <div><dt>Budget</dt><dd>{{ active_project[5] if active_project and active_project[5] else "Not provided" }}</dd></div>
+                    <div><dt>Country</dt><dd>{{ active_project[6] if active_project and active_project[6] else "Not provided" }}</dd></div>
+                </dl>
+            </section>
+
+            <section class="voice-data-card voice-phase-card">
+                <span class="voice-card-index">02</span>
+                <div class="voice-card-title-row"><div><p class="voice-kicker">Current launch phase</p><h3>{{ progress.next_step.title }}</h3></div><strong>{{ progress.percentage }}%</strong></div>
+                <div class="voice-progress-track" role="progressbar" aria-label="Launch progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ progress.percentage }}"><span style="--voice-progress: {{ progress.percentage }}%"></span></div>
+                <p>{{ progress.completed }} of {{ progress.total }} launch steps completed.</p>
+            </section>
+
+            <section class="voice-data-card voice-memory-card">
+                <span class="voice-card-index">03</span>
+                <p class="voice-kicker">Project memory</p>
+                <h3>Context loaded</h3>
+                <ul>
+                    {% for memory in project_memories %}
+                        <li><strong>{{ memory[2]|replace("_", " ")|title }}</strong><span>{{ memory[3] }}</span></li>
+                    {% else %}
+                        <li><strong>Project summary</strong><span>{{ active_project[3] if active_project and active_project[3] else "No saved project memory yet." }}</span></li>
+                    {% endfor %}
+                </ul>
+            </section>
+        </aside>
+
+        <section class="voice-core-column" aria-labelledby="voiceCoreTitle">
+            <div class="voice-greeting" id="voiceGreeting">
+                <p class="voice-kicker">Context synchronized locally</p>
+                <h1>Good {{ greeting_period }}, <span>{{ profile[2] or "founder" }}</span>.</h1>
+                <p>BusinessBuilder Voice is ready. Your project context is loaded.</p>
+                <p>How may I assist with your business today?</p>
+            </div>
+
+            <section class="voice-core" id="voiceCore" aria-labelledby="voiceCoreTitle">
+                <div class="voice-core-grid" aria-hidden="true"></div>
+                <canvas id="voiceCoreCanvas" width="720" height="720" aria-hidden="true"></canvas>
+                <svg class="voice-ring-system" viewBox="0 0 520 520" aria-hidden="true">
+                    <defs>
+                        <linearGradient id="voiceCyanGradient" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0" stop-color="#45f3ff"/><stop offset="0.55" stop-color="#168dff"/><stop offset="1" stop-color="#83fbff"/>
+                        </linearGradient>
+                    </defs>
+                    <circle class="voice-ring voice-ring-outer" cx="260" cy="260" r="228"/>
+                    <circle class="voice-ring voice-ring-dashed" cx="260" cy="260" r="204"/>
+                    <circle class="voice-ring voice-ring-progress" cx="260" cy="260" r="178" pathLength="100" style="--ring-progress: {{ progress.percentage }}"/>
+                    <circle class="voice-ring voice-ring-inner" cx="260" cy="260" r="145"/>
+                    <g class="voice-orbit-markers"><circle cx="260" cy="38" r="5"/><circle cx="472" cy="260" r="4"/><circle cx="260" cy="482" r="5"/><circle cx="48" cy="260" r="4"/></g>
+                </svg>
+
+                <div class="voice-core-center">
+                    <span class="voice-connection-chip" id="voiceConnectionChip"><i aria-hidden="true"></i> Offline prototype</span>
+                    <p class="voice-state-overline">Current state</p>
+                    <h2 id="voiceCoreTitle">Idle</h2>
+                    <div class="voice-waveform" id="voiceWaveform" aria-hidden="true">
+                        {% for bar in range(24) %}<span style="--bar-index: {{ bar }}"></span>{% endfor %}
+                    </div>
+                    <p class="voice-caption" id="voiceCaption" aria-live="polite">Voice connection will be enabled in Phase 2.</p>
+                </div>
+
+                <div class="voice-orbit-label voice-orbit-label-top"><span>Session</span><strong id="voiceDuration">00:00</strong></div>
+                <div class="voice-orbit-label voice-orbit-label-right"><span>Microphone</span><strong id="microphoneLabel">Not requested</strong></div>
+                <div class="voice-orbit-label voice-orbit-label-bottom"><span>Conversation</span><strong>#{{ conversation[0] }}</strong></div>
+                <div class="voice-orbit-label voice-orbit-label-left"><span>Project</span><strong>{{ active_project[0] if active_project else "None" }}</strong></div>
+            </section>
+
+            <div class="voice-screen-reader-state" id="voiceScreenReaderState" role="status" aria-live="assertive">Voice prototype is idle. Microphone access has not been requested.</div>
+
+            <section class="voice-control-deck" aria-labelledby="voiceControlsTitle">
+                <h2 class="voice-visually-hidden" id="voiceControlsTitle">Voice controls</h2>
+                <button class="voice-control voice-control-primary" id="startVoicePrototype" type="button"><span aria-hidden="true">◉</span><strong>Start Voice</strong><small>Phase 2 connection</small></button>
+                <button class="voice-control" id="muteVoicePrototype" type="button"><span aria-hidden="true">⌁</span><strong>Mute</strong><small>Prototype only</small></button>
+                <button class="voice-control" id="stopSpeakingPrototype" type="button"><span aria-hidden="true">■</span><strong>Stop Speaking</strong><small>No audio active</small></button>
+                <button class="voice-control" id="exitVoiceSecondary" type="button"><span aria-hidden="true">↙</span><strong>Exit Voice Panel</strong><small>Return to text</small></button>
+            </section>
+
+            <p class="voice-safety-note"><span aria-hidden="true">◇</span> Phase 1 visual prototype · No microphone access · No raw audio · No Realtime session · No external action</p>
+
+            {% if local_demo_enabled %}
+                <section class="voice-demo-controller" aria-labelledby="demoControllerTitle">
+                    <div><p class="voice-kicker">Local development only</p><h2 id="demoControllerTitle">Prototype state controller</h2></div>
+                    <label for="voiceDemoState">Visual state</label>
+                    <select id="voiceDemoState">
+                        {% for state in ["idle", "requesting_microphone", "connecting", "listening", "user_speaking", "thinking", "speaking", "muted", "waiting_for_approval", "completed", "error", "exiting"] %}
+                            <option value="{{ state }}">{{ state|replace("_", " ")|title }}</option>
+                        {% endfor %}
+                    </select>
+                </section>
+            {% endif %}
+        </section>
+
+        <aside class="voice-panel voice-panel-right" id="voiceOperationsPanel" aria-labelledby="operationsPanelTitle">
+            <div class="voice-panel-heading">
+                <div><p class="voice-kicker">Operational context</p><h2 id="operationsPanelTitle">Business systems</h2></div>
+                <button class="voice-panel-close" type="button" data-close-panel aria-label="Close operations panel">×</button>
+            </div>
+
+            <section class="voice-data-card">
+                <span class="voice-card-index">04</span>
+                <div class="voice-card-title-row"><div><p class="voice-kicker">Connected tools</p><h3>Capability status</h3></div><span>{{ tool_statuses|length }}</span></div>
+                <ul class="voice-status-list">
+                    {% for tool in tool_statuses %}
+                        <li data-status="{{ tool.state }}"><i aria-hidden="true"></i><span>{{ tool.label }}</span><strong>{{ tool.state|replace("_", " ") }}</strong></li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            <section class="voice-data-card voice-approval-card" data-has-items="{{ 'true' if pending_approvals else 'false' }}">
+                <span class="voice-card-index">05</span>
+                <div class="voice-card-title-row"><div><p class="voice-kicker">Approval gate</p><h3>Pending approvals</h3></div><strong>{{ pending_approvals|length }}</strong></div>
+                {% if pending_approvals %}<p>{{ pending_approvals|length }} proposed action{{ "s" if pending_approvals|length != 1 else "" }} require review before anything external can proceed.</p>{% else %}<p>No external action is waiting for approval.</p>{% endif %}
+            </section>
+
+            <section class="voice-data-card">
+                <span class="voice-card-index">06</span>
+                <p class="voice-kicker">Recent alerts</p><h3>Attention radar</h3>
+                <ul class="voice-alert-list">
+                    {% for alert in alert_radar %}<li data-severity="{{ alert.severity }}"><i aria-hidden="true"></i><span>{{ alert.title }}</span></li>{% else %}<li data-severity="info"><i aria-hidden="true"></i><span>No recent alerts</span></li>{% endfor %}
+                </ul>
+            </section>
+
+            <section class="voice-data-card voice-launch-card">
+                <span class="voice-card-index">07</span>
+                <p class="voice-kicker">Launch progress</p><h3>{{ progress.percentage }}% complete</h3>
+                <ol>{% for step in progress.steps[:5] %}<li data-status="{{ step.status|lower|replace(' ', '-') }}"><span>{{ step.number }}</span><strong>{{ step.title }}</strong><small>{{ step.status }}</small></li>{% endfor %}</ol>
+            </section>
+
+            <section class="voice-data-card">
+                <span class="voice-card-index">08</span>
+                <p class="voice-kicker">Diagnostics</p><h3>Service readiness</h3>
+                <ul class="voice-status-list voice-diagnostics-list">
+                    {% for item in diagnostics %}<li data-status="{{ item.state }}"><i aria-hidden="true"></i><span>{{ item.label }}</span><strong>{{ item.state|replace("_", " ") }}</strong></li>{% endfor %}
+                </ul>
+            </section>
+        </aside>
+    </div>
+</main>
+
+<div class="voice-toast" id="voiceToast" role="status" aria-live="polite" hidden></div>
+<div class="voice-panel-backdrop" id="voicePanelBackdrop" hidden></div>
+
+<script>
+window.BB_VOICE_PROTOTYPE = {
+    conversationId: {{ conversation[0] }},
+    projectId: {{ active_project[0] if active_project else "null" }},
+    motionLevel: {{ visual_preferences.motion_level|tojson }},
+    demoEnabled: {{ "true" if local_demo_enabled else "false" }}
+};
+</script>
+<script src="/static/js/voice-command-center.js"></script>
+</body>
+</html>
