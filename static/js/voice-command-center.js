@@ -11,6 +11,9 @@
     const connectionLabel = document.getElementById("connectionLabel");
     const connectionChip = document.getElementById("voiceConnectionChip");
     const microphoneLabel = document.getElementById("microphoneLabel");
+    const coreMicStatus = document.getElementById("coreMicStatus");
+    const topState = document.getElementById("voiceTopState");
+    const localTime = document.getElementById("voiceLocalTime");
     const screenReaderState = document.getElementById("voiceScreenReaderState");
     const toast = document.getElementById("voiceToast");
     const demoState = document.getElementById("voiceDemoState");
@@ -21,12 +24,12 @@
 
     const states = {
         idle: {
-            title: "Idle",
+            title: "Voice Preview",
             caption: "Voice connection will be enabled in Phase 2.",
-            connection: "Prototype ready",
-            chip: "Offline prototype",
+            connection: "Not Connected",
+            chip: "Not Connected",
             microphone: "Not requested",
-            announcement: "Voice prototype is idle. Microphone access has not been requested."
+            announcement: "Voice Preview is disconnected. Microphone access has not been requested."
         },
         requesting_microphone: {
             title: "Microphone Request",
@@ -125,6 +128,7 @@
     let canvasWidth = 0;
     let canvasHeight = 0;
     let particles = [];
+    let activePanelTrigger = null;
 
     function titleCase(value) {
         return String(value || "").replace(/_/g, " ").replace(/\b\w/g, function (letter) {
@@ -142,6 +146,8 @@
         if (connectionLabel) connectionLabel.textContent = details.connection;
         if (connectionChip) connectionChip.lastChild.textContent = " " + details.chip;
         if (microphoneLabel) microphoneLabel.textContent = details.microphone;
+        if (coreMicStatus) coreMicStatus.textContent = details.microphone;
+        if (topState) topState.textContent = details.title || titleCase(nextState);
         if (screenReaderState) screenReaderState.textContent = details.announcement;
         if (demoState && demoState.value !== nextState) demoState.value = nextState;
         drawStaticFrame();
@@ -172,16 +178,19 @@
         }, body.dataset.motionLevel === "none" || reduceMotionQuery.matches ? 20 : 430);
     }
 
-    function closePanels() {
+    function closePanels(restoreFocus) {
         panels.forEach(function (panel) { panel.classList.remove("is-open"); });
         panelButtons.forEach(function (button) { button.setAttribute("aria-expanded", "false"); });
         if (backdrop) backdrop.hidden = true;
+        if (restoreFocus && activePanelTrigger?.isConnected) activePanelTrigger.focus();
+        activePanelTrigger = null;
     }
 
     function openPanel(panelId, button) {
         const panel = document.getElementById(panelId);
         if (!panel) return;
-        closePanels();
+        closePanels(false);
+        activePanelTrigger = button;
         panel.classList.add("is-open");
         button.setAttribute("aria-expanded", "true");
         if (backdrop) backdrop.hidden = false;
@@ -282,6 +291,14 @@
         if (textNode) textNode.textContent = "Good " + period + ", ";
     }
 
+    function updateLocalTime() {
+        if (!localTime) return;
+        localTime.textContent = new Intl.DateTimeFormat(undefined, {
+            hour: "2-digit",
+            minute: "2-digit"
+        }).format(new Date());
+    }
+
     document.getElementById("startVoicePrototype")?.addEventListener("click", function () {
         prototypeOnly("Voice connection");
     });
@@ -304,14 +321,29 @@
         button.addEventListener("click", function () { openPanel(button.dataset.panelTarget, button); });
     });
     document.querySelectorAll("[data-close-panel]").forEach(function (button) {
-        button.addEventListener("click", closePanels);
+        button.addEventListener("click", function () { closePanels(true); });
     });
-    backdrop?.addEventListener("click", closePanels);
+    backdrop?.addEventListener("click", function () { closePanels(true); });
 
     document.addEventListener("keydown", function (event) {
-        if (event.key !== "Escape") return;
-        if (panels.some(function (panel) { return panel.classList.contains("is-open"); })) closePanels();
-        else exitVoicePanel();
+        const openPanelElement = panels.find(function (panel) { return panel.classList.contains("is-open"); });
+        if (event.key === "Escape") {
+            if (openPanelElement) closePanels(true);
+            else exitVoicePanel();
+            return;
+        }
+        if (event.key !== "Tab" || !openPanelElement || !window.matchMedia("(max-width: 980px)").matches) return;
+        const focusable = Array.from(openPanelElement.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"));
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
     });
 
     window.addEventListener("pageshow", function () {
@@ -324,6 +356,8 @@
 
     body.dataset.motionLevel = config.motionLevel || body.dataset.motionLevel || "normal";
     updateGreetingPeriod();
+    updateLocalTime();
+    window.setInterval(updateLocalTime, 60000);
     resizeCanvas();
     updateAnimationPreference();
     setState("idle");
