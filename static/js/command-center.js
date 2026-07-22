@@ -711,7 +711,7 @@
         });
     }
 
-    if (voiceModeButton) {
+    if (voiceModeButton && voiceModeButton.tagName === "BUTTON") {
         voiceModeButton.addEventListener("click", () => setMode("voice"));
     }
 

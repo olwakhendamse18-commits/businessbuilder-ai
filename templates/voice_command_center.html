@@ -39,8 +39,8 @@
     </header>
 
     <div class="voice-mobile-tools" aria-label="Voice panel controls">
-        <button type="button" data-panel-target="voiceProjectPanel" aria-expanded="false">Project context</button>
-        <button type="button" data-panel-target="voiceOperationsPanel" aria-expanded="false">Operations</button>
+        <button type="button" data-panel-target="voiceProjectPanel" aria-controls="voiceProjectPanel" aria-expanded="false">Project context</button>
+        <button type="button" data-panel-target="voiceOperationsPanel" aria-controls="voiceOperationsPanel" aria-expanded="false">Operations</button>
     </div>
 
     <div class="voice-layout">
@@ -122,7 +122,7 @@
                     <div class="voice-waveform" id="voiceWaveform" aria-hidden="true">
                         {% for bar in range(24) %}<span style="--bar-index: {{ bar }}"></span>{% endfor %}
                     </div>
-                    <p class="voice-caption" id="voiceCaption" aria-live="polite">Voice connection will be enabled in Phase 2.</p>
+                    <p class="voice-caption" id="voiceCaption">Voice connection will be enabled in Phase 2.</p>
                     <div class="voice-core-readouts" aria-label="Preview readiness">
                         <span><small>Mic</small><strong id="coreMicStatus">Not requested</strong></span>
                         <span><small>Assistant</small><strong>Preview ready</strong></span>

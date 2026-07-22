@@ -56,6 +56,8 @@ body.voice-command-page::after {
     background: linear-gradient(90deg, rgba(0,0,0,.42), transparent 14%, transparent 86%, rgba(0,0,0,.42));
 }
 
+body.voice-drawer-open { overflow: hidden; }
+
 button, select, a { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }
@@ -329,11 +331,11 @@ body[data-voice-state="connecting"] .voice-ring-progress { stroke-dasharray: 18 
     .voice-greeting h1 { font-size: 1.35rem; }
     .voice-greeting > p:not(.voice-kicker) { font-size: .72rem; }
     .voice-core { width: min(94vw, 430px); }
-    .voice-core-center { width: 46%; }
+    .voice-core-center { width: 54%; }
     .voice-orbit-label { min-width: 80px; padding: .35rem .45rem; }
     .voice-orbit-label span { font-size: .42rem; }
     .voice-orbit-label strong { font-size: .52rem; }
-    .voice-caption { max-width: 86%; font-size: .5rem; }
+    .voice-caption { max-width: 90%; font-size: clamp(.75rem, 2.8vw, .86rem); line-height: 1.35; }
     .voice-control-deck { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
     .voice-control { min-height: 62px; grid-template-columns: 28px 1fr; column-gap: .45rem; padding: .48rem; }
     .voice-control > span { width: 28px; height: 28px; }

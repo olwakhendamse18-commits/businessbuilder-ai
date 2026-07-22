@@ -21,6 +21,7 @@
     const panels = Array.from(document.querySelectorAll(".voice-panel"));
     const panelButtons = Array.from(document.querySelectorAll("[data-panel-target]"));
     const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const drawerMediaQuery = window.matchMedia("(max-width: 980px)");
 
     const states = {
         idle: {
@@ -178,9 +179,52 @@
         }, body.dataset.motionLevel === "none" || reduceMotionQuery.matches ? 20 : 430);
     }
 
+    function setPanelAccessibility(panel, isOpen) {
+        const closeButton = panel.querySelector("[data-close-panel]");
+        if (!drawerMediaQuery.matches) {
+            panel.removeAttribute("aria-hidden");
+            panel.removeAttribute("inert");
+            panel.removeAttribute("role");
+            panel.removeAttribute("aria-modal");
+            if (closeButton) closeButton.removeAttribute("tabindex");
+            return;
+        }
+        panel.setAttribute("aria-hidden", isOpen ? "false" : "true");
+        panel.toggleAttribute("inert", !isOpen);
+        if (isOpen) {
+            panel.setAttribute("role", "dialog");
+            panel.setAttribute("aria-modal", "true");
+            if (closeButton) closeButton.removeAttribute("tabindex");
+        } else {
+            panel.removeAttribute("role");
+            panel.removeAttribute("aria-modal");
+            if (closeButton) closeButton.setAttribute("tabindex", "-1");
+        }
+    }
+
+    function syncDrawerLayout() {
+        if (!drawerMediaQuery.matches) {
+            panels.forEach(function (panel) {
+                panel.classList.remove("is-open");
+                setPanelAccessibility(panel, false);
+            });
+            panelButtons.forEach(function (button) { button.setAttribute("aria-expanded", "false"); });
+            body.classList.remove("voice-drawer-open");
+            if (backdrop) backdrop.hidden = true;
+            activePanelTrigger = null;
+            return;
+        }
+        const openPanelElement = panels.find(function (panel) { return panel.classList.contains("is-open"); });
+        panels.forEach(function (panel) { setPanelAccessibility(panel, panel === openPanelElement); });
+        body.classList.toggle("voice-drawer-open", Boolean(openPanelElement));
+        if (backdrop) backdrop.hidden = !openPanelElement;
+    }
+
     function closePanels(restoreFocus) {
         panels.forEach(function (panel) { panel.classList.remove("is-open"); });
         panelButtons.forEach(function (button) { button.setAttribute("aria-expanded", "false"); });
+        panels.forEach(function (panel) { setPanelAccessibility(panel, false); });
+        body.classList.remove("voice-drawer-open");
         if (backdrop) backdrop.hidden = true;
         if (restoreFocus && activePanelTrigger?.isConnected) activePanelTrigger.focus();
         activePanelTrigger = null;
@@ -188,11 +232,13 @@
 
     function openPanel(panelId, button) {
         const panel = document.getElementById(panelId);
-        if (!panel) return;
+        if (!panel || !drawerMediaQuery.matches) return;
         closePanels(false);
         activePanelTrigger = button;
         panel.classList.add("is-open");
         button.setAttribute("aria-expanded", "true");
+        setPanelAccessibility(panel, true);
+        body.classList.add("voice-drawer-open");
         if (backdrop) backdrop.hidden = false;
         const closeButton = panel.querySelector("[data-close-panel]");
         if (closeButton) closeButton.focus();
@@ -332,7 +378,7 @@
             else exitVoicePanel();
             return;
         }
-        if (event.key !== "Tab" || !openPanelElement || !window.matchMedia("(max-width: 980px)").matches) return;
+        if (event.key !== "Tab" || !openPanelElement || !drawerMediaQuery.matches) return;
         const focusable = Array.from(openPanelElement.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"));
         if (!focusable.length) return;
         const first = focusable[0];
@@ -353,11 +399,13 @@
     });
     window.addEventListener("resize", resizeCanvas, { passive: true });
     reduceMotionQuery.addEventListener?.("change", updateAnimationPreference);
+    drawerMediaQuery.addEventListener?.("change", syncDrawerLayout);
 
     body.dataset.motionLevel = config.motionLevel || body.dataset.motionLevel || "normal";
     updateGreetingPeriod();
     updateLocalTime();
     window.setInterval(updateLocalTime, 60000);
+    syncDrawerLayout();
     resizeCanvas();
     updateAnimationPreference();
     setState("idle");
