@@ -15842,12 +15842,7 @@ User workflow answers:
 # BUSINESSBUILDER V2 COMMAND CENTER
 # -----------------------------
 
-@app.route("/command-center")
-def command_center():
-    if "user_id" not in session:
-        return redirect("/login")
-
-    user_id = session["user_id"]
+def build_command_center_context(user_id):
     profile = get_agent_profile(user_id)
     active_project = get_active_project(user_id)
     project_id = active_project[0] if active_project else None
@@ -15867,31 +15862,75 @@ def command_center():
     product_pipeline = command_center_product_pipeline(progress, recent_tasks)
     alert_radar = command_center_alert_radar(alerts)
 
+    return {
+        "profile": profile,
+        "approval_modes": AGENT_APPROVAL_MODES,
+        "never_automate": AGENT_NEVER_AUTOMATE,
+        "tool_directory": AGENT_TOOL_DIRECTORY,
+        "active_project": active_project,
+        "agent_projects": get_agent_projects(user_id),
+        "conversation": conversation,
+        "messages": messages,
+        "pending_approvals": pending_approvals,
+        "recent_tasks": recent_tasks,
+        "alerts": alerts,
+        "progress": progress,
+        "current_package": current_package,
+        "connections": connections,
+        "voice_config": get_voice_config(),
+        "browser_config": get_browser_config(),
+        "visual_preferences": visual_preferences,
+        "visual_state": visual_state,
+        "project_map": project_map,
+        "tool_statuses": tool_statuses,
+        "diagnostics": diagnostics,
+        "product_pipeline": product_pipeline,
+        "alert_radar": alert_radar,
+        "project_memories": retrieve_relevant_memories(
+            user_id,
+            project_id,
+            "business project context goals preferences decisions",
+            limit=4
+        )
+    }
+
+
+@app.route("/command-center")
+def command_center():
+    if "user_id" not in session:
+        return redirect("/login")
+
     return render_template(
         "command_center.html",
-        profile=profile,
-        approval_modes=AGENT_APPROVAL_MODES,
-        never_automate=AGENT_NEVER_AUTOMATE,
-        tool_directory=AGENT_TOOL_DIRECTORY,
-        active_project=active_project,
-        agent_projects=get_agent_projects(user_id),
-        conversation=conversation,
-        messages=messages,
-        pending_approvals=pending_approvals,
-        recent_tasks=recent_tasks,
-        alerts=alerts,
-        progress=progress,
-        current_package=current_package,
-        connections=connections,
-        voice_config=get_voice_config(),
-        browser_config=get_browser_config(),
-        visual_preferences=visual_preferences,
-        visual_state=visual_state,
-        project_map=project_map,
-        tool_statuses=tool_statuses,
-        diagnostics=diagnostics,
-        product_pipeline=product_pipeline,
-        alert_radar=alert_radar
+        **build_command_center_context(session["user_id"])
+    )
+
+
+@app.route("/command-center/voice")
+def voice_command_center():
+    if "user_id" not in session:
+        return redirect("/login")
+
+    context = build_command_center_context(session["user_id"])
+    host = request.host.lower()
+    local_demo_enabled = (
+        not using_postgres()
+        and request.remote_addr in {"127.0.0.1", "::1"}
+        and (host.startswith("localhost") or host.startswith("127.0.0.1") or host.startswith("[::1]"))
+    )
+    local_hour = datetime.now().hour
+    if local_hour < 12:
+        greeting_period = "morning"
+    elif local_hour < 18:
+        greeting_period = "afternoon"
+    else:
+        greeting_period = "evening"
+
+    return render_template(
+        "voice_command_center.html",
+        local_demo_enabled=local_demo_enabled,
+        greeting_period=greeting_period,
+        **context
     )
 
 
