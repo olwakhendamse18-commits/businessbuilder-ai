@@ -309,7 +309,7 @@ All allowed voices use the same BusinessBuilder personality: calm, professional,
 - Phase 2D implements exact events, serialized canonical turns, ownership, and deduplication; it does not introduce dynamic output policy.
 - Phase 2E implements dynamic ordinary speech, reviewed lifecycle and approval phrase banks, captions, interruption, and spoken exit.
 - Phase 2F tests repetition, canonical authority, controlled wording, failures, privacy, accessibility, and cleanup.
-- Phase 4 may polish voice presentation and phrasing only within this frozen authority boundary.
+- Phase 4 performs final personality, pacing, wording, and professional-polish tuning only within this frozen authority boundary.
 
 ## 8. Spoken exit contract
 
