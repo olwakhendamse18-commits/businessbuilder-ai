@@ -205,7 +205,7 @@ Rules:
 
 The maximum permitted voice transcript length is the approved canonical `/api/agent/message` input limit, enforced identically in the browser for usability and on the server for authority.
 
-The audited repository has no numeric `/api/agent/message` maximum. Therefore no numeric value is invented here. **Real voice must remain disabled until Phase 2B selects, documents, tests, and enforces one numeric limit for both text and voice agent messages.**
+The canonical `/api/agent/message` maximum is **12,000 Unicode characters** for both text and voice-originated messages. Phase 2B.1 enforces this limit on the server before request-ID reservation, conversation creation, message persistence, or agent invocation. This provides a bounded input large enough for detailed business context while preventing unbounded work and keeping one authority boundary for both modes. Browser enforcement is a later usability layer; the server limit is authoritative.
 
 When the limit is exceeded:
 

@@ -3788,6 +3788,19 @@ VOICE_DEFAULT_SESSION_MAX_MINUTES = 10
 VOICE_DEFAULT_DAILY_MAX_MINUTES = 20
 VOICE_DEFAULT_IDLE_TIMEOUT_SECONDS = 90
 VOICE_SESSION_RATE_LIMIT_DAILY = 20
+AGENT_MESSAGE_MAX_CHARS = 12000
+VOICE_CSRF_HEADER = "X-BusinessBuilder-CSRF"
+VOICE_CSRF_SESSION_KEY = "_businessbuilder_voice_csrf"
+OPENAI_REALTIME_WEBRTC_ENDPOINT = "https://api.openai.com/v1/realtime/calls"
+OPENAI_REALTIME_MODEL = "gpt-realtime-2.1"
+OPENAI_REALTIME_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe"
+OPENAI_REALTIME_DEFAULT_VOICE = "marin"
+# Phase 2B.1 pins the current documented model and built-in Realtime voices.
+OPENAI_REALTIME_MODEL_ALLOWLIST = frozenset({"gpt-realtime-2.1"})
+OPENAI_REALTIME_VOICE_ALLOWLIST = frozenset({
+    "alloy", "ash", "ballad", "coral", "echo",
+    "sage", "shimmer", "verse", "marin", "cedar"
+})
 RESEARCH_QUERY_MAX_CHARS = 900
 RESEARCH_TYPES = {"quick", "standard", "deep"}
 RESEARCH_STATUSES = {"planned", "queued", "researching", "synthesizing", "completed", "failed", "cancelled"}
@@ -3889,9 +3902,9 @@ def get_voice_config():
         maximum=600
     )
     return {
-        "enabled": env_bool("VOICE_ENABLED", True),
-        "model": os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime-2.1").strip() or "gpt-realtime-2.1",
-        "voice": os.getenv("OPENAI_REALTIME_VOICE", "marin").strip() or "marin",
+        "enabled": env_bool("VOICE_RUNTIME_ENABLED", False),
+        "model": OPENAI_REALTIME_MODEL,
+        "voice": OPENAI_REALTIME_DEFAULT_VOICE,
         "handshake_timeout_seconds": env_int("VOICE_HANDSHAKE_TIMEOUT_SECONDS", 12, minimum=5, maximum=30),
         "session_max_minutes": max_minutes,
         "daily_max_minutes": daily_minutes,
@@ -3899,6 +3912,56 @@ def get_voice_config():
         "session_max_seconds": max_minutes * 60,
         "daily_max_seconds": daily_minutes * 60
     }
+
+
+def get_voice_csrf_token():
+    token = session.get(VOICE_CSRF_SESSION_KEY)
+    if not isinstance(token, str) or len(token) < 32:
+        token = secrets.token_urlsafe(32)
+        session[VOICE_CSRF_SESSION_KEY] = token
+    return token
+
+
+def request_is_same_origin():
+    fetch_site = (request.headers.get("Sec-Fetch-Site") or "").strip().lower()
+    if fetch_site in {"cross-site", "none"}:
+        return False
+
+    supplied_origin = (request.headers.get("Origin") or "").strip()
+    if not supplied_origin:
+        referer = (request.headers.get("Referer") or "").strip()
+        if not referer:
+            return False
+        parsed_referer = urllib.parse.urlsplit(referer)
+        supplied_origin = f"{parsed_referer.scheme}://{parsed_referer.netloc}"
+
+    expected = urllib.parse.urlsplit(request.host_url)
+    supplied = urllib.parse.urlsplit(supplied_origin)
+    return (
+        supplied.scheme.lower() in {"http", "https"}
+        and supplied.scheme.lower() == expected.scheme.lower()
+        and supplied.netloc.lower() == expected.netloc.lower()
+        and not supplied.username
+        and not supplied.password
+    )
+
+
+def voice_csrf_is_valid():
+    expected = session.get(VOICE_CSRF_SESSION_KEY)
+    supplied = request.headers.get(VOICE_CSRF_HEADER)
+    return (
+        isinstance(expected, str)
+        and isinstance(supplied, str)
+        and hmac.compare_digest(expected, supplied)
+    )
+
+
+def resolve_realtime_voice(user_id, profile=None):
+    profile = profile or get_agent_profile(user_id)
+    selected_voice = str(profile[5] if profile and len(profile) > 5 else "").strip().lower()
+    if selected_voice in OPENAI_REALTIME_VOICE_ALLOWLIST:
+        return selected_voice
+    return OPENAI_REALTIME_DEFAULT_VOICE
 
 
 def command_center_live_model_enabled():
@@ -5432,24 +5495,51 @@ def get_user_voice_usage(user_id):
 def can_start_voice_session(user_id):
     config = get_voice_config()
     if not config["enabled"]:
-        return False, "Voice mode is currently disabled. Text mode is still available."
+        return (
+            False,
+            "Voice runtime is not available yet. Text mode remains available.",
+            "voice_runtime_disabled",
+            503
+        )
+    profile = get_agent_profile(user_id)
+    if not profile or not bool(profile[4]):
+        return (
+            False,
+            "Voice is disabled in your BusinessBuilder settings.",
+            "voice_preference_disabled",
+            403
+        )
     if not os.getenv("OPENAI_API_KEY"):
-        return False, "Voice mode is not configured yet. OPENAI_API_KEY is missing on the server."
+        return (
+            False,
+            "Voice is not configured on the server. Text mode remains available.",
+            "voice_not_configured",
+            503
+        )
+    if config["model"] not in OPENAI_REALTIME_MODEL_ALLOWLIST:
+        return (
+            False,
+            "Voice configuration is not available. Text mode remains available.",
+            "invalid_realtime_configuration",
+            503
+        )
     if get_active_voice_session(user_id):
-        return False, "A voice session is already active. Stop it before starting another one."
+        return False, "A voice session is already active. Stop it before starting another one.", "voice_session_active", 429
     usage = get_user_voice_usage(user_id)
     if usage["sessions_today"] >= VOICE_SESSION_RATE_LIMIT_DAILY:
-        return False, "You have reached today's voice session start limit. Text mode is still available."
+        return False, "You have reached today's voice session start limit. Text mode is still available.", "voice_rate_limited", 429
     if usage["seconds_today"] >= config["daily_max_seconds"]:
-        return False, "You have reached today's voice minutes limit. Text mode is still available."
-    return True, ""
+        return False, "You have reached today's voice minutes limit. Text mode is still available.", "voice_rate_limited", 429
+    return True, "", "", 200
 
 
-def start_voice_session(user_id, conversation_id, project_id):
+def start_voice_session(user_id, conversation_id, project_id, voice_name=None):
     config = get_voice_config()
+    if voice_name not in OPENAI_REALTIME_VOICE_ALLOWLIST:
+        voice_name = resolve_realtime_voice(user_id)
     conn = db()
     cur = conn.cursor()
-    values = (user_id, conversation_id, project_id, "active", config["model"], config["voice"])
+    values = (user_id, conversation_id, project_id, "active", config["model"], voice_name)
     if using_postgres():
         cur.execute(sql("""
             INSERT INTO agent_voice_sessions (
@@ -5506,70 +5596,149 @@ def finish_stale_voice_sessions(user_id):
         finish_voice_session(user_id, active[0], "max_duration_reached")
 
 
-def voice_safety_identifier(user_id):
-    seed = f"businessbuilder-ai-realtime-safety:{user_id}".encode("utf-8")
-    return hashlib.sha256(seed).hexdigest()
+def voice_safety_identifier(user_id, hmac_secret=None):
+    secret = hmac_secret
+    if secret is None:
+        secret = os.getenv("VOICE_SAFETY_HMAC_SECRET", "").strip() or app.secret_key
+    message = f"businessbuilder-ai:voice-realtime:user:{user_id}".encode("utf-8")
+    return hmac.new(str(secret).encode("utf-8"), message, hashlib.sha256).hexdigest()
 
 
 def realtime_voice_instructions():
     return (
-        "You are Builder, the original voice interface for BusinessBuilder AI. "
-        "Be calm, concise, respectful, analytical, quietly confident, and occasionally witty. "
-        "Do not imitate JARVIS, Marvel, Iron Man, celebrities, or real people. "
-        "Do not perform business reasoning or external actions independently. "
-        "Use voice for transcription, brief acknowledgements, interruption, and speaking canonical responses "
-        "provided by the BusinessBuilder backend. Do not read raw JSON, IDs, HTML, stack traces, hidden checkpoints, "
-        "or internal schemas. If approval is required, say the user must review the approval card first."
+        "You are only the audio transport and rendering layer for BusinessBuilder AI. "
+        "The authenticated BusinessBuilder backend owns all reasoning and the canonical response meaning. "
+        "Do not perform BusinessBuilder reasoning, call tools, approve actions, connect accounts, send or publish "
+        "anything, or claim that an external action occurred. Do not alter, summarize, or contradict the canonical "
+        "response supplied by the backend. Never imitate a real person, celebrity, character, or protected identity. "
+        "Do not read raw JSON, IDs, HTML, stack traces, hidden checkpoints, or internal schemas."
     )
 
 
-def create_realtime_sdp_answer(user_id, offer_sdp):
+def build_realtime_session_config(user_id, voice_name=None):
     config = get_voice_config()
-    api_key = os.getenv("OPENAI_API_KEY")
-    endpoint = os.getenv("OPENAI_REALTIME_WEBRTC_URL", "https://api.openai.com/v1/realtime/calls")
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "X-OpenAI-Safety-Identifier": voice_safety_identifier(user_id)
-    }
-    # Server-controlled session settings. The client cannot override these.
-    session_config = {
+    if config["model"] not in OPENAI_REALTIME_MODEL_ALLOWLIST:
+        raise ValueError("invalid_realtime_configuration")
+    voice_name = voice_name or resolve_realtime_voice(user_id)
+    if voice_name not in OPENAI_REALTIME_VOICE_ALLOWLIST:
+        raise ValueError("invalid_voice_configuration")
+    return {
         "type": "realtime",
         "model": config["model"],
-        "instructions": realtime_voice_instructions(),
-        "voice": config["voice"],
-        "modalities": ["audio", "text"],
-        "input_audio_transcription": {"model": "gpt-4o-mini-transcribe"},
-        "turn_detection": {
-            "type": "semantic_vad",
-            "eagerness": "low",
-            "create_response": False,
-            "interrupt_response": True
+        "output_modalities": ["audio"],
+        "audio": {
+            "input": {
+                "transcription": {
+                    "model": OPENAI_REALTIME_TRANSCRIPTION_MODEL
+                },
+                "turn_detection": {
+                    "type": "semantic_vad",
+                    "eagerness": "low",
+                    "create_response": False,
+                    "interrupt_response": True
+                }
+            },
+            "output": {
+                "voice": voice_name
+            }
         },
-        "max_response_output_tokens": 900,
-        "tool_choice": "none"
+        "instructions": realtime_voice_instructions(),
+        "tools": [],
+        "tool_choice": "none",
+        "max_output_tokens": 900
     }
+
+
+def valid_sdp_document(sdp):
+    if not isinstance(sdp, str) or not sdp.strip().startswith("v=0"):
+        return False
+    normalized = sdp.replace("\r\n", "\n")
+    return all(
+        re.search(rf"(?m)^{re.escape(prefix)}", normalized)
+        for prefix in ("o=", "s=", "t=")
+    )
+
+
+def create_realtime_sdp_answer(user_id, offer_sdp, voice_name=None):
+    config = get_voice_config()
+    api_key = os.getenv("OPENAI_API_KEY")
+    try:
+        session_config = build_realtime_session_config(user_id, voice_name)
+    except ValueError as error:
+        return None, str(error)
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "OpenAI-Safety-Identifier": voice_safety_identifier(user_id)
+    }
+    correlation_id = secrets.token_hex(8)
     try:
         response = requests.post(
-            endpoint,
+            OPENAI_REALTIME_WEBRTC_ENDPOINT,
             headers=headers,
             files={
                 "sdp": ("offer.sdp", offer_sdp, "application/sdp"),
                 "session": (None, safe_json_dumps(session_config), "application/json")
             },
-            timeout=config["handshake_timeout_seconds"]
+            timeout=config["handshake_timeout_seconds"],
+            allow_redirects=False
         )
+    except requests.Timeout:
+        logger.warning("voice_realtime_handshake_failed code=upstream_timeout correlation_id=%s", correlation_id)
+        return None, "upstream_timeout"
+    except requests.ConnectionError:
+        logger.warning("voice_realtime_handshake_failed code=upstream_unavailable correlation_id=%s", correlation_id)
+        return None, "upstream_unavailable"
     except requests.RequestException:
-        return None, "Voice could not connect quickly enough. Text mode is still available."
+        logger.warning("voice_realtime_handshake_failed code=upstream_unavailable correlation_id=%s", correlation_id)
+        return None, "upstream_unavailable"
     if response.status_code >= 400:
-        if response.status_code == 401:
-            return None, "Voice authentication failed on the server. Check the OpenAI API key."
-        if response.status_code == 429:
-            return None, "Voice is temporarily rate limited. Text mode is still available."
-        return None, "OpenAI Realtime could not start this voice session."
+        if response.status_code in {401, 403}:
+            error_code = "upstream_authentication_failed"
+        elif response.status_code == 429:
+            error_code = "upstream_rate_limited"
+        elif response.status_code >= 500:
+            error_code = "upstream_unavailable"
+        else:
+            error_code = "invalid_realtime_configuration"
+        logger.warning("voice_realtime_handshake_failed code=%s correlation_id=%s", error_code, correlation_id)
+        return None, error_code
+    if response.status_code < 200 or response.status_code >= 300:
+        logger.warning("voice_realtime_handshake_failed code=invalid_upstream_response correlation_id=%s", correlation_id)
+        return None, "invalid_upstream_response"
     answer = response.text or ""
-    if "v=" not in answer[:20]:
-        return None, "OpenAI Realtime returned an unexpected handshake response."
+    if len(answer.encode("utf-8")) > VOICE_SESSION_MAX_SDP_BYTES or not valid_sdp_document(answer):
+        logger.warning("voice_realtime_handshake_failed code=invalid_upstream_response correlation_id=%s", correlation_id)
+        return None, "invalid_upstream_response"
     return answer, None
+
+
+VOICE_ERROR_DETAILS = {
+    "voice_runtime_disabled": ("Voice runtime is not available yet. Text mode remains available.", 503),
+    "voice_preference_disabled": ("Voice is disabled in your BusinessBuilder settings.", 403),
+    "voice_not_configured": ("Voice is not configured on the server. Text mode remains available.", 503),
+    "invalid_voice_configuration": ("Voice configuration is not available. Text mode remains available.", 503),
+    "invalid_realtime_configuration": ("Voice configuration is not available. Text mode remains available.", 503),
+    "invalid_origin": ("This request must come from BusinessBuilder.", 403),
+    "csrf_failed": ("Voice request verification failed.", 403),
+    "invalid_content_type": ("The request Content-Type is not supported.", 415),
+    "invalid_sdp": ("A valid SDP offer is required.", 400),
+    "sdp_too_large": ("The SDP offer is too large.", 413),
+    "upstream_authentication_failed": ("Voice authentication is temporarily unavailable. Text mode remains available.", 502),
+    "upstream_rate_limited": ("Voice is temporarily rate limited. Text mode remains available.", 429),
+    "upstream_timeout": ("Voice could not connect in time. Text mode remains available.", 504),
+    "upstream_unavailable": ("Voice is temporarily unavailable. Text mode remains available.", 503),
+    "invalid_upstream_response": ("Voice received an invalid handshake response. Text mode remains available.", 502)
+}
+
+
+def voice_error_response(code, message=None, status=None):
+    default_message, default_status = VOICE_ERROR_DETAILS.get(
+        code,
+        ("Voice is temporarily unavailable. Text mode remains available.", 503)
+    )
+    response = jsonify({"error": message or default_message, "code": code})
+    response.headers["Cache-Control"] = "no-store"
+    return response, status or default_status
 
 
 def sanitize_source_url(url):
@@ -15878,6 +16047,7 @@ def build_command_center_context(user_id):
         "current_package": current_package,
         "connections": connections,
         "voice_config": get_voice_config(),
+        "voice_csrf_token": get_voice_csrf_token(),
         "browser_config": get_browser_config(),
         "visual_preferences": visual_preferences,
         "visual_state": visual_state,
@@ -15999,11 +16169,27 @@ def api_agent_message():
     if "user_id" not in session:
         return jsonify({"error": "Login required."}), 401
 
+    if request.mimetype != "application/json":
+        return jsonify({
+            "error": "Builder messages must use application/json.",
+            "code": "invalid_content_type"
+        }), 415
+    if not request_is_same_origin():
+        return jsonify({
+            "error": "This request must come from BusinessBuilder.",
+            "code": "invalid_origin"
+        }), 403
+
     user_id = session["user_id"]
     data = request.get_json(silent=True) or {}
     user_message = str(data.get("message", "")).strip()
     if not user_message:
         return jsonify({"error": "Enter a message first."}), 400
+    if len(user_message) > AGENT_MESSAGE_MAX_CHARS:
+        return jsonify({
+            "error": f"Builder messages must be {AGENT_MESSAGE_MAX_CHARS} characters or fewer.",
+            "code": "agent_message_too_long"
+        }), 413
     request_id = normalize_agent_request_id(data.get("request_id"))
     reserved, existing_request = reserve_agent_message_request(user_id, request_id)
     if not reserved:
@@ -16146,33 +16332,39 @@ def api_agent_stop():
 @app.route("/api/realtime/session", methods=["POST"])
 def api_realtime_session():
     if "user_id" not in session:
-        return jsonify({"error": "Login required."}), 401
+        return voice_error_response("authentication_required", "Login required.", 401)
 
     user_id = session["user_id"]
-    finish_stale_voice_sessions(user_id)
-    content_type = (request.content_type or "").split(";", 1)[0].strip().lower()
-    if content_type != "application/sdp":
-        return jsonify({"error": "Voice session requests must use Content-Type: application/sdp."}), 415
+    if not get_voice_config()["enabled"]:
+        return voice_error_response("voice_runtime_disabled")
+    if request.mimetype != "application/sdp":
+        return voice_error_response("invalid_content_type")
+    if not request_is_same_origin():
+        return voice_error_response("invalid_origin")
+    if not voice_csrf_is_valid():
+        return voice_error_response("csrf_failed")
 
     offer_sdp = request.get_data(as_text=True)
-    if not offer_sdp or not offer_sdp.strip().startswith("v="):
-        return jsonify({"error": "A valid SDP offer is required."}), 400
     if len(offer_sdp.encode("utf-8")) > VOICE_SESSION_MAX_SDP_BYTES:
-        return jsonify({"error": "The SDP offer is too large."}), 413
+        return voice_error_response("sdp_too_large")
+    if not valid_sdp_document(offer_sdp):
+        return voice_error_response("invalid_sdp")
 
-    allowed, message = can_start_voice_session(user_id)
+    finish_stale_voice_sessions(user_id)
+    allowed, message, code, status = can_start_voice_session(user_id)
     if not allowed:
-        return jsonify({"error": message}), 429 if "limit" in message.lower() or "active" in message.lower() else 503
+        return voice_error_response(code, message, status)
 
     active_project = get_active_project(user_id)
     project_id = active_project[0] if active_project else None
     conversation = get_or_create_agent_conversation(user_id, project_id)
-    voice_session_id = start_voice_session(user_id, conversation[0], project_id)
+    voice_name = resolve_realtime_voice(user_id)
+    voice_session_id = start_voice_session(user_id, conversation[0], project_id, voice_name)
 
-    answer_sdp, error = create_realtime_sdp_answer(user_id, offer_sdp)
-    if error:
-        finish_voice_session(user_id, voice_session_id, "realtime_handshake_failed")
-        return jsonify({"error": error}), 503
+    answer_sdp, error_code = create_realtime_sdp_answer(user_id, offer_sdp, voice_name)
+    if error_code:
+        finish_voice_session(user_id, voice_session_id, error_code)
+        return voice_error_response(error_code)
 
     response = app.response_class(answer_sdp, mimetype="application/sdp")
     config = get_voice_config()
@@ -16186,7 +16378,15 @@ def api_realtime_session():
 @app.route("/api/realtime/session/end", methods=["POST"])
 def api_realtime_session_end():
     if "user_id" not in session:
-        return jsonify({"error": "Login required."}), 401
+        return voice_error_response("authentication_required", "Login required.", 401)
+    if not get_voice_config()["enabled"]:
+        return voice_error_response("voice_runtime_disabled")
+    if request.mimetype != "application/json":
+        return voice_error_response("invalid_content_type")
+    if not request_is_same_origin():
+        return voice_error_response("invalid_origin")
+    if not voice_csrf_is_valid():
+        return voice_error_response("csrf_failed")
 
     data = request.get_json(silent=True) or {}
     voice_session_id = data.get("voice_session_id")
@@ -16197,7 +16397,9 @@ def api_realtime_session_end():
 
     reason = str(data.get("reason", "client_disconnected"))[:120]
     finish_voice_session(session["user_id"], voice_session_id, reason)
-    return jsonify({"status": "ended"})
+    response = jsonify({"status": "ended"})
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.route("/api/conversations")
