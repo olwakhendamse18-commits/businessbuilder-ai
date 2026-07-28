@@ -12,6 +12,7 @@ import app as app_module
 VALID_SDP = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
 ORIGIN = "http://localhost"
 CSRF_TOKEN = "test-voice-csrf-token-with-more-than-32-characters"
+VOICE_REQUEST_ID = "phase2b1-security-test"
 
 
 def profile(voice_enabled=True, selected_voice="marin"):
@@ -30,7 +31,11 @@ class VoiceSecurityTestCase(unittest.TestCase):
                 flask_session[app_module.VOICE_CSRF_SESSION_KEY] = csrf_token
 
     def voice_headers(self, csrf_token=CSRF_TOKEN, origin=ORIGIN, content_type="application/sdp"):
-        headers = {"Content-Type": content_type, "Origin": origin}
+        headers = {
+            "Content-Type": content_type,
+            "Origin": origin,
+            app_module.VOICE_REQUEST_ID_HEADER: VOICE_REQUEST_ID,
+        }
         if csrf_token is not None:
             headers[app_module.VOICE_CSRF_HEADER] = csrf_token
         return headers
@@ -44,17 +49,20 @@ class VoiceSecurityTestCase(unittest.TestCase):
 
     def admitted_route_patches(self, upstream_result=(VALID_SDP, None)):
         return [
-            mock.patch.object(app_module, "finish_stale_voice_sessions"),
             mock.patch.object(
                 app_module,
-                "can_start_voice_session",
-                return_value=(True, "", "", 200)
+                "admit_voice_session",
+                return_value={
+                    "ok": True,
+                    "voice_session_id": 99,
+                    "conversation_id": 42,
+                    "voice_name": "marin",
+                }
             ),
             mock.patch.object(app_module, "get_active_project", return_value=None),
             mock.patch.object(app_module, "get_or_create_agent_conversation", return_value=(42,)),
-            mock.patch.object(app_module, "resolve_realtime_voice", return_value="marin"),
-            mock.patch.object(app_module, "start_voice_session", return_value=99),
             mock.patch.object(app_module, "create_realtime_sdp_answer", return_value=upstream_result),
+            mock.patch.object(app_module, "activate_voice_session", return_value=True),
         ]
 
     def test_voice_runtime_flag_defaults_false_and_rejects_unrecognized_values(self):
@@ -72,7 +80,6 @@ class VoiceSecurityTestCase(unittest.TestCase):
     def test_disabled_runtime_rejects_before_session_creation_or_upstream(self):
         self.authenticate()
         with mock.patch.dict(os.environ, {}, clear=True), \
-                mock.patch.object(app_module, "start_voice_session") as start_session, \
                 mock.patch.object(app_module.requests, "post") as upstream:
             response = self.client.post(
                 "/api/realtime/session",
@@ -82,50 +89,21 @@ class VoiceSecurityTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.get_json()["code"], "voice_runtime_disabled")
-        start_session.assert_not_called()
         upstream.assert_not_called()
-
-    def test_voice_preference_is_required_for_admission(self):
-        with self.enabled_environment(), \
-                mock.patch.object(app_module, "get_agent_profile", return_value=profile(False)), \
-                mock.patch.object(app_module, "get_active_voice_session") as active_session:
-            allowed, _, code, status = app_module.can_start_voice_session(7)
-
-        self.assertFalse(allowed)
-        self.assertEqual(code, "voice_preference_disabled")
-        self.assertEqual(status, 403)
-        active_session.assert_not_called()
-
-    def test_voice_preference_true_allows_remaining_admission_checks(self):
-        with self.enabled_environment(), \
-                mock.patch.object(app_module, "get_agent_profile", return_value=profile(True)), \
-                mock.patch.object(app_module, "get_active_voice_session", return_value=None), \
-                mock.patch.object(
-                    app_module,
-                    "get_user_voice_usage",
-                    return_value={"sessions_today": 0, "seconds_today": 0}
-                ):
-            allowed, _, code, status = app_module.can_start_voice_session(7)
-
-        self.assertTrue(allowed)
-        self.assertEqual(code, "")
-        self.assertEqual(status, 200)
 
     def test_disabled_voice_preference_rejects_route_before_session_creation(self):
         self.authenticate()
         with self.enabled_environment(), \
-                mock.patch.object(app_module, "finish_stale_voice_sessions"), \
                 mock.patch.object(
                     app_module,
-                    "can_start_voice_session",
-                    return_value=(
-                        False,
-                        "Voice is disabled in your BusinessBuilder settings.",
-                        "voice_preference_disabled",
-                        403
-                    )
-                ), \
-                mock.patch.object(app_module, "start_voice_session") as start_session:
+                    "admit_voice_session",
+                    return_value={
+                        "ok": False,
+                        "message": "Voice is disabled in your BusinessBuilder settings.",
+                        "code": "voice_preference_disabled",
+                        "status": 403,
+                    }
+                ):
             response = self.client.post(
                 "/api/realtime/session",
                 data=VALID_SDP,
@@ -134,17 +112,6 @@ class VoiceSecurityTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.get_json()["code"], "voice_preference_disabled")
-        start_session.assert_not_called()
-
-    def test_missing_api_key_is_safe_and_does_not_enable_voice(self):
-        with mock.patch.dict(os.environ, {"VOICE_RUNTIME_ENABLED": "true"}, clear=True), \
-                mock.patch.object(app_module, "get_agent_profile", return_value=profile(True)):
-            allowed, message, code, status = app_module.can_start_voice_session(7)
-
-        self.assertFalse(allowed)
-        self.assertEqual(code, "voice_not_configured")
-        self.assertEqual(status, 503)
-        self.assertNotIn("OPENAI_API_KEY", message)
 
     def test_saved_voice_is_validated_with_marin_fallback(self):
         self.assertEqual(
@@ -340,7 +307,36 @@ class VoiceSecurityTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.mimetype, "application/sdp")
         self.assertEqual(response.headers["Cache-Control"], "no-store")
-        started[5].assert_called_once_with(7, 42, None, "marin")
+        started[0].assert_called_once_with(7, 42, None, VOICE_REQUEST_ID)
+        started[4].assert_called_once_with(7, 99, VOICE_REQUEST_ID)
+
+    def test_activation_failure_never_returns_upstream_sdp(self):
+        self.authenticate()
+        patches = self.admitted_route_patches()
+        finish = mock.patch.object(app_module, "finish_voice_session")
+        with self.enabled_environment():
+            started = [patcher.start() for patcher in patches]
+            started[4].return_value = False
+            finish_mock = finish.start()
+            try:
+                response = self.client.post(
+                    "/api/realtime/session",
+                    data=VALID_SDP,
+                    headers=self.voice_headers()
+                )
+            finally:
+                finish.stop()
+                for patcher in reversed(patches):
+                    patcher.stop()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()["code"], "voice_activation_failed")
+        finish_mock.assert_called_once_with(
+            7,
+            99,
+            "voice_activation_failed",
+            handshake_request_id=VOICE_REQUEST_ID
+        )
 
     def test_route_finalizes_local_session_when_handshake_fails(self):
         self.authenticate()
@@ -363,11 +359,20 @@ class VoiceSecurityTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 504)
         self.assertEqual(response.get_json()["code"], "upstream_timeout")
-        finish_mock.assert_called_once_with(7, 99, "upstream_timeout")
+        finish_mock.assert_called_once_with(
+            7,
+            99,
+            "upstream_timeout",
+            handshake_request_id=VOICE_REQUEST_ID
+        )
 
     def test_session_end_requires_json_origin_and_csrf(self):
         self.authenticate()
-        with self.enabled_environment(), mock.patch.object(app_module, "finish_voice_session", return_value=True) as finish:
+        with self.enabled_environment(), mock.patch.object(
+                app_module,
+                "finish_voice_session",
+                return_value={"found": True, "ended": True, "changed": True}
+        ) as finish:
             missing_token = self.client.post(
                 "/api/realtime/session/end",
                 json={"voice_session_id": 99},

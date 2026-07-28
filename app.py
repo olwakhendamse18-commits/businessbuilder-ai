@@ -14,6 +14,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from cryptography.fernet import Fernet, InvalidToken
 
+import click
 import requests
 import sqlite3
 import os
@@ -25,10 +26,12 @@ import secrets
 import psycopg2
 import re
 import json
+import threading
+import time
 import urllib.parse
 import ipaddress
 import mimetypes
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from xml.sax.saxutils import escape
 
@@ -294,7 +297,9 @@ def db():
     if database_url:
         return psycopg2.connect(database_url)
 
-    return sqlite3.connect("business_ai.db")
+    conn = sqlite3.connect("business_ai.db", timeout=5)
+    conn.execute("PRAGMA busy_timeout = 5000")
+    return conn
 
 
 def sql(query):
@@ -1224,16 +1229,46 @@ def init_db():
             user_id INTEGER NOT NULL,
             conversation_id INTEGER,
             project_id INTEGER,
-            status TEXT NOT NULL DEFAULT 'active',
+            status TEXT NOT NULL DEFAULT 'starting',
             model_name TEXT,
             voice_name TEXT,
+            handshake_request_id TEXT,
             started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP,
             ended_at TIMESTAMP,
             duration_seconds INTEGER NOT NULL DEFAULT 0,
             disconnect_reason TEXT,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    voice_session_columns = {
+        "handshake_request_id": "TEXT",
+        "expires_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP"
+    }
+    if using_postgres():
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'agent_voice_sessions'
+        """)
+        existing_voice_session_columns = {row[0] for row in cur.fetchall()}
+    else:
+        cur.execute("PRAGMA table_info(agent_voice_sessions)")
+        existing_voice_session_columns = {row[1] for row in cur.fetchall()}
+    for column_name, column_type in voice_session_columns.items():
+        if column_name not in existing_voice_session_columns:
+            cur.execute(
+                f"ALTER TABLE agent_voice_sessions ADD COLUMN {column_name} {column_type}"
+            )
+    cur.execute("""
+        UPDATE agent_voice_sessions
+        SET updated_at = COALESCE(updated_at, created_at, started_at, CURRENT_TIMESTAMP)
+        WHERE updated_at IS NULL
+    """)
+    _reconcile_voice_sessions_in_transaction(cur)
 
     execute_schema(f"""
         CREATE TABLE IF NOT EXISTS agent_research_jobs (
@@ -1497,6 +1532,23 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_agent_message_requests_user_request
         ON agent_message_requests (user_id, request_id)
     """))
+
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_voice_sessions_user_request
+        ON agent_voice_sessions (user_id, handshake_request_id)
+        WHERE handshake_request_id IS NOT NULL
+    """)
+
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_voice_sessions_user_nonterminal
+        ON agent_voice_sessions (user_id)
+        WHERE status IN ('starting', 'active')
+    """)
+
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_voice_sessions_status_expires_user
+        ON agent_voice_sessions (status, expires_at, user_id)
+    """)
 
     conn.commit()
     conn.close()
@@ -3791,6 +3843,12 @@ VOICE_SESSION_RATE_LIMIT_DAILY = 20
 AGENT_MESSAGE_MAX_CHARS = 12000
 VOICE_CSRF_HEADER = "X-BusinessBuilder-CSRF"
 VOICE_CSRF_SESSION_KEY = "_businessbuilder_voice_csrf"
+VOICE_REQUEST_ID_HEADER = "X-BusinessBuilder-Voice-Request-ID"
+VOICE_REQUEST_ID_MAX_CHARS = 120
+VOICE_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]+$")
+VOICE_HANDSHAKE_GRACE_SECONDS = 60
+VOICE_RECONCILE_INTERVAL_SECONDS = 60
+VOICE_ADMISSION_LOCK_NAMESPACE = 1112957523
 OPENAI_REALTIME_WEBRTC_ENDPOINT = "https://api.openai.com/v1/realtime/calls"
 OPENAI_REALTIME_MODEL = "gpt-realtime-2.1"
 OPENAI_REALTIME_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe"
@@ -3801,6 +3859,8 @@ OPENAI_REALTIME_VOICE_ALLOWLIST = frozenset({
     "alloy", "ash", "ballad", "coral", "echo",
     "sage", "shimmer", "verse", "marin", "cedar"
 })
+_voice_reconcile_lock = threading.Lock()
+_voice_reconcile_last_run = 0.0
 RESEARCH_QUERY_MAX_CHARS = 900
 RESEARCH_TYPES = {"quick", "standard", "deep"}
 RESEARCH_STATUSES = {"planned", "queued", "researching", "synthesizing", "completed", "failed", "cancelled"}
@@ -5447,12 +5507,13 @@ def get_active_voice_session(user_id):
     cur.execute(sql("""
         SELECT id, user_id, conversation_id, project_id, status, model_name,
                voice_name, started_at, ended_at, duration_seconds,
-               disconnect_reason, created_at
+               disconnect_reason, created_at, handshake_request_id, expires_at,
+               updated_at
         FROM agent_voice_sessions
-        WHERE user_id = ? AND status = ?
+        WHERE user_id = ? AND status IN ('starting', 'active')
         ORDER BY id DESC
         LIMIT 1
-    """), (user_id, "active"))
+    """), (user_id,))
     row = cur.fetchone()
     conn.close()
     return row
@@ -5464,7 +5525,8 @@ def get_user_voice_sessions(user_id, limit=100):
     cur.execute(sql("""
         SELECT id, user_id, conversation_id, project_id, status, model_name,
                voice_name, started_at, ended_at, duration_seconds,
-               disconnect_reason, created_at
+               disconnect_reason, created_at, handshake_request_id, expires_at,
+               updated_at
         FROM agent_voice_sessions
         WHERE user_id = ?
         ORDER BY id DESC
@@ -5492,108 +5554,454 @@ def get_user_voice_usage(user_id):
     return {"seconds_today": total_seconds, "sessions_today": sessions_today}
 
 
-def can_start_voice_session(user_id):
-    config = get_voice_config()
-    if not config["enabled"]:
-        return (
-            False,
-            "Voice runtime is not available yet. Text mode remains available.",
-            "voice_runtime_disabled",
-            503
-        )
-    profile = get_agent_profile(user_id)
-    if not profile or not bool(profile[4]):
-        return (
-            False,
-            "Voice is disabled in your BusinessBuilder settings.",
-            "voice_preference_disabled",
-            403
-        )
-    if not os.getenv("OPENAI_API_KEY"):
-        return (
-            False,
-            "Voice is not configured on the server. Text mode remains available.",
-            "voice_not_configured",
-            503
-        )
-    if config["model"] not in OPENAI_REALTIME_MODEL_ALLOWLIST:
-        return (
-            False,
-            "Voice configuration is not available. Text mode remains available.",
-            "invalid_realtime_configuration",
-            503
-        )
-    if get_active_voice_session(user_id):
-        return False, "A voice session is already active. Stop it before starting another one.", "voice_session_active", 429
-    usage = get_user_voice_usage(user_id)
-    if usage["sessions_today"] >= VOICE_SESSION_RATE_LIMIT_DAILY:
-        return False, "You have reached today's voice session start limit. Text mode is still available.", "voice_rate_limited", 429
-    if usage["seconds_today"] >= config["daily_max_seconds"]:
-        return False, "You have reached today's voice minutes limit. Text mode is still available.", "voice_rate_limited", 429
-    return True, "", "", 200
+def normalize_voice_request_id(value):
+    if value is None or value == "":
+        return None, "voice_request_id_required"
+    if (
+        not isinstance(value, str)
+        or len(value) > VOICE_REQUEST_ID_MAX_CHARS
+        or not VOICE_REQUEST_ID_PATTERN.fullmatch(value)
+    ):
+        return None, "invalid_voice_request_id"
+    return value, None
 
 
-def start_voice_session(user_id, conversation_id, project_id, voice_name=None):
-    config = get_voice_config()
-    if voice_name not in OPENAI_REALTIME_VOICE_ALLOWLIST:
-        voice_name = resolve_realtime_voice(user_id)
-    conn = db()
-    cur = conn.cursor()
-    values = (user_id, conversation_id, project_id, "active", config["model"], voice_name)
-    if using_postgres():
-        cur.execute(sql("""
-            INSERT INTO agent_voice_sessions (
-                user_id, conversation_id, project_id, status, model_name, voice_name
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            RETURNING id
-        """), values)
-        session_id = cur.fetchone()[0]
-    else:
-        cur.execute(sql("""
-            INSERT INTO agent_voice_sessions (
-                user_id, conversation_id, project_id, status, model_name, voice_name
-            ) VALUES (?, ?, ?, ?, ?, ?)
-        """), values)
-        session_id = cur.lastrowid
-    conn.commit()
-    conn.close()
-    return session_id
+def _voice_admission_result(ok, code="", status=200, message="", **values):
+    result = {
+        "ok": ok,
+        "code": code,
+        "status": status,
+        "message": message,
+        "retryable": code in {
+            "voice_handshake_in_progress",
+            "voice_session_active",
+            "voice_admission_busy"
+        }
+    }
+    result.update(values)
+    return result
 
 
-def finish_voice_session(user_id, voice_session_id, reason="client_disconnected"):
-    conn = db()
-    cur = conn.cursor()
-    cur.execute(sql("""
-        SELECT started_at
-        FROM agent_voice_sessions
-        WHERE user_id = ? AND id = ?
-        LIMIT 1
-    """), (user_id, voice_session_id))
-    row = cur.fetchone()
-    if not row:
-        conn.close()
+def _end_voice_row_in_transaction(cur, row, reason, now):
+    session_id, user_id, status, started_value = row[0], row[1], row[2], row[3]
+    if status == "ended":
         return False
-    started_at = parse_db_datetime(row[0])
-    duration = max(0, int((utc_now() - started_at).total_seconds())) if started_at else 0
+    started_at = parse_db_datetime(started_value)
+    duration = max(0, int((now - started_at).total_seconds())) if started_at else 0
     cur.execute(sql("""
         UPDATE agent_voice_sessions
-        SET status = ?, ended_at = CURRENT_TIMESTAMP, duration_seconds = ?,
-            disconnect_reason = ?
-        WHERE user_id = ? AND id = ?
-    """), ("ended", duration, str(reason or "client_disconnected")[:120], user_id, voice_session_id))
-    conn.commit()
-    conn.close()
-    return True
+        SET status = 'ended',
+            ended_at = COALESCE(ended_at, ?),
+            duration_seconds = CASE
+                WHEN duration_seconds > ? THEN duration_seconds
+                ELSE ?
+            END,
+            disconnect_reason = COALESCE(disconnect_reason, ?),
+            updated_at = ?
+        WHERE id = ? AND user_id = ? AND status IN ('starting', 'active')
+    """), (
+        now, duration, duration, str(reason or "server_expired")[:120],
+        now, session_id, user_id
+    ))
+    return cur.rowcount > 0
 
 
-def finish_stale_voice_sessions(user_id):
-    active = get_active_voice_session(user_id)
-    if not active:
-        return
-    started_at = parse_db_datetime(active[7])
+def _reconcile_voice_sessions_in_transaction(cur, user_id=None, now=None):
+    now = now or utc_now()
+    params = ()
+    where = "WHERE status IN ('starting', 'active')"
+    if user_id is not None:
+        where += " AND user_id = ?"
+        params = (user_id,)
+    cur.execute(sql(f"""
+        SELECT id, user_id, status, started_at, expires_at, ended_at,
+               duration_seconds, disconnect_reason, updated_at, created_at
+        FROM agent_voice_sessions
+        {where}
+        ORDER BY user_id, id
+    """), params)
+    rows = cur.fetchall()
+    counts = {
+        "handshake_expired": 0,
+        "server_expired": 0,
+        "legacy_session_expired": 0,
+        "invalid_session_timestamp": 0,
+        "duplicate_session_reconciled": 0
+    }
+    candidates = {}
+    session_max_seconds = get_voice_config()["session_max_seconds"]
+    for row in rows:
+        if row[2] not in {"starting", "active"}:
+            continue
+        started_at = parse_db_datetime(row[3]) or parse_db_datetime(row[9])
+        expires_at = parse_db_datetime(row[4])
+        reason = None
+        if expires_at:
+            if now >= expires_at:
+                reason = (
+                    "handshake_expired"
+                    if row[2] == "starting"
+                    else "server_expired"
+                )
+        elif not started_at:
+            reason = "invalid_session_timestamp"
+        elif row[2] == "starting" and now >= (
+            started_at + timedelta(seconds=VOICE_HANDSHAKE_GRACE_SECONDS)
+        ):
+            reason = "handshake_expired"
+        elif row[2] == "active" and now >= (
+            started_at + timedelta(seconds=session_max_seconds)
+        ):
+            reason = "legacy_session_expired"
+        if reason:
+            if _end_voice_row_in_transaction(cur, row, reason, now):
+                counts[reason] += 1
+            continue
+        candidates.setdefault(row[1], []).append(row)
+
+    for duplicate_rows in candidates.values():
+        if len(duplicate_rows) <= 1:
+            continue
+        def newest_key(row):
+            newest_at = (
+                parse_db_datetime(row[8])
+                or parse_db_datetime(row[3])
+                or parse_db_datetime(row[9])
+                or datetime.min.replace(tzinfo=timezone.utc)
+            )
+            return newest_at, row[0]
+        retained = max(duplicate_rows, key=newest_key)
+        for row in duplicate_rows:
+            if row[0] == retained[0]:
+                continue
+            if _end_voice_row_in_transaction(
+                cur, row, "duplicate_session_reconciled", now
+            ):
+                counts["duplicate_session_reconciled"] += 1
+    return counts
+
+
+def _voice_usage_in_transaction(cur, user_id, now):
+    cur.execute(sql("""
+        SELECT status, started_at, duration_seconds, created_at
+        FROM agent_voice_sessions
+        WHERE user_id = ?
+    """), (user_id,))
+    sessions_today = 0
+    seconds_today = 0
+    for status, started_value, duration_value, created_value in cur.fetchall():
+        started_at = parse_db_datetime(started_value or created_value)
+        if not started_at or started_at.date() != now.date():
+            continue
+        sessions_today += 1
+        if status == "active":
+            seconds_today += max(0, int((now - started_at).total_seconds()))
+        else:
+            seconds_today += max(0, int(duration_value or 0))
+    return sessions_today, seconds_today
+
+
+def _admit_voice_session_in_transaction(
+    cur, user_id, conversation_id, project_id, handshake_request_id, now
+):
     config = get_voice_config()
-    if started_at and (utc_now() - started_at).total_seconds() > config["session_max_seconds"]:
-        finish_voice_session(user_id, active[0], "max_duration_reached")
+    if not config["enabled"]:
+        return _voice_admission_result(
+            False, "voice_runtime_disabled", 503,
+            "Voice runtime is not available yet. Text mode remains available."
+        )
+    cur.execute(sql("""
+        SELECT voice_enabled, selected_voice
+        FROM agent_profiles
+        WHERE user_id = ?
+        LIMIT 1
+    """), (user_id,))
+    profile = cur.fetchone()
+    if not profile or not bool(profile[0]):
+        return _voice_admission_result(
+            False, "voice_preference_disabled", 403,
+            "Voice is disabled in your BusinessBuilder settings."
+        )
+    if not os.getenv("OPENAI_API_KEY"):
+        return _voice_admission_result(
+            False, "voice_not_configured", 503,
+            "Voice is not configured on the server. Text mode remains available."
+        )
+    if config["model"] not in OPENAI_REALTIME_MODEL_ALLOWLIST:
+        return _voice_admission_result(
+            False, "invalid_realtime_configuration", 503,
+            "Voice configuration is not available. Text mode remains available."
+        )
+
+    _reconcile_voice_sessions_in_transaction(cur, user_id, now)
+    cur.execute(sql("""
+        SELECT id, status
+        FROM agent_voice_sessions
+        WHERE user_id = ? AND handshake_request_id = ?
+        LIMIT 1
+    """), (user_id, handshake_request_id))
+    existing_request = cur.fetchone()
+    if existing_request:
+        if existing_request[1] == "starting":
+            return _voice_admission_result(
+                False, "voice_handshake_in_progress", 409,
+                "This voice handshake is already processing."
+            )
+        if existing_request[1] == "active":
+            return _voice_admission_result(
+                False, "voice_session_active", 409,
+                "This voice session is already active."
+            )
+        return _voice_admission_result(
+            False, "voice_request_id_reused", 409,
+            "Use a new voice request ID for a new SDP offer."
+        )
+
+    cur.execute(sql("""
+        SELECT id FROM agent_voice_sessions
+        WHERE user_id = ? AND status IN ('starting', 'active')
+        LIMIT 1
+    """), (user_id,))
+    if cur.fetchone():
+        return _voice_admission_result(
+            False, "voice_session_active", 409,
+            "Another voice session is already starting or active."
+        )
+    sessions_today, seconds_today = _voice_usage_in_transaction(cur, user_id, now)
+    if sessions_today >= VOICE_SESSION_RATE_LIMIT_DAILY:
+        return _voice_admission_result(
+            False, "voice_rate_limited", 429,
+            "You have reached today's voice session start limit."
+        )
+    if seconds_today >= config["daily_max_seconds"]:
+        return _voice_admission_result(
+            False, "voice_rate_limited", 429,
+            "You have reached today's voice minutes limit."
+        )
+
+    saved_voice = str(profile[1] or "").strip().lower()
+    voice_name = (
+        saved_voice
+        if saved_voice in OPENAI_REALTIME_VOICE_ALLOWLIST
+        else OPENAI_REALTIME_DEFAULT_VOICE
+    )
+    expires_at = now + timedelta(seconds=config["session_max_seconds"])
+    values = (
+        user_id, conversation_id, project_id, "starting", config["model"],
+        voice_name, handshake_request_id, now, expires_at, now, now
+    )
+    insert_sql = """
+        INSERT INTO agent_voice_sessions (
+            user_id, conversation_id, project_id, status, model_name,
+            voice_name, handshake_request_id, started_at, expires_at,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    if using_postgres():
+        cur.execute(sql(insert_sql + " RETURNING id"), values)
+        voice_session_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql(insert_sql), values)
+        voice_session_id = cur.lastrowid
+    return _voice_admission_result(
+        True,
+        voice_session_id=voice_session_id,
+        conversation_id=conversation_id,
+        voice_name=voice_name,
+        expires_at=expires_at
+    )
+
+
+def admit_voice_session(
+    user_id, conversation_id, project_id, handshake_request_id, now=None
+):
+    normalized_request_id, error_code = normalize_voice_request_id(
+        handshake_request_id
+    )
+    if error_code:
+        return _voice_admission_result(False, error_code, 400)
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if using_postgres():
+            cur.execute(
+                "SELECT pg_advisory_xact_lock(%s, %s)",
+                (VOICE_ADMISSION_LOCK_NAMESPACE, int(user_id))
+            )
+        else:
+            cur.execute("PRAGMA busy_timeout = 5000")
+            cur.execute("BEGIN IMMEDIATE")
+        result = _admit_voice_session_in_transaction(
+            cur, user_id, conversation_id, project_id,
+            normalized_request_id, now or utc_now()
+        )
+        conn.commit()
+        return result
+    except (sqlite3.OperationalError, psycopg2.Error):
+        if conn:
+            conn.rollback()
+        logger.warning("voice_admission_failed code=voice_admission_busy")
+        return _voice_admission_result(
+            False, "voice_admission_busy", 503,
+            "Voice admission is busy. Please retry."
+        )
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("voice_admission_failed code=voice_admission_busy")
+        return _voice_admission_result(
+            False, "voice_admission_busy", 503,
+            "Voice admission is busy. Please retry."
+        )
+    finally:
+        if conn:
+            conn.close()
+
+
+def activate_voice_session(
+    user_id, voice_session_id, handshake_request_id, now=None
+):
+    conn = None
+    now = now or utc_now()
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if not using_postgres():
+            cur.execute("BEGIN IMMEDIATE")
+        _reconcile_voice_sessions_in_transaction(cur, user_id, now)
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET status = 'active', updated_at = ?
+            WHERE id = ? AND user_id = ? AND handshake_request_id = ?
+              AND status = 'starting'
+              AND expires_at IS NOT NULL AND expires_at > ?
+        """), (
+            now, voice_session_id, user_id, handshake_request_id, now
+        ))
+        activated = cur.rowcount > 0
+        conn.commit()
+        return activated
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("voice_session_activation_failed code=voice_activation_failed")
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def finish_voice_session(
+    user_id, voice_session_id, reason="client_disconnected", now=None,
+    handshake_request_id=None
+):
+    conn = None
+    now = now or utc_now()
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if not using_postgres():
+            cur.execute("BEGIN IMMEDIATE")
+        request_scope = ""
+        parameters = [user_id, voice_session_id]
+        if handshake_request_id is not None:
+            request_scope = " AND handshake_request_id = ?"
+            parameters.append(handshake_request_id)
+        cur.execute(sql(f"""
+            SELECT id, user_id, status, started_at, expires_at, ended_at,
+                   duration_seconds, disconnect_reason, updated_at, created_at
+            FROM agent_voice_sessions
+            WHERE user_id = ? AND id = ?
+            {request_scope}
+            LIMIT 1
+        """), tuple(parameters))
+        row = cur.fetchone()
+        if not row:
+            conn.commit()
+            return {"found": False, "ended": False, "changed": False}
+        changed = _end_voice_row_in_transaction(cur, row, reason, now)
+        conn.commit()
+        return {"found": True, "ended": True, "changed": changed}
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("voice_session_finalization_failed")
+        return {"found": False, "ended": False, "changed": False}
+    finally:
+        if conn:
+            conn.close()
+
+
+def reconcile_expired_voice_sessions(user_id=None, now=None):
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if not using_postgres():
+            cur.execute("BEGIN IMMEDIATE")
+        counts = _reconcile_voice_sessions_in_transaction(
+            cur, user_id, now or utc_now()
+        )
+        conn.commit()
+        counts["ok"] = True
+        counts["total"] = sum(
+            value for key, value in counts.items() if key != "ok"
+        )
+        return counts
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("voice_reconciliation_failed code=local_reconciliation_failed")
+        return {"ok": False, "code": "voice_reconciliation_failed"}
+    finally:
+        if conn:
+            conn.close()
+
+
+@app.before_request
+def opportunistic_voice_session_reconciliation():
+    global _voice_reconcile_last_run
+    if app.config.get("TESTING") or request.endpoint == "static":
+        return None
+    monotonic_now = time.monotonic()
+    if monotonic_now - _voice_reconcile_last_run < VOICE_RECONCILE_INTERVAL_SECONDS:
+        return None
+    if not _voice_reconcile_lock.acquire(blocking=False):
+        return None
+    try:
+        monotonic_now = time.monotonic()
+        if monotonic_now - _voice_reconcile_last_run < VOICE_RECONCILE_INTERVAL_SECONDS:
+            return None
+        _voice_reconcile_last_run = monotonic_now
+        result = reconcile_expired_voice_sessions()
+        if not result["ok"]:
+            logger.warning(
+                "voice_reconciliation_failed code=voice_reconciliation_failed"
+            )
+    except Exception:
+        logger.warning("voice_reconciliation_failed code=opportunistic_reconciliation_failed")
+    finally:
+        _voice_reconcile_lock.release()
+    return None
+
+
+@app.cli.command("reconcile-voice-sessions")
+def reconcile_voice_sessions_command():
+    counts = reconcile_expired_voice_sessions()
+    if not counts["ok"]:
+        raise click.ClickException(
+            "Voice-session reconciliation failed safely."
+        )
+    print(
+        "Voice reconciliation complete: "
+        f"ended={counts['total']} "
+        f"handshake_expired={counts['handshake_expired']} "
+        f"server_expired={counts['server_expired']} "
+        f"legacy_session_expired={counts['legacy_session_expired']} "
+        f"invalid_timestamp={counts['invalid_session_timestamp']} "
+        f"duplicates={counts['duplicate_session_reconciled']}"
+    )
 
 
 def voice_safety_identifier(user_id, hmac_secret=None):
@@ -5721,6 +6129,15 @@ VOICE_ERROR_DETAILS = {
     "invalid_origin": ("This request must come from BusinessBuilder.", 403),
     "csrf_failed": ("Voice request verification failed.", 403),
     "invalid_content_type": ("The request Content-Type is not supported.", 415),
+    "voice_request_id_required": ("A voice request ID is required.", 400),
+    "invalid_voice_request_id": ("The voice request ID is invalid.", 400),
+    "voice_handshake_in_progress": ("This voice handshake is already processing.", 409),
+    "voice_request_id_reused": ("Use a new voice request ID for a new SDP offer.", 409),
+    "voice_session_active": ("Another voice session is already starting or active.", 409),
+    "voice_admission_busy": ("Voice admission is busy. Please retry.", 503),
+    "voice_session_expired": ("The local voice session expired.", 409),
+    "voice_activation_failed": ("Voice could not activate its local session.", 503),
+    "voice_session_not_found": ("The voice session was not found.", 404),
     "invalid_sdp": ("A valid SDP offer is required.", 400),
     "sdp_too_large": ("The SDP offer is too large.", 413),
     "upstream_authentication_failed": ("Voice authentication is temporarily unavailable. Text mode remains available.", 502),
@@ -16335,14 +16752,18 @@ def api_realtime_session():
         return voice_error_response("authentication_required", "Login required.", 401)
 
     user_id = session["user_id"]
-    if not get_voice_config()["enabled"]:
-        return voice_error_response("voice_runtime_disabled")
-    if request.mimetype != "application/sdp":
-        return voice_error_response("invalid_content_type")
     if not request_is_same_origin():
         return voice_error_response("invalid_origin")
     if not voice_csrf_is_valid():
         return voice_error_response("csrf_failed")
+    if request.mimetype != "application/sdp":
+        return voice_error_response("invalid_content_type")
+
+    handshake_request_id, request_id_error = normalize_voice_request_id(
+        request.headers.get(VOICE_REQUEST_ID_HEADER)
+    )
+    if request_id_error:
+        return voice_error_response(request_id_error)
 
     offer_sdp = request.get_data(as_text=True)
     if len(offer_sdp.encode("utf-8")) > VOICE_SESSION_MAX_SDP_BYTES:
@@ -16350,21 +16771,55 @@ def api_realtime_session():
     if not valid_sdp_document(offer_sdp):
         return voice_error_response("invalid_sdp")
 
-    finish_stale_voice_sessions(user_id)
-    allowed, message, code, status = can_start_voice_session(user_id)
-    if not allowed:
-        return voice_error_response(code, message, status)
-
     active_project = get_active_project(user_id)
     project_id = active_project[0] if active_project else None
     conversation = get_or_create_agent_conversation(user_id, project_id)
-    voice_name = resolve_realtime_voice(user_id)
-    voice_session_id = start_voice_session(user_id, conversation[0], project_id, voice_name)
+    admission = admit_voice_session(
+        user_id, conversation[0], project_id, handshake_request_id
+    )
+    if not admission["ok"]:
+        return voice_error_response(
+            admission["code"], admission["message"], admission["status"]
+        )
+    voice_session_id = admission["voice_session_id"]
+    voice_name = admission["voice_name"]
 
-    answer_sdp, error_code = create_realtime_sdp_answer(user_id, offer_sdp, voice_name)
+    try:
+        answer_sdp, error_code = create_realtime_sdp_answer(
+            user_id, offer_sdp, voice_name
+        )
+    except Exception:
+        correlation_id = secrets.token_hex(8)
+        logger.warning(
+            "voice_realtime_handshake_failed "
+            "code=upstream_unexpected_error correlation_id=%s",
+            correlation_id
+        )
+        finish_voice_session(
+            user_id,
+            voice_session_id,
+            "upstream_unexpected_error",
+            handshake_request_id=handshake_request_id
+        )
+        return voice_error_response("upstream_unavailable")
     if error_code:
-        finish_voice_session(user_id, voice_session_id, error_code)
+        finish_voice_session(
+            user_id,
+            voice_session_id,
+            error_code,
+            handshake_request_id=handshake_request_id
+        )
         return voice_error_response(error_code)
+    if not activate_voice_session(
+        user_id, voice_session_id, handshake_request_id
+    ):
+        finish_voice_session(
+            user_id,
+            voice_session_id,
+            "voice_activation_failed",
+            handshake_request_id=handshake_request_id
+        )
+        return voice_error_response("voice_activation_failed")
 
     response = app.response_class(answer_sdp, mimetype="application/sdp")
     config = get_voice_config()
@@ -16379,8 +16834,6 @@ def api_realtime_session():
 def api_realtime_session_end():
     if "user_id" not in session:
         return voice_error_response("authentication_required", "Login required.", 401)
-    if not get_voice_config()["enabled"]:
-        return voice_error_response("voice_runtime_disabled")
     if request.mimetype != "application/json":
         return voice_error_response("invalid_content_type")
     if not request_is_same_origin():
@@ -16396,7 +16849,11 @@ def api_realtime_session_end():
         return jsonify({"error": "Valid voice_session_id required."}), 400
 
     reason = str(data.get("reason", "client_disconnected"))[:120]
-    finish_voice_session(session["user_id"], voice_session_id, reason)
+    finalization = finish_voice_session(
+        session["user_id"], voice_session_id, reason
+    )
+    if not finalization["found"]:
+        return voice_error_response("voice_session_not_found")
     response = jsonify({"status": "ended"})
     response.headers["Cache-Control"] = "no-store"
     return response

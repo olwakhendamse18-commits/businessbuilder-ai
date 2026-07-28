@@ -436,6 +436,28 @@ No schema change is authorized in Phase 2A. Phase 2B should:
 
 If tests show this cannot provide the required invariant under both databases, implementation must stop and return to contract review before any schema migration is proposed.
 
+### Phase 2B.2A local admission and lifecycle
+
+Each handshake request must supply `X-BusinessBuilder-Voice-Request-ID`. The value is client-generated, attempt-specific, no longer than 120 characters, and limited to ASCII letters, digits, underscore, hyphen, period, and colon. It is an idempotency key for one authenticated user's SDP attempt; it is not authentication and does not replace the voice CSRF token. Missing or invalid values are rejected before voice-session insertion.
+
+Local voice-session lifecycle states are `starting`, `active`, and `ended`:
+
+1. atomic admission inserts `starting`;
+2. the upstream SDP handshake occurs after the database transaction has committed and no admission lock is held;
+3. a valid upstream answer changes only that owned, unexpired `starting` row to `active`;
+4. handshake failure or activation failure finalizes the row as `ended`; and
+5. client stop and local reconciliation may change `starting` or `active` to `ended`, but an `ended` row is never revived.
+
+The database stores `handshake_request_id`, the server-calculated `expires_at`, and `updated_at`. A partial unique index on `(user_id, handshake_request_id)` applies when the request ID is present. A second partial unique index permits at most one row per user whose status is `starting` or `active`. Before those indexes are created, repeated startup migration deterministically retains the newest non-expired non-terminal row and ends older duplicates with `duplicate_session_reconciled`; ordinary lifecycle records are not deleted.
+
+SQLite admission uses `BEGIN IMMEDIATE`. PostgreSQL admission uses a transaction-scoped `pg_advisory_xact_lock` keyed by a stable voice-admission namespace and authenticated user ID. Under that lock, the server reconciles expiry, checks saved preference and runtime configuration, enforces non-terminal and daily limits, applies request-ID idempotency, and inserts the `starting` row. The same request ID in `starting` returns `voice_handshake_in_progress`; the same ID in `active` returns `voice_session_active`; and an `ended` request ID returns `voice_request_id_reused`, requiring a fresh ID and SDP offer. A different ID is rejected while another non-terminal row exists.
+
+Abandoned `starting` rows use an exact **60-second** server-controlled handshake grace period when no valid fixed expiry is available; the browser cannot select or extend this grace. `active` rows expire at their fixed server-calculated `expires_at`; legacy active rows without that field use their server-configured maximum duration. A valid `expires_at` is authoritative for either non-terminal state. A non-terminal row with neither a valid expiry nor a valid `started_at`/`created_at` fails closed as `invalid_session_timestamp` rather than blocking admission indefinitely. Reconciliation is idempotent, scans only `starting` and `active` rows during normal runtime, runs opportunistically behind a process-local monotonic throttle, and is also available through `flask reconcile-voice-sessions`. The CLI prints counts only on success, exits non-zero with a safe classification on failure, and never contacts OpenAI. Production scheduling of that command remains unauthorized until deployment planning is separately approved.
+
+An admitted `starting` row counts as one session-start attempt for the daily session-start limit. A failed upstream handshake therefore consumes one start attempt, which limits repeated failed connection attempts. It does not consume the full configured session duration: duration accounting uses only actual elapsed local lifecycle time and is clamped so it can never be negative. Changing this failed-handshake accounting policy requires contract review.
+
+Phase 2B.2A makes BusinessBuilder's local admission and accounting state expire authoritatively. It does **not** prove that an already-established upstream Realtime call can be forcibly terminated by the BusinessBuilder server without client cooperation or an approved server-side sideband control mechanism. Phase 2B.2B must resolve and test that upstream-termination limitation before voice activation is authorized. `VOICE_RUNTIME_ENABLED` remains disabled by default.
+
 ## 12. Security contract
 
 - `OPENAI_API_KEY` remains server-side.
