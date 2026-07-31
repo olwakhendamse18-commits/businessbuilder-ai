@@ -13,6 +13,17 @@ VALID_SDP = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n"
 ORIGIN = "http://localhost"
 CSRF_TOKEN = "test-voice-csrf-token-with-more-than-32-characters"
 VOICE_REQUEST_ID = "phase2b1-security-test"
+UPSTREAM_CALL_ID = "synthetic-call-id"
+
+
+def successful_handshake():
+    return {
+        "ok": True,
+        "answer_sdp": VALID_SDP,
+        "call_id": UPSTREAM_CALL_ID,
+        "error_code": "",
+        "disconnect_reason": ""
+    }
 
 
 def profile(voice_enabled=True, selected_voice="marin"):
@@ -47,7 +58,8 @@ class VoiceSecurityTestCase(unittest.TestCase):
             clear=True
         )
 
-    def admitted_route_patches(self, upstream_result=(VALID_SDP, None)):
+    def admitted_route_patches(self, upstream_result=None):
+        upstream_result = upstream_result or successful_handshake()
         return [
             mock.patch.object(
                 app_module,
@@ -62,7 +74,11 @@ class VoiceSecurityTestCase(unittest.TestCase):
             mock.patch.object(app_module, "get_active_project", return_value=None),
             mock.patch.object(app_module, "get_or_create_agent_conversation", return_value=(42,)),
             mock.patch.object(app_module, "create_realtime_sdp_answer", return_value=upstream_result),
-            mock.patch.object(app_module, "activate_voice_session", return_value=True),
+            mock.patch.object(
+                app_module,
+                "activate_voice_session",
+                return_value={"ok": True, "code": ""}
+            ),
         ]
 
     def test_voice_runtime_flag_defaults_false_and_rejects_unrecognized_values(self):
@@ -176,7 +192,11 @@ class VoiceSecurityTestCase(unittest.TestCase):
         self.assertNotEqual(first, previous)
 
     def test_upstream_request_is_pinned_multipart_and_does_not_redirect(self):
-        upstream_response = mock.Mock(status_code=201, text=VALID_SDP)
+        upstream_response = mock.Mock(
+            status_code=201,
+            text=VALID_SDP,
+            headers={"Location": "/v1/realtime/calls/synthetic-call-id"}
+        )
         malicious_environment = {
             "OPENAI_API_KEY": "test-standard-key",
             "OPENAI_REALTIME_WEBRTC_URL": "https://evil.example/steal",
@@ -185,10 +205,13 @@ class VoiceSecurityTestCase(unittest.TestCase):
         }
         with mock.patch.dict(os.environ, malicious_environment, clear=True), \
                 mock.patch.object(app_module.requests, "post", return_value=upstream_response) as post:
-            answer, error_code = app_module.create_realtime_sdp_answer(7, VALID_SDP, "marin")
+            result = app_module.create_realtime_sdp_answer(
+                7, VALID_SDP, "marin"
+            )
 
-        self.assertEqual(answer, VALID_SDP)
-        self.assertIsNone(error_code)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["answer_sdp"], VALID_SDP)
+        self.assertEqual(result["call_id"], "synthetic-call-id")
         args, kwargs = post.call_args
         self.assertEqual(args[0], "https://api.openai.com/v1/realtime/calls")
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-standard-key")
@@ -218,9 +241,12 @@ class VoiceSecurityTestCase(unittest.TestCase):
                 else:
                     patcher = mock.patch.object(app_module.requests, "post", return_value=result)
                 with patcher:
-                    answer, error_code = app_module.create_realtime_sdp_answer(7, VALID_SDP, "marin")
-            self.assertIsNone(answer)
-            self.assertEqual(error_code, expected_code)
+                    handshake = app_module.create_realtime_sdp_answer(
+                        7, VALID_SDP, "marin"
+                    )
+            self.assertFalse(handshake["ok"])
+            self.assertIsNone(handshake["answer_sdp"])
+            self.assertEqual(handshake["error_code"], expected_code)
 
     def test_session_route_security_controls(self):
         self.authenticate()
@@ -308,16 +334,28 @@ class VoiceSecurityTestCase(unittest.TestCase):
         self.assertEqual(response.mimetype, "application/sdp")
         self.assertEqual(response.headers["Cache-Control"], "no-store")
         started[0].assert_called_once_with(7, 42, None, VOICE_REQUEST_ID)
-        started[4].assert_called_once_with(7, 99, VOICE_REQUEST_ID)
+        started[4].assert_called_once_with(
+            7, 99, VOICE_REQUEST_ID, UPSTREAM_CALL_ID
+        )
 
     def test_activation_failure_never_returns_upstream_sdp(self):
         self.authenticate()
         patches = self.admitted_route_patches()
-        finish = mock.patch.object(app_module, "finish_voice_session")
+        cleanup = mock.patch.object(
+            app_module,
+            "handle_voice_activation_failure",
+            return_value={
+                "durable": True,
+                "safe_to_hangup": True,
+                "code": ""
+            }
+        )
         with self.enabled_environment():
             started = [patcher.start() for patcher in patches]
-            started[4].return_value = False
-            finish_mock = finish.start()
+            started[4].return_value = {
+                "ok": False, "code": "voice_activation_failed"
+            }
+            cleanup_mock = cleanup.start()
             try:
                 response = self.client.post(
                     "/api/realtime/session",
@@ -325,22 +363,66 @@ class VoiceSecurityTestCase(unittest.TestCase):
                     headers=self.voice_headers()
                 )
             finally:
-                finish.stop()
+                cleanup.stop()
                 for patcher in reversed(patches):
                     patcher.stop()
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.get_json()["code"], "voice_activation_failed")
-        finish_mock.assert_called_once_with(
-            7,
-            99,
+        cleanup_mock.assert_called_once_with(
+            7, 99, VOICE_REQUEST_ID, UPSTREAM_CALL_ID,
+            "voice_activation_failed"
+        )
+
+    def test_activation_identity_conflict_withholds_upstream_sdp(self):
+        self.authenticate()
+        patches = self.admitted_route_patches()
+        cleanup = mock.patch.object(
+            app_module,
+            "handle_voice_activation_failure",
+            return_value={
+                "durable": False,
+                "safe_to_hangup": True,
+                "code": "upstream_call_identity_conflict",
+            },
+        )
+        with self.enabled_environment():
+            started = [patcher.start() for patcher in patches]
+            started[4].return_value = {
+                "ok": False, "code": "voice_activation_failed"
+            }
+            cleanup_mock = cleanup.start()
+            try:
+                response = self.client.post(
+                    "/api/realtime/session",
+                    data=VALID_SDP,
+                    headers=self.voice_headers(),
+                )
+            finally:
+                cleanup.stop()
+                for patcher in reversed(patches):
+                    patcher.stop()
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.get_json()["code"],
+            "upstream_call_identity_conflict",
+        )
+        self.assertNotEqual(response.mimetype, "application/sdp")
+        cleanup_mock.assert_called_once_with(
+            7, 99, VOICE_REQUEST_ID, UPSTREAM_CALL_ID,
             "voice_activation_failed",
-            handshake_request_id=VOICE_REQUEST_ID
         )
 
     def test_route_finalizes_local_session_when_handshake_fails(self):
         self.authenticate()
-        patches = self.admitted_route_patches((None, "upstream_timeout"))
+        patches = self.admitted_route_patches({
+            "ok": False,
+            "answer_sdp": None,
+            "call_id": None,
+            "error_code": "upstream_timeout",
+            "disconnect_reason": "upstream_timeout"
+        })
         finish = mock.patch.object(app_module, "finish_voice_session")
         with self.enabled_environment():
             for patcher in patches:
@@ -370,9 +452,14 @@ class VoiceSecurityTestCase(unittest.TestCase):
         self.authenticate()
         with self.enabled_environment(), mock.patch.object(
                 app_module,
-                "finish_voice_session",
-                return_value={"found": True, "ended": True, "changed": True}
-        ) as finish:
+                "request_voice_termination",
+                return_value={
+                    "found": True,
+                    "ended": True,
+                    "changed": True,
+                    "termination_status": "not_applicable"
+                }
+        ) as termination:
             missing_token = self.client.post(
                 "/api/realtime/session/end",
                 json={"voice_session_id": 99},
@@ -393,7 +480,7 @@ class VoiceSecurityTestCase(unittest.TestCase):
         self.assertEqual(malicious_origin.get_json()["code"], "invalid_origin")
         self.assertEqual(correct.status_code, 200)
         self.assertEqual(correct.headers["Cache-Control"], "no-store")
-        finish.assert_called_once_with(7, 99, "client_disconnected")
+        termination.assert_called_once_with(7, 99, "client_disconnected")
 
     def test_session_end_rejects_anonymous_and_wrong_content_type(self):
         anonymous_client = app_module.app.test_client()

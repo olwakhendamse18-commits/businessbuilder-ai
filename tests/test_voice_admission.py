@@ -257,10 +257,12 @@ class VoiceLifecycleTestCase(IsolatedSQLiteVoiceTestCase):
             (admission["voice_session_id"],)
         )[0]
         activated = app_module.activate_voice_session(
-            7, admission["voice_session_id"], "activation-attempt"
+            7, admission["voice_session_id"], "activation-attempt",
+            "synthetic-activation-call"
         )
         activated_again = app_module.activate_voice_session(
-            7, admission["voice_session_id"], "activation-attempt"
+            7, admission["voice_session_id"], "activation-attempt",
+            "synthetic-activation-call"
         )
         after = self.execute(
             """
@@ -269,8 +271,8 @@ class VoiceLifecycleTestCase(IsolatedSQLiteVoiceTestCase):
             """,
             (admission["voice_session_id"],)
         )[0]
-        self.assertTrue(activated)
-        self.assertFalse(activated_again)
+        self.assertTrue(activated["ok"])
+        self.assertFalse(activated_again["ok"])
         self.assertEqual(before[1], after[1])
         self.assertEqual(after[0], "active")
 
@@ -283,13 +285,19 @@ class VoiceLifecycleTestCase(IsolatedSQLiteVoiceTestCase):
             (session_id,)
         )[0][0]
         self.assertFalse(
-            app_module.activate_voice_session(8, session_id, "owned-activation")
+            app_module.activate_voice_session(
+                8, session_id, "owned-activation", "synthetic-owned-call"
+            )["ok"]
         )
         self.assertFalse(
-            app_module.activate_voice_session(7, session_id + 1, "owned-activation")
+            app_module.activate_voice_session(
+                7, session_id + 1, "owned-activation", "synthetic-owned-call"
+            )["ok"]
         )
         self.assertFalse(
-            app_module.activate_voice_session(7, session_id, "wrong-request")
+            app_module.activate_voice_session(
+                7, session_id, "wrong-request", "synthetic-owned-call"
+            )["ok"]
         )
         unchanged = self.execute(
             "SELECT status, updated_at FROM agent_voice_sessions WHERE id = ?",
@@ -297,7 +305,9 @@ class VoiceLifecycleTestCase(IsolatedSQLiteVoiceTestCase):
         )[0]
         self.assertEqual(unchanged, ("starting", before_updated))
         self.assertTrue(
-            app_module.activate_voice_session(7, session_id, "owned-activation")
+            app_module.activate_voice_session(
+                7, session_id, "owned-activation", "synthetic-owned-call"
+            )["ok"]
         )
         changed = self.execute(
             "SELECT status, updated_at FROM agent_voice_sessions WHERE id = ?",
@@ -325,8 +335,9 @@ class VoiceLifecycleTestCase(IsolatedSQLiteVoiceTestCase):
         self.assertTrue(reconciled["ok"])
         self.assertFalse(
             app_module.activate_voice_session(
-                7, session_id, "expires-before-activation", now=after_expiry
-            )
+                7, session_id, "expires-before-activation",
+                "synthetic-expired-call", now=after_expiry
+            )["ok"]
         )
         row = self.execute(
             """
@@ -342,8 +353,9 @@ class VoiceLifecycleTestCase(IsolatedSQLiteVoiceTestCase):
         self.assertEqual(repeated["total"], 0)
         self.assertFalse(
             app_module.activate_voice_session(
-                7, session_id, "expires-before-activation", now=after_expiry
-            )
+                7, session_id, "expires-before-activation",
+                "synthetic-expired-call", now=after_expiry
+            )["ok"]
         )
         self.assertEqual(
             self.execute(
@@ -759,6 +771,7 @@ class VoiceMigrationTestCase(unittest.TestCase):
         connection.close()
         with mock.patch.object(app_module, "db", side_effect=self.connect), \
                 mock.patch.object(app_module, "using_postgres", return_value=False):
+            app_module.init_db()
             first = app_module.reconcile_expired_voice_sessions()
             second = app_module.reconcile_expired_voice_sessions()
         connection = self.connect()
@@ -770,13 +783,13 @@ class VoiceMigrationTestCase(unittest.TestCase):
         ).fetchall()
         connection.close()
         self.assertTrue(first["ok"])
-        self.assertEqual(first["invalid_session_timestamp"], 2)
+        self.assertEqual(first["total"], 0)
         self.assertEqual(second["total"], 0)
         self.assertEqual(
             rows,
             [
-                ("ended", "invalid_session_timestamp", 0),
-                ("ended", "invalid_session_timestamp", 0),
+                ("ended", "upstream_call_unidentified_migration", 0),
+                ("ended", "upstream_call_unidentified_migration", 0),
             ]
         )
 
@@ -898,29 +911,43 @@ class VoiceMigrationTestCase(unittest.TestCase):
         connection.close()
 
         self.assertTrue(
-            {"handshake_request_id", "expires_at", "updated_at"} <= columns
+            {
+                "handshake_request_id",
+                "expires_at",
+                "updated_at",
+                "upstream_call_id",
+                "termination_status",
+                "termination_attempts",
+                "termination_requested_at",
+                "termination_last_attempt_at",
+                "termination_next_attempt_at",
+                "termination_accepted_at",
+                "termination_error_code",
+                "termination_claim_token",
+                "termination_lease_expires_at",
+            } <= columns
         )
         self.assertEqual(
             sum(status in {"starting", "active"} for _, status, _ in user_seven),
-            1
+            0
         )
         self.assertEqual(
-            user_seven[0][2], "duplicate_session_reconciled"
+            user_seven[0][2], "upstream_call_unidentified_migration"
         )
         self.assertEqual(preserved, ("ended", "preserved_reason"))
-        self.assertEqual(single_active, ("active",))
+        self.assertEqual(single_active, ("ended",))
         self.assertEqual(
             starting_duplicates,
             [
-                ("ended", "duplicate_session_reconciled"),
-                ("starting", None),
+                ("ended", "upstream_call_unidentified_migration"),
+                ("ended", "upstream_call_unidentified_migration"),
             ]
         )
         self.assertEqual(
             mixed_duplicates,
             [
-                ("ended", "duplicate_session_reconciled"),
-                ("active", None),
+                ("ended", "upstream_call_unidentified_migration"),
+                ("ended", "upstream_call_unidentified_migration"),
             ]
         )
         self.assertIn("idx_agent_voice_sessions_user_request", indexes)
@@ -928,6 +955,8 @@ class VoiceMigrationTestCase(unittest.TestCase):
         self.assertIn(
             "idx_agent_voice_sessions_status_expires_user", indexes
         )
+        self.assertIn("idx_agent_voice_sessions_upstream_call", indexes)
+        self.assertIn("idx_agent_voice_sessions_termination_due", indexes)
         self.assertIn("WHERE handshake_request_id IS NOT NULL", indexes[
             "idx_agent_voice_sessions_user_request"
         ])
@@ -960,6 +989,12 @@ class VoiceMigrationTestCase(unittest.TestCase):
         )
         self.assertIn(
             "idx_agent_voice_sessions_status_expires_user", index_names
+        )
+        self.assertIn(
+            "idx_agent_voice_sessions_upstream_call", index_names
+        )
+        self.assertIn(
+            "idx_agent_voice_sessions_termination_due", index_names
         )
 
         connection = self.connect()

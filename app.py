@@ -29,6 +29,7 @@ import json
 import threading
 import time
 import urllib.parse
+import unicodedata
 import ipaddress
 import mimetypes
 from datetime import datetime, timedelta, timezone
@@ -314,8 +315,7 @@ def sql(query):
     return query
 
 
-def init_db():
-    conn = db()
+def _init_db_with_connection(conn):
     cur = conn.cursor()
 
     id_type = "SERIAL PRIMARY KEY" if using_postgres() else "INTEGER PRIMARY KEY AUTOINCREMENT"
@@ -1233,6 +1233,16 @@ def init_db():
             model_name TEXT,
             voice_name TEXT,
             handshake_request_id TEXT,
+            upstream_call_id TEXT,
+            termination_status TEXT NOT NULL DEFAULT 'not_applicable',
+            termination_attempts INTEGER NOT NULL DEFAULT 0,
+            termination_requested_at TIMESTAMP,
+            termination_last_attempt_at TIMESTAMP,
+            termination_next_attempt_at TIMESTAMP,
+            termination_accepted_at TIMESTAMP,
+            termination_error_code TEXT,
+            termination_claim_token TEXT,
+            termination_lease_expires_at TIMESTAMP,
             started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             expires_at TIMESTAMP,
             ended_at TIMESTAMP,
@@ -1246,7 +1256,17 @@ def init_db():
     voice_session_columns = {
         "handshake_request_id": "TEXT",
         "expires_at": "TIMESTAMP",
-        "updated_at": "TIMESTAMP"
+        "updated_at": "TIMESTAMP",
+        "upstream_call_id": "TEXT",
+        "termination_status": "TEXT NOT NULL DEFAULT 'not_applicable'",
+        "termination_attempts": "INTEGER NOT NULL DEFAULT 0",
+        "termination_requested_at": "TIMESTAMP",
+        "termination_last_attempt_at": "TIMESTAMP",
+        "termination_next_attempt_at": "TIMESTAMP",
+        "termination_accepted_at": "TIMESTAMP",
+        "termination_error_code": "TEXT",
+        "termination_claim_token": "TEXT",
+        "termination_lease_expires_at": "TIMESTAMP"
     }
     if using_postgres():
         cur.execute("""
@@ -1258,17 +1278,32 @@ def init_db():
     else:
         cur.execute("PRAGMA table_info(agent_voice_sessions)")
         existing_voice_session_columns = {row[1] for row in cur.fetchall()}
+    added_upstream_call_id = "upstream_call_id" not in existing_voice_session_columns
     for column_name, column_type in voice_session_columns.items():
         if column_name not in existing_voice_session_columns:
             cur.execute(
                 f"ALTER TABLE agent_voice_sessions ADD COLUMN {column_name} {column_type}"
             )
+    if added_upstream_call_id:
+        cur.execute("""
+            UPDATE agent_voice_sessions
+            SET status = 'ended',
+                ended_at = COALESCE(ended_at, CURRENT_TIMESTAMP),
+                disconnect_reason = COALESCE(
+                    disconnect_reason,
+                    'upstream_call_unidentified_migration'
+                ),
+                termination_status = 'not_applicable',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE status IN ('starting', 'active')
+        """)
     cur.execute("""
         UPDATE agent_voice_sessions
         SET updated_at = COALESCE(updated_at, created_at, started_at, CURRENT_TIMESTAMP)
         WHERE updated_at IS NULL
     """)
     _reconcile_voice_sessions_in_transaction(cur)
+    _reconcile_voice_call_ids_for_migration(cur)
 
     execute_schema(f"""
         CREATE TABLE IF NOT EXISTS agent_research_jobs (
@@ -1550,8 +1585,41 @@ def init_db():
         ON agent_voice_sessions (status, expires_at, user_id)
     """)
 
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_voice_sessions_upstream_call
+        ON agent_voice_sessions (upstream_call_id)
+        WHERE upstream_call_id IS NOT NULL
+    """)
+
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_voice_sessions_termination_due
+        ON agent_voice_sessions (
+            termination_status,
+            termination_next_attempt_at,
+            termination_lease_expires_at
+        )
+    """)
+
     conn.commit()
-    conn.close()
+
+
+def init_db():
+    conn = None
+    try:
+        conn = db()
+        if not using_postgres():
+            conn.execute("BEGIN IMMEDIATE")
+        _init_db_with_connection(conn)
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning(
+            "database_initialization_failed code=schema_migration_failed"
+        )
+        raise RuntimeError("database_initialization_failed") from None
+    finally:
+        if conn:
+            conn.close()
 
 
 # -----------------------------
@@ -3849,7 +3917,18 @@ VOICE_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]+$")
 VOICE_HANDSHAKE_GRACE_SECONDS = 60
 VOICE_RECONCILE_INTERVAL_SECONDS = 60
 VOICE_ADMISSION_LOCK_NAMESPACE = 1112957523
-OPENAI_REALTIME_WEBRTC_ENDPOINT = "https://api.openai.com/v1/realtime/calls"
+OPENAI_REALTIME_CALLS_ENDPOINT = "https://api.openai.com/v1/realtime/calls"
+OPENAI_REALTIME_WEBRTC_ENDPOINT = OPENAI_REALTIME_CALLS_ENDPOINT
+VOICE_UPSTREAM_CALL_ID_MAX_BYTES = 255
+VOICE_TERMINATION_MAX_ATTEMPTS = 8
+VOICE_TERMINATION_LEASE_SECONDS = 30
+VOICE_TERMINATION_BATCH_LIMIT = 5
+VOICE_HANGUP_CONNECT_TIMEOUT_SECONDS = 3.0
+VOICE_HANGUP_READ_TIMEOUT_SECONDS = 10.0
+VOICE_TERMINATION_STATES = frozenset({
+    "not_applicable", "not_requested", "pending", "in_progress",
+    "accepted", "failed_permanent"
+})
 OPENAI_REALTIME_MODEL = "gpt-realtime-2.1"
 OPENAI_REALTIME_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe"
 OPENAI_REALTIME_DEFAULT_VOICE = "marin"
@@ -5606,8 +5685,366 @@ def _end_voice_row_in_transaction(cur, row, reason, now):
     return cur.rowcount > 0
 
 
+def _clear_unusable_voice_call_identity_in_transaction(
+    cur, row, reason, now
+):
+    voice_session_id, user_id, status, started_value = row[:4]
+    if status in {"starting", "active"}:
+        _end_voice_row_in_transaction(
+            cur,
+            (voice_session_id, user_id, status, started_value),
+            reason,
+            now
+        )
+    cur.execute(sql("""
+        UPDATE agent_voice_sessions
+        SET upstream_call_id = NULL,
+            termination_status = 'not_applicable',
+            termination_attempts = 0,
+            termination_requested_at = NULL,
+            termination_last_attempt_at = NULL,
+            termination_next_attempt_at = NULL,
+            termination_accepted_at = NULL,
+            termination_error_code = ?,
+            termination_claim_token = NULL,
+            termination_lease_expires_at = NULL,
+            duration_seconds = CASE
+                WHEN duration_seconds IS NULL OR duration_seconds < 0 THEN 0
+                ELSE duration_seconds
+            END,
+            disconnect_reason = COALESCE(disconnect_reason, ?),
+            updated_at = ?
+        WHERE id = ? AND user_id = ?
+    """), (
+        reason, reason, now, voice_session_id, user_id
+    ))
+
+
+def _voice_call_id_survivor_key(row):
+    """Rank duplicate owners deterministically without changing call identity.
+
+    A consistent terminal record wins first, then a consistent terminating
+    record, then a consistent active record. Stable recency and ID break ties.
+    """
+    status = row[2]
+    termination_status = row[5] or "not_applicable"
+    if status == "ended" and termination_status in {
+        "accepted", "failed_permanent"
+    }:
+        consistency_rank = 4
+    elif status == "ended" and termination_status in {
+        "pending", "in_progress"
+    }:
+        consistency_rank = 3
+    elif status == "active" and termination_status == "not_requested":
+        consistency_rank = 2
+    elif status == "starting" and termination_status == "not_applicable":
+        consistency_rank = 1
+    else:
+        consistency_rank = 0
+    stable_time = (
+        parse_db_datetime(row[6])
+        or parse_db_datetime(row[7])
+        or parse_db_datetime(row[3])
+        or datetime.min.replace(tzinfo=timezone.utc)
+    )
+    return consistency_rank, stable_time, int(row[0])
+
+
+def _reconcile_valid_voice_call_state_in_transaction(cur, row, now):
+    voice_session_id, user_id, status, started_value = row[:4]
+    termination_status = row[5] or "not_applicable"
+    if status not in {"starting", "active", "ended"}:
+        _clear_unusable_voice_call_identity_in_transaction(
+            cur, row, "invalid_voice_termination_state_reconciled", now
+        )
+        return
+    if status in {"starting", "active"} and not (
+        status == "active" and termination_status == "not_requested"
+    ):
+        _end_voice_row_in_transaction(
+            cur,
+            (voice_session_id, user_id, status, started_value),
+            "invalid_voice_termination_state_reconciled",
+            now
+        )
+        status = "ended"
+    if status == "starting":
+        _end_voice_row_in_transaction(
+            cur,
+            (voice_session_id, user_id, status, started_value),
+            "identified_starting_session_reconciled",
+            now
+        )
+        status = "ended"
+
+    if status == "active":
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET termination_status = 'not_requested',
+                termination_next_attempt_at = NULL,
+                termination_claim_token = NULL,
+                termination_lease_expires_at = NULL,
+                updated_at = ?
+            WHERE id = ? AND user_id = ? AND status = 'active'
+              AND upstream_call_id IS NOT NULL
+        """), (now, voice_session_id, user_id))
+        return
+
+    if termination_status in {"accepted", "failed_permanent"}:
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET termination_next_attempt_at = NULL,
+                termination_claim_token = NULL,
+                termination_lease_expires_at = NULL,
+                updated_at = ?
+            WHERE id = ? AND user_id = ? AND status = 'ended'
+              AND upstream_call_id IS NOT NULL
+        """), (now, voice_session_id, user_id))
+        return
+    if termination_status == "in_progress":
+        return
+    cur.execute(sql("""
+        UPDATE agent_voice_sessions
+        SET termination_status = 'pending',
+            termination_requested_at = COALESCE(termination_requested_at, ?),
+            termination_next_attempt_at = COALESCE(
+                termination_next_attempt_at, ?
+            ),
+            termination_claim_token = NULL,
+            termination_lease_expires_at = NULL,
+            updated_at = ?
+        WHERE id = ? AND user_id = ? AND status = 'ended'
+          AND upstream_call_id IS NOT NULL
+    """), (now, now, now, voice_session_id, user_id))
+
+
+def _reconcile_voice_call_ids_for_migration(cur, now=None):
+    """Make stored call identities safe before the unique index is created."""
+    now = now or utc_now()
+    cur.execute(sql("""
+        SELECT id, user_id, status, started_at, upstream_call_id,
+               termination_status, updated_at, created_at
+        FROM agent_voice_sessions
+        WHERE upstream_call_id IS NOT NULL
+        ORDER BY id
+    """))
+    rows = cur.fetchall()
+    valid_groups = {}
+    original_stable_times = {
+        row[0]: (row[6], row[7]) for row in rows
+    }
+    for row in rows:
+        call_id = row[4]
+        if not valid_realtime_call_id(call_id):
+            _clear_unusable_voice_call_identity_in_transaction(
+                cur, row, "invalid_upstream_call_id_reconciled", now
+            )
+            continue
+        _reconcile_valid_voice_call_state_in_transaction(cur, row, now)
+
+    _reconcile_stale_voice_termination_leases_in_transaction(cur, now)
+    cur.execute(sql("""
+        SELECT id, user_id, status, started_at, upstream_call_id,
+               termination_status, updated_at, created_at
+        FROM agent_voice_sessions
+        WHERE upstream_call_id IS NOT NULL
+        ORDER BY id
+    """))
+    for row in cur.fetchall():
+        stable_times = original_stable_times.get(
+            row[0], (row[6], row[7])
+        )
+        ranked_row = tuple(row[:6]) + tuple(stable_times)
+        valid_groups.setdefault(row[4], []).append(ranked_row)
+    for duplicate_rows in valid_groups.values():
+        if len(duplicate_rows) <= 1:
+            continue
+        survivor = max(duplicate_rows, key=_voice_call_id_survivor_key)
+        for row in duplicate_rows:
+            if row[0] == survivor[0]:
+                continue
+            _clear_unusable_voice_call_identity_in_transaction(
+                cur, row, "duplicate_upstream_call_id_reconciled", now
+            )
+
+    cur.execute(sql("""
+        SELECT upstream_call_id, status, termination_status,
+               termination_claim_token, termination_next_attempt_at,
+               termination_lease_expires_at
+        FROM agent_voice_sessions
+        WHERE upstream_call_id IS NOT NULL
+        ORDER BY upstream_call_id
+    """))
+    retained_rows = cur.fetchall()
+    retained_call_ids = [row[0] for row in retained_rows]
+    invalid_state = any(
+        not (
+            (row[1] == "active" and row[2] == "not_requested")
+            or (
+                row[1] == "ended"
+                and row[2] in {
+                    "pending", "in_progress",
+                    "accepted", "failed_permanent"
+                }
+            )
+        )
+        or (
+            row[2] != "in_progress"
+            and row[3] is not None
+        )
+        or (row[2] == "accepted" and row[4] is not None)
+        or (
+            row[2] == "in_progress"
+            and (
+                row[3] is None
+                or parse_db_datetime(row[5]) is None
+                or parse_db_datetime(row[5]) <= now
+            )
+        )
+        or (
+            row[2] != "in_progress"
+            and row[5] is not None
+        )
+        for row in retained_rows
+    )
+    if (
+        any(not valid_realtime_call_id(value) for value in retained_call_ids)
+        or len(retained_call_ids) != len(set(retained_call_ids))
+        or invalid_state
+    ):
+        raise RuntimeError("voice_call_id_migration_verification_failed")
+
+
+def _load_voice_termination_row_in_transaction(
+    cur, voice_session_id, user_id
+):
+    query = """
+        SELECT upstream_call_id, termination_status,
+               termination_lease_expires_at, termination_attempts,
+               termination_requested_at, termination_next_attempt_at,
+               termination_claim_token, status
+        FROM agent_voice_sessions
+        WHERE id = ? AND user_id = ?
+        LIMIT 1
+    """
+    if using_postgres():
+        query += " FOR UPDATE"
+    cur.execute(sql(query), (voice_session_id, user_id))
+    return cur.fetchone()
+
+
+def _normalize_stale_voice_termination_in_transaction(
+    cur, voice_session_id, user_id, now, termination_row=None
+):
+    """Normalize one owned termination row without performing network I/O."""
+    termination_row = termination_row or _load_voice_termination_row_in_transaction(
+        cur, voice_session_id, user_id
+    )
+    if not termination_row or termination_row[1] != "in_progress":
+        return termination_row, "unchanged"
+    lease_expires_at = parse_db_datetime(termination_row[2])
+    if lease_expires_at and lease_expires_at > now:
+        return termination_row, "unchanged"
+
+    attempts = int(termination_row[3] or 0)
+    if attempts >= VOICE_TERMINATION_MAX_ATTEMPTS:
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET termination_status = 'failed_permanent',
+                termination_next_attempt_at = NULL,
+                termination_error_code = 'voice_termination_attempts_exhausted',
+                termination_claim_token = NULL,
+                termination_lease_expires_at = NULL,
+                updated_at = ?
+            WHERE id = ? AND user_id = ? AND status = 'ended'
+              AND termination_status = 'in_progress'
+              AND COALESCE(termination_attempts, 0) >= ?
+              AND (
+                  termination_lease_expires_at IS NULL
+                  OR termination_lease_expires_at <= ?
+              )
+        """), (
+            now, voice_session_id, user_id,
+            VOICE_TERMINATION_MAX_ATTEMPTS, now
+        ))
+        action = "exhausted" if cur.rowcount == 1 else "unchanged"
+    else:
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET termination_status = 'pending',
+                termination_next_attempt_at = ?,
+                termination_error_code =
+                    'voice_termination_stale_lease_recovered',
+                termination_claim_token = NULL,
+                termination_lease_expires_at = NULL,
+                updated_at = ?
+            WHERE id = ? AND user_id = ? AND status = 'ended'
+              AND termination_status = 'in_progress'
+              AND COALESCE(termination_attempts, 0) < ?
+              AND (
+                  termination_lease_expires_at IS NULL
+                  OR termination_lease_expires_at <= ?
+              )
+        """), (
+            now, now, voice_session_id, user_id,
+            VOICE_TERMINATION_MAX_ATTEMPTS, now
+        ))
+        action = "recovered" if cur.rowcount == 1 else "unchanged"
+    return _load_voice_termination_row_in_transaction(
+        cur, voice_session_id, user_id
+    ), action
+
+
+def _schedule_voice_termination_in_transaction(cur, voice_session_id, user_id, now):
+    termination_row = _load_voice_termination_row_in_transaction(
+        cur, voice_session_id, user_id
+    )
+    if not termination_row or not termination_row[0]:
+        return "not_applicable"
+    termination_row, _ = _normalize_stale_voice_termination_in_transaction(
+        cur, voice_session_id, user_id, now, termination_row
+    )
+    termination_status = termination_row[1] or "not_applicable"
+    if termination_status in {"accepted", "failed_permanent"}:
+        return termination_status
+    lease_expires_at = parse_db_datetime(termination_row[2])
+    if (
+        termination_status == "in_progress"
+        and lease_expires_at
+        and lease_expires_at > now
+    ):
+        return "in_progress"
+    cur.execute(sql("""
+        UPDATE agent_voice_sessions
+        SET termination_status = 'pending',
+            termination_requested_at = COALESCE(termination_requested_at, ?),
+            termination_next_attempt_at = CASE
+                WHEN termination_status = 'pending'
+                     AND termination_next_attempt_at IS NOT NULL
+                    THEN termination_next_attempt_at
+                ELSE ?
+            END,
+            termination_claim_token = NULL,
+            termination_lease_expires_at = NULL,
+            updated_at = ?
+        WHERE id = ? AND user_id = ?
+          AND upstream_call_id IS NOT NULL
+          AND termination_status IN (
+              'not_requested', 'not_applicable', 'pending'
+          )
+    """), (now, now, now, voice_session_id, user_id))
+    if cur.rowcount == 1:
+        return "pending"
+    refreshed = _load_voice_termination_row_in_transaction(
+        cur, voice_session_id, user_id
+    )
+    return (refreshed[1] if refreshed else "not_applicable")
+
+
 def _reconcile_voice_sessions_in_transaction(cur, user_id=None, now=None):
     now = now or utc_now()
+    _reconcile_stale_voice_termination_leases_in_transaction(cur, now)
     params = ()
     where = "WHERE status IN ('starting', 'active')"
     if user_id is not None:
@@ -5615,7 +6052,9 @@ def _reconcile_voice_sessions_in_transaction(cur, user_id=None, now=None):
         params = (user_id,)
     cur.execute(sql(f"""
         SELECT id, user_id, status, started_at, expires_at, ended_at,
-               duration_seconds, disconnect_reason, updated_at, created_at
+               duration_seconds, disconnect_reason, updated_at, created_at,
+               upstream_call_id, termination_status,
+               termination_lease_expires_at
         FROM agent_voice_sessions
         {where}
         ORDER BY user_id, id
@@ -5656,6 +6095,9 @@ def _reconcile_voice_sessions_in_transaction(cur, user_id=None, now=None):
         if reason:
             if _end_voice_row_in_transaction(cur, row, reason, now):
                 counts[reason] += 1
+                _schedule_voice_termination_in_transaction(
+                    cur, row[0], row[1], now
+                )
             continue
         candidates.setdefault(row[1], []).append(row)
 
@@ -5678,6 +6120,9 @@ def _reconcile_voice_sessions_in_transaction(cur, user_id=None, now=None):
                 cur, row, "duplicate_session_reconciled", now
             ):
                 counts["duplicate_session_reconciled"] += 1
+                _schedule_voice_termination_in_transaction(
+                    cur, row[0], row[1], now
+                )
     return counts
 
 
@@ -5860,8 +6305,11 @@ def admit_voice_session(
 
 
 def activate_voice_session(
-    user_id, voice_session_id, handshake_request_id, now=None
+    user_id, voice_session_id, handshake_request_id, upstream_call_id,
+    now=None
 ):
+    if not valid_realtime_call_id(upstream_call_id):
+        return {"ok": False, "code": "invalid_upstream_call_location"}
     conn = None
     now = now or utc_now()
     try:
@@ -5872,27 +6320,230 @@ def activate_voice_session(
         _reconcile_voice_sessions_in_transaction(cur, user_id, now)
         cur.execute(sql("""
             UPDATE agent_voice_sessions
-            SET status = 'active', updated_at = ?
+            SET status = 'active',
+                upstream_call_id = ?,
+                termination_status = 'not_requested',
+                updated_at = ?
             WHERE id = ? AND user_id = ? AND handshake_request_id = ?
               AND status = 'starting'
               AND expires_at IS NOT NULL AND expires_at > ?
+              AND upstream_call_id IS NULL
         """), (
-            now, voice_session_id, user_id, handshake_request_id, now
+            upstream_call_id, now, voice_session_id, user_id,
+            handshake_request_id, now
         ))
         activated = cur.rowcount > 0
         conn.commit()
-        return activated
+        return {
+            "ok": activated,
+            "code": "" if activated else "voice_activation_failed"
+        }
+    except (sqlite3.IntegrityError, psycopg2.IntegrityError):
+        if conn:
+            conn.rollback()
+        logger.warning(
+            "voice_session_activation_failed code=duplicate_upstream_call_id"
+        )
+        return {"ok": False, "code": "duplicate_upstream_call_id"}
     except Exception:
         if conn:
             conn.rollback()
         logger.warning("voice_session_activation_failed code=voice_activation_failed")
-        return False
+        return {"ok": False, "code": "voice_activation_failed"}
     finally:
         if conn:
             conn.close()
 
 
-def finish_voice_session(
+def prepare_voice_activation_failure(
+    user_id, voice_session_id, handshake_request_id, upstream_call_id,
+    reason="voice_activation_failed", now=None
+):
+    if not valid_realtime_call_id(upstream_call_id):
+        return {
+            "durable": False,
+            "safe_to_hangup": False,
+            "code": "invalid_upstream_call_location"
+        }
+    conn = None
+    now = now or utc_now()
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if not using_postgres():
+            cur.execute("PRAGMA busy_timeout = 5000")
+            cur.execute("BEGIN IMMEDIATE")
+        row_query = """
+            SELECT id, user_id, status, started_at, expires_at, ended_at,
+                   duration_seconds, disconnect_reason, updated_at, created_at,
+                   upstream_call_id, termination_status,
+                   termination_requested_at, termination_next_attempt_at,
+                   termination_accepted_at, termination_error_code,
+                   termination_attempts, termination_claim_token,
+                   termination_lease_expires_at
+            FROM agent_voice_sessions
+            WHERE id = ? AND user_id = ? AND handshake_request_id = ?
+            LIMIT 1
+        """
+        if using_postgres():
+            row_query += " FOR UPDATE"
+        cur.execute(sql(row_query), (
+            voice_session_id, user_id, handshake_request_id
+        ))
+        row = cur.fetchone()
+        if not row:
+            conn.commit()
+            return {
+                "durable": False,
+                "safe_to_hangup": True,
+                "code": "voice_activation_failed"
+            }
+
+        existing_call_id = row[10]
+        if existing_call_id and existing_call_id != upstream_call_id:
+            conn.commit()
+            return {
+                "durable": False,
+                "safe_to_hangup": True,
+                "code": "upstream_call_identity_conflict"
+            }
+
+        cur.execute(sql("""
+            SELECT id
+            FROM agent_voice_sessions
+            WHERE upstream_call_id = ? AND id <> ?
+            LIMIT 1
+        """), (upstream_call_id, voice_session_id))
+        if cur.fetchone():
+            conn.commit()
+            return {
+                "durable": False,
+                "safe_to_hangup": False,
+                "code": "duplicate_upstream_call_id"
+            }
+        if row[2] in {"starting", "active"} and not _end_voice_row_in_transaction(
+            cur, row, reason, now
+        ):
+            conn.rollback()
+            return {
+                "durable": False,
+                "safe_to_hangup": True,
+                "code": "voice_activation_failed"
+            }
+        if row[2] not in {"starting", "active", "ended"}:
+            conn.commit()
+            return {
+                "durable": False,
+                "safe_to_hangup": True,
+                "code": "voice_activation_failed"
+            }
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET upstream_call_id = ?,
+                termination_status = CASE
+                    WHEN termination_status IN (
+                        'accepted', 'failed_permanent',
+                        'in_progress', 'pending'
+                    ) THEN termination_status
+                    ELSE 'pending'
+                END,
+                termination_requested_at = CASE
+                    WHEN termination_status IN (
+                        'accepted', 'failed_permanent', 'in_progress'
+                    ) THEN termination_requested_at
+                    ELSE COALESCE(termination_requested_at, ?)
+                END,
+                termination_next_attempt_at = CASE
+                    WHEN termination_status IN (
+                        'accepted', 'failed_permanent'
+                    ) THEN NULL
+                    WHEN termination_status IN ('in_progress', 'pending')
+                        THEN termination_next_attempt_at
+                    ELSE COALESCE(termination_next_attempt_at, ?)
+                END,
+                termination_error_code = CASE
+                    WHEN termination_status IN (
+                        'accepted', 'failed_permanent',
+                        'in_progress', 'pending'
+                    ) THEN termination_error_code
+                    ELSE NULL
+                END,
+                termination_claim_token = CASE
+                    WHEN termination_status = 'in_progress'
+                        THEN termination_claim_token
+                    ELSE NULL
+                END,
+                termination_lease_expires_at = CASE
+                    WHEN termination_status = 'in_progress'
+                        THEN termination_lease_expires_at
+                    ELSE NULL
+                END,
+                updated_at = ?
+            WHERE id = ? AND user_id = ? AND handshake_request_id = ?
+              AND status = 'ended'
+              AND (upstream_call_id IS NULL OR upstream_call_id = ?)
+        """), (
+            upstream_call_id, now, now, now, voice_session_id, user_id,
+            handshake_request_id, upstream_call_id
+        ))
+        durable = cur.rowcount == 1
+        if not durable:
+            conn.rollback()
+            return {
+                "durable": False,
+                "safe_to_hangup": True,
+                "code": "voice_activation_failed"
+            }
+        conn.commit()
+        return {
+            "durable": True,
+            "safe_to_hangup": True,
+            "code": ""
+        }
+    except (sqlite3.IntegrityError, psycopg2.IntegrityError):
+        if conn:
+            conn.rollback()
+        logger.warning(
+            "voice_activation_cleanup_failed code=duplicate_upstream_call_id"
+        )
+        return {
+            "durable": False,
+            "safe_to_hangup": False,
+            "code": "duplicate_upstream_call_id"
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning(
+            "voice_activation_cleanup_failed code=voice_activation_failed"
+        )
+        return {
+            "durable": False,
+            "safe_to_hangup": True,
+            "code": "voice_activation_failed"
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+def handle_voice_activation_failure(
+    user_id, voice_session_id, handshake_request_id, upstream_call_id,
+    reason="voice_activation_failed"
+):
+    cleanup = prepare_voice_activation_failure(
+        user_id, voice_session_id, handshake_request_id,
+        upstream_call_id, reason
+    )
+    if cleanup["safe_to_hangup"]:
+        if cleanup["durable"]:
+            attempt_voice_termination_for_session(voice_session_id)
+        else:
+            hangup_realtime_call(upstream_call_id)
+    return cleanup
+
+
+def request_voice_termination(
     user_id, voice_session_id, reason="client_disconnected", now=None,
     handshake_request_id=None
 ):
@@ -5910,7 +6561,9 @@ def finish_voice_session(
             parameters.append(handshake_request_id)
         cur.execute(sql(f"""
             SELECT id, user_id, status, started_at, expires_at, ended_at,
-                   duration_seconds, disconnect_reason, updated_at, created_at
+                   duration_seconds, disconnect_reason, updated_at, created_at,
+                   upstream_call_id, termination_status,
+                   termination_lease_expires_at
             FROM agent_voice_sessions
             WHERE user_id = ? AND id = ?
             {request_scope}
@@ -5919,18 +6572,45 @@ def finish_voice_session(
         row = cur.fetchone()
         if not row:
             conn.commit()
-            return {"found": False, "ended": False, "changed": False}
+            return {
+                "found": False, "ended": False, "changed": False,
+                "termination_status": "not_applicable"
+            }
         changed = _end_voice_row_in_transaction(cur, row, reason, now)
+        termination_status = _schedule_voice_termination_in_transaction(
+            cur, voice_session_id, user_id, now
+        )
         conn.commit()
-        return {"found": True, "ended": True, "changed": changed}
+        return {
+            "found": True,
+            "ended": True,
+            "changed": changed,
+            "termination_status": termination_status
+        }
     except Exception:
         if conn:
             conn.rollback()
         logger.warning("voice_session_finalization_failed")
-        return {"found": False, "ended": False, "changed": False}
+        return {
+            "found": False, "ended": False, "changed": False,
+            "termination_status": "not_applicable"
+        }
     finally:
         if conn:
             conn.close()
+
+
+def finish_voice_session(
+    user_id, voice_session_id, reason="client_disconnected", now=None,
+    handshake_request_id=None
+):
+    return request_voice_termination(
+        user_id,
+        voice_session_id,
+        reason,
+        now=now,
+        handshake_request_id=handshake_request_id
+    )
 
 
 def reconcile_expired_voice_sessions(user_id=None, now=None):
@@ -5957,6 +6637,337 @@ def reconcile_expired_voice_sessions(user_id=None, now=None):
     finally:
         if conn:
             conn.close()
+
+
+def _reconcile_stale_voice_termination_leases_in_transaction(cur, now):
+    query = """
+        SELECT id, user_id
+        FROM agent_voice_sessions
+        WHERE status = 'ended'
+          AND termination_status = 'in_progress'
+          AND (
+              termination_lease_expires_at IS NULL
+              OR termination_lease_expires_at <= ?
+          )
+        ORDER BY id
+    """
+    if using_postgres():
+        query += " FOR UPDATE"
+    cur.execute(sql(query), (now,))
+    stale_rows = cur.fetchall()
+    counts = {"recovered": 0, "exhausted": 0}
+    for voice_session_id, user_id in stale_rows:
+        _, action = _normalize_stale_voice_termination_in_transaction(
+            cur, voice_session_id, user_id, now
+        )
+        if action in counts:
+            counts[action] += 1
+    return counts
+
+
+def claim_due_voice_termination(voice_session_id=None, now=None):
+    conn = None
+    now = now or utc_now()
+    claim_token = secrets.token_urlsafe(32)
+    lease_expires_at = now + timedelta(seconds=VOICE_TERMINATION_LEASE_SECONDS)
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if not using_postgres():
+            cur.execute("PRAGMA busy_timeout = 5000")
+            cur.execute("BEGIN IMMEDIATE")
+        _reconcile_stale_voice_termination_leases_in_transaction(cur, now)
+        parameters = [now, now, VOICE_TERMINATION_MAX_ATTEMPTS]
+        session_filter = ""
+        if voice_session_id is not None:
+            session_filter = " AND id = ?"
+            parameters.append(voice_session_id)
+        query = f"""
+            SELECT id, upstream_call_id, termination_attempts
+            FROM agent_voice_sessions
+            WHERE status = 'ended'
+              AND upstream_call_id IS NOT NULL
+              AND (
+                    (
+                        termination_status = 'pending'
+                        AND (
+                            termination_next_attempt_at IS NULL
+                            OR termination_next_attempt_at <= ?
+                        )
+                    )
+                    OR (
+                        termination_status = 'in_progress'
+                        AND (
+                            termination_lease_expires_at IS NULL
+                            OR termination_lease_expires_at <= ?
+                        )
+                    )
+              )
+              AND termination_attempts < ?
+              {session_filter}
+            ORDER BY COALESCE(termination_next_attempt_at, termination_requested_at),
+                     id
+            LIMIT 1
+        """
+        if using_postgres():
+            query += " FOR UPDATE SKIP LOCKED"
+        cur.execute(sql(query), tuple(parameters))
+        row = cur.fetchone()
+        if not row:
+            conn.commit()
+            return None
+        attempt = int(row[2] or 0) + 1
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET termination_status = 'in_progress',
+                termination_attempts = ?,
+                termination_last_attempt_at = ?,
+                termination_claim_token = ?,
+                termination_lease_expires_at = ?,
+                updated_at = ?
+            WHERE id = ? AND status = 'ended'
+              AND upstream_call_id IS NOT NULL
+              AND termination_status IN ('pending', 'in_progress')
+        """), (
+            attempt, now, claim_token, lease_expires_at, now, row[0]
+        ))
+        if cur.rowcount != 1:
+            conn.rollback()
+            return None
+        conn.commit()
+        return {
+            "voice_session_id": row[0],
+            "call_id": row[1],
+            "claim_token": claim_token,
+            "attempt": attempt
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("voice_termination_claim_failed code=voice_termination_claim_lost")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def voice_termination_backoff_seconds(attempt, jitter_seconds=None):
+    schedule = (15, 30, 60, 120, 240, 480, 900)
+    base = schedule[min(max(int(attempt), 1) - 1, len(schedule) - 1)]
+    if jitter_seconds is None:
+        jitter_seconds = secrets.randbelow(6)
+    jitter_seconds = max(0, min(int(jitter_seconds), 5))
+    return base + jitter_seconds
+
+
+def hangup_realtime_call(call_id):
+    if not valid_realtime_call_id(call_id):
+        return {
+            "accepted": False,
+            "retryable": False,
+            "error_code": "upstream_hangup_protocol_error"
+        }
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return {
+            "accepted": False,
+            "retryable": False,
+            "error_code": "upstream_hangup_authentication_failed"
+        }
+    encoded_call_id = urllib.parse.quote(call_id, safe="")
+    hangup_url = (
+        f"{OPENAI_REALTIME_CALLS_ENDPOINT}/{encoded_call_id}/hangup"
+    )
+    try:
+        response = requests.post(
+            hangup_url,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=(
+                VOICE_HANGUP_CONNECT_TIMEOUT_SECONDS,
+                VOICE_HANGUP_READ_TIMEOUT_SECONDS
+            ),
+            allow_redirects=False
+        )
+    except requests.Timeout:
+        return {
+            "accepted": False,
+            "retryable": True,
+            "error_code": "upstream_hangup_timeout"
+        }
+    except requests.ConnectionError:
+        return {
+            "accepted": False,
+            "retryable": True,
+            "error_code": "upstream_hangup_unavailable"
+        }
+    except requests.RequestException:
+        return {
+            "accepted": False,
+            "retryable": True,
+            "error_code": "upstream_hangup_unavailable"
+        }
+    status_code = response.status_code
+    if status_code == 200:
+        return {"accepted": True, "retryable": False, "error_code": ""}
+    if status_code in {401, 403}:
+        return {
+            "accepted": False,
+            "retryable": False,
+            "error_code": "upstream_hangup_authentication_failed"
+        }
+    if status_code == 429:
+        return {
+            "accepted": False,
+            "retryable": True,
+            "error_code": "upstream_hangup_rate_limited"
+        }
+    if status_code >= 500:
+        return {
+            "accepted": False,
+            "retryable": True,
+            "error_code": "upstream_hangup_unavailable"
+        }
+    return {
+        "accepted": False,
+        "retryable": False,
+        "error_code": "upstream_hangup_protocol_error"
+    }
+
+
+def finalize_voice_termination_claim(
+    claim, result, now=None, jitter_seconds=None
+):
+    conn = None
+    now = now or utc_now()
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if not using_postgres():
+            cur.execute("PRAGMA busy_timeout = 5000")
+            cur.execute("BEGIN IMMEDIATE")
+        if result.get("accepted"):
+            target_status = "accepted"
+            cur.execute(sql("""
+                UPDATE agent_voice_sessions
+                SET termination_status = 'accepted',
+                    termination_accepted_at = ?,
+                    termination_next_attempt_at = NULL,
+                    termination_error_code = NULL,
+                    termination_claim_token = NULL,
+                    termination_lease_expires_at = NULL,
+                    updated_at = ?
+                WHERE id = ?
+                  AND termination_status = 'in_progress'
+                  AND termination_claim_token = ?
+            """), (
+                now, now, claim["voice_session_id"], claim["claim_token"]
+            ))
+        elif (
+            result.get("retryable")
+            and claim["attempt"] < VOICE_TERMINATION_MAX_ATTEMPTS
+        ):
+            target_status = "pending"
+            next_attempt_at = now + timedelta(
+                seconds=voice_termination_backoff_seconds(
+                    claim["attempt"], jitter_seconds
+                )
+            )
+            cur.execute(sql("""
+                UPDATE agent_voice_sessions
+                SET termination_status = 'pending',
+                    termination_next_attempt_at = ?,
+                    termination_error_code = ?,
+                    termination_claim_token = NULL,
+                    termination_lease_expires_at = NULL,
+                    updated_at = ?
+                WHERE id = ?
+                  AND termination_status = 'in_progress'
+                  AND termination_claim_token = ?
+            """), (
+                next_attempt_at,
+                str(result.get("error_code") or "voice_termination_retry_scheduled")[:120],
+                now,
+                claim["voice_session_id"],
+                claim["claim_token"]
+            ))
+        else:
+            target_status = "failed_permanent"
+            cur.execute(sql("""
+                UPDATE agent_voice_sessions
+                SET termination_status = 'failed_permanent',
+                    termination_next_attempt_at = NULL,
+                    termination_error_code = ?,
+                    termination_claim_token = NULL,
+                    termination_lease_expires_at = NULL,
+                    updated_at = ?
+                WHERE id = ?
+                  AND termination_status = 'in_progress'
+                  AND termination_claim_token = ?
+            """), (
+                str(result.get("error_code") or "voice_termination_failed")[:120],
+                now,
+                claim["voice_session_id"],
+                claim["claim_token"]
+            ))
+        updated = cur.rowcount == 1
+        conn.commit()
+        return {
+            "updated": updated,
+            "status": target_status if updated else "claim_lost"
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning(
+            "voice_termination_finalize_failed code=voice_termination_claim_lost"
+        )
+        return {"updated": False, "status": "claim_lost"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def process_voice_termination_claim(claim, now=None, jitter_seconds=None):
+    result = hangup_realtime_call(claim["call_id"])
+    return finalize_voice_termination_claim(
+        claim, result, now=now, jitter_seconds=jitter_seconds
+    )
+
+
+def attempt_voice_termination_for_session(voice_session_id):
+    claim = claim_due_voice_termination(voice_session_id=voice_session_id)
+    if not claim:
+        return {"processed": False, "status": "pending"}
+    finalization = process_voice_termination_claim(claim)
+    return {
+        "processed": True,
+        "status": finalization["status"]
+    }
+
+
+def run_voice_maintenance_once(limit=VOICE_TERMINATION_BATCH_LIMIT):
+    bounded_limit = max(1, min(int(limit), VOICE_TERMINATION_BATCH_LIMIT))
+    reconciliation = reconcile_expired_voice_sessions()
+    counts = {
+        "reconciliation_ok": bool(reconciliation.get("ok")),
+        "processed": 0,
+        "accepted": 0,
+        "retry_scheduled": 0,
+        "failed_permanent": 0,
+        "claim_lost": 0
+    }
+    for _ in range(bounded_limit):
+        claim = claim_due_voice_termination()
+        if not claim:
+            break
+        finalization = process_voice_termination_claim(claim)
+        counts["processed"] += 1
+        status = finalization["status"]
+        if status in counts:
+            counts[status] += 1
+        elif status == "pending":
+            counts["retry_scheduled"] += 1
+    return counts
 
 
 @app.before_request
@@ -6067,13 +7078,89 @@ def valid_sdp_document(sdp):
     )
 
 
+def valid_realtime_call_id(call_id):
+    if not isinstance(call_id, str) or not call_id:
+        return False
+    try:
+        if len(call_id.encode("utf-8")) > VOICE_UPSTREAM_CALL_ID_MAX_BYTES:
+            return False
+    except UnicodeError:
+        return False
+    if call_id in {".", ".."}:
+        return False
+    if any(
+        character.isspace()
+        or unicodedata.category(character) in {"Cc", "Cf"}
+        or character in "/\\?#%;"
+        for character in call_id
+    ):
+        return False
+    return True
+
+
+def extract_realtime_call_id(location_value):
+    """Extract an opaque ID without following or retaining Location.
+
+    OpenAI documents a relative Location path. Canonical absolute support is
+    a defensive compatibility inference and remains pinned to api.openai.com.
+    """
+    if not isinstance(location_value, str) or not location_value:
+        return None
+    if any(character.isspace() or unicodedata.category(character) in {"Cc", "Cf"}
+           for character in location_value):
+        return None
+    if "%" in location_value:
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(location_value)
+    except ValueError:
+        return None
+    if parsed.query or parsed.fragment:
+        return None
+    if parsed.scheme or parsed.netloc:
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "api.openai.com"
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            return None
+        try:
+            if parsed.port is not None:
+                return None
+        except ValueError:
+            return None
+    elif not location_value.startswith("/"):
+        return None
+    expected_prefix = "/v1/realtime/calls/"
+    if not parsed.path.startswith(expected_prefix):
+        return None
+    call_id = parsed.path[len(expected_prefix):]
+    if "/" in call_id or "\\" in call_id:
+        return None
+    return call_id if valid_realtime_call_id(call_id) else None
+
+
+def _realtime_handshake_result(
+    ok, answer_sdp=None, call_id=None, error_code="",
+    disconnect_reason=None
+):
+    return {
+        "ok": bool(ok),
+        "answer_sdp": answer_sdp if ok else None,
+        "call_id": call_id if ok else None,
+        "error_code": error_code,
+        "disconnect_reason": disconnect_reason or error_code
+    }
+
+
 def create_realtime_sdp_answer(user_id, offer_sdp, voice_name=None):
     config = get_voice_config()
     api_key = os.getenv("OPENAI_API_KEY")
     try:
         session_config = build_realtime_session_config(user_id, voice_name)
     except ValueError as error:
-        return None, str(error)
+        return _realtime_handshake_result(False, error_code=str(error))
     headers = {
         "Authorization": f"Bearer {api_key}",
         "OpenAI-Safety-Identifier": voice_safety_identifier(user_id)
@@ -6092,13 +7179,13 @@ def create_realtime_sdp_answer(user_id, offer_sdp, voice_name=None):
         )
     except requests.Timeout:
         logger.warning("voice_realtime_handshake_failed code=upstream_timeout correlation_id=%s", correlation_id)
-        return None, "upstream_timeout"
+        return _realtime_handshake_result(False, error_code="upstream_timeout")
     except requests.ConnectionError:
         logger.warning("voice_realtime_handshake_failed code=upstream_unavailable correlation_id=%s", correlation_id)
-        return None, "upstream_unavailable"
+        return _realtime_handshake_result(False, error_code="upstream_unavailable")
     except requests.RequestException:
         logger.warning("voice_realtime_handshake_failed code=upstream_unavailable correlation_id=%s", correlation_id)
-        return None, "upstream_unavailable"
+        return _realtime_handshake_result(False, error_code="upstream_unavailable")
     if response.status_code >= 400:
         if response.status_code in {401, 403}:
             error_code = "upstream_authentication_failed"
@@ -6109,15 +7196,33 @@ def create_realtime_sdp_answer(user_id, offer_sdp, voice_name=None):
         else:
             error_code = "invalid_realtime_configuration"
         logger.warning("voice_realtime_handshake_failed code=%s correlation_id=%s", error_code, correlation_id)
-        return None, error_code
-    if response.status_code < 200 or response.status_code >= 300:
+        return _realtime_handshake_result(False, error_code=error_code)
+    if response.status_code != 201:
         logger.warning("voice_realtime_handshake_failed code=invalid_upstream_response correlation_id=%s", correlation_id)
-        return None, "invalid_upstream_response"
+        return _realtime_handshake_result(
+            False, error_code="invalid_upstream_response"
+        )
     answer = response.text or ""
     if len(answer.encode("utf-8")) > VOICE_SESSION_MAX_SDP_BYTES or not valid_sdp_document(answer):
         logger.warning("voice_realtime_handshake_failed code=invalid_upstream_response correlation_id=%s", correlation_id)
-        return None, "invalid_upstream_response"
-    return answer, None
+        return _realtime_handshake_result(
+            False, error_code="invalid_upstream_response"
+        )
+    call_id = extract_realtime_call_id(response.headers.get("Location"))
+    if not call_id:
+        logger.warning(
+            "voice_realtime_handshake_failed "
+            "code=invalid_upstream_call_location correlation_id=%s",
+            correlation_id
+        )
+        return _realtime_handshake_result(
+            False,
+            error_code="invalid_upstream_response",
+            disconnect_reason="upstream_call_unidentified"
+        )
+    return _realtime_handshake_result(
+        True, answer_sdp=answer, call_id=call_id
+    )
 
 
 VOICE_ERROR_DETAILS = {
@@ -6137,6 +7242,16 @@ VOICE_ERROR_DETAILS = {
     "voice_admission_busy": ("Voice admission is busy. Please retry.", 503),
     "voice_session_expired": ("The local voice session expired.", 409),
     "voice_activation_failed": ("Voice could not activate its local session.", 503),
+    "upstream_call_unidentified": ("Voice received an incomplete upstream session response. Text mode remains available.", 502),
+    "invalid_upstream_call_location": ("Voice received an invalid upstream session response. Text mode remains available.", 502),
+    "duplicate_upstream_call_id": ("Voice could not safely identify the upstream session. Text mode remains available.", 503),
+    "upstream_call_identity_conflict": ("Voice could not safely attribute the upstream session. Text mode remains available.", 503),
+    "voice_termination_pending": ("Voice ended locally and upstream termination is pending.", 202),
+    "voice_termination_in_progress": ("Voice ended locally and upstream termination is in progress.", 202),
+    "voice_termination_accepted": ("Voice termination was accepted upstream.", 200),
+    "voice_termination_retry_scheduled": ("Voice ended locally and upstream termination will be retried.", 202),
+    "voice_termination_failed": ("Voice ended locally but upstream termination could not be confirmed.", 200),
+    "voice_termination_claim_lost": ("Voice termination is being handled by another process.", 202),
     "voice_session_not_found": ("The voice session was not found.", 404),
     "invalid_sdp": ("A valid SDP offer is required.", 400),
     "sdp_too_large": ("The SDP offer is too large.", 413),
@@ -16785,7 +17900,7 @@ def api_realtime_session():
     voice_name = admission["voice_name"]
 
     try:
-        answer_sdp, error_code = create_realtime_sdp_answer(
+        handshake = create_realtime_sdp_answer(
             user_id, offer_sdp, voice_name
         )
     except Exception:
@@ -16802,26 +17917,33 @@ def api_realtime_session():
             handshake_request_id=handshake_request_id
         )
         return voice_error_response("upstream_unavailable")
-    if error_code:
+    if not handshake["ok"]:
         finish_voice_session(
             user_id,
             voice_session_id,
-            error_code,
+            handshake["disconnect_reason"],
             handshake_request_id=handshake_request_id
         )
-        return voice_error_response(error_code)
-    if not activate_voice_session(
-        user_id, voice_session_id, handshake_request_id
-    ):
-        finish_voice_session(
+        return voice_error_response(handshake["error_code"])
+    activation = activate_voice_session(
+        user_id,
+        voice_session_id,
+        handshake_request_id,
+        handshake["call_id"]
+    )
+    if not activation["ok"]:
+        cleanup = handle_voice_activation_failure(
             user_id,
             voice_session_id,
-            "voice_activation_failed",
-            handshake_request_id=handshake_request_id
+            handshake_request_id,
+            handshake["call_id"],
+            activation["code"]
         )
-        return voice_error_response("voice_activation_failed")
+        return voice_error_response(cleanup["code"] or activation["code"])
 
-    response = app.response_class(answer_sdp, mimetype="application/sdp")
+    response = app.response_class(
+        handshake["answer_sdp"], mimetype="application/sdp"
+    )
     config = get_voice_config()
     response.headers["X-BusinessBuilder-Voice-Session"] = str(voice_session_id)
     response.headers["X-BusinessBuilder-Conversation"] = str(conversation[0])
@@ -16849,12 +17971,24 @@ def api_realtime_session_end():
         return jsonify({"error": "Valid voice_session_id required."}), 400
 
     reason = str(data.get("reason", "client_disconnected"))[:120]
-    finalization = finish_voice_session(
+    finalization = request_voice_termination(
         session["user_id"], voice_session_id, reason
     )
     if not finalization["found"]:
         return voice_error_response("voice_session_not_found")
-    response = jsonify({"status": "ended"})
+    termination_status = finalization["termination_status"]
+    if termination_status == "pending":
+        immediate = attempt_voice_termination_for_session(voice_session_id)
+        termination_status = immediate["status"]
+    public_termination = {
+        "accepted": "accepted",
+        "failed_permanent": "failed",
+        "not_applicable": "not_applicable"
+    }.get(termination_status, "pending")
+    response = jsonify({
+        "status": "ended",
+        "termination": public_termination
+    })
     response.headers["Cache-Control"] = "no-store"
     return response
 

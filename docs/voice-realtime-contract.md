@@ -71,6 +71,16 @@ https://api.openai.com/v1/realtime/calls
 
 The upstream URL must be pinned to that HTTPS origin and path, or checked against an equally strict allowlist. An arbitrary configured host must never receive `OPENAI_API_KEY`.
 
+OpenAI call creation must return exactly `201 Created`, a valid SDP answer, and a valid `Location` header before the browser may receive SDP. The documented `Location` form is `/v1/realtime/calls/{call_id}`. BusinessBuilder extracts and stores only the opaque call ID; it never stores or follows the unrestricted header value and never returns the call ID to the browser. Canonical absolute `Location` compatibility is permitted only for exact HTTPS `api.openai.com` values with the same path, no alternate port or user information, and no query or fragment.
+
+Authoritative upstream termination uses only:
+
+```text
+POST https://api.openai.com/v1/realtime/calls/{validated_call_id}/hangup
+```
+
+The URL is constructed from the pinned calls endpoint and a validated stored ID. Redirects are disabled, authentication uses the server API key, and the browser may supply neither a call ID nor an OpenAI URL.
+
 ### 3.2 Target session policy
 
 The approved current model is `gpt-realtime-2.1`. The selected default voice is `marin`; any configured voice must be validated against the current documented Realtime voice allowlist before it is used.
@@ -387,6 +397,8 @@ Cleanup includes:
 - animation frames; and
 - the BusinessBuilder database voice-session record.
 
+Local cleanup, browser peer-connection closure, and upstream termination are distinct facts. A local record may be `ended` while upstream termination is pending or permanently failed. Closing WebRTC in the browser is not proof that OpenAI accepted server-requested termination.
+
 Required cleanup triggers:
 
 - Stop Voice;
@@ -458,6 +470,35 @@ An admitted `starting` row counts as one session-start attempt for the daily ses
 
 Phase 2B.2A makes BusinessBuilder's local admission and accounting state expire authoritatively. It does **not** prove that an already-established upstream Realtime call can be forcibly terminated by the BusinessBuilder server without client cooperation or an approved server-side sideband control mechanism. Phase 2B.2B must resolve and test that upstream-termination limitation before voice activation is authorized. `VOICE_RUNTIME_ENABLED` remains disabled by default.
 
+### Phase 2B.2B authoritative upstream termination
+
+The successful handshake stores the server-extracted `upstream_call_id` in the same transaction that changes the owned, unexpired `starting` row to `active`. An active row requires a call ID and `termination_status = 'not_requested'`. SDP is withheld until that transaction commits.
+
+The local lifecycle remains `starting`, `active`, and `ended`. A separate termination lifecycle is frozen as:
+
+- `not_applicable`: no identified upstream call exists;
+- `not_requested`: the active call is identified but no end is requested;
+- `pending`: durable termination intent is ready or scheduled;
+- `in_progress`: one claimant owns a bounded lease;
+- `accepted`: OpenAI returned the documented `200 OK` and began termination; and
+- `failed_permanent`: the failure is non-retryable or the bounded attempt limit was exhausted.
+
+`accepted` does not claim teardown completion. `ended` does not imply `accepted`. An ended row with an upstream call ID must remain `pending`, `in_progress`, `accepted`, or `failed_permanent`.
+
+Client end and expiry first end the local lifecycle and durably schedule termination in a database transaction. Network work occurs only after commit. Reconciliation and the `before_request` hook remain database-only. The existing background worker independently reconciles expiry, atomically leases due terminations, releases the database transaction, calls the pinned endpoint, and finalizes only when its cryptographically random claim token still owns the attempt.
+
+SQLite claims use `BEGIN IMMEDIATE`. PostgreSQL claims use row locking with `FOR UPDATE SKIP LOCKED`. Claims have a finite lease, at most eight attempts, bounded HTTP timeouts, and exponential backoff of approximately 15, 30, 60, 120, 240, 480, and then 900 seconds with small bounded jitter. A timeout may mean OpenAI accepted an earlier request; retries are therefore at least once. OpenAI does not document hangup idempotency or already-ended behavior, so BusinessBuilder guarantees local claim idempotency only.
+
+Expired leases are reconciled atomically before claim selection. An expired lease below eight attempts returns to immediately due `pending`; an expired eighth-attempt lease becomes `failed_permanent` without a ninth HTTP request. A non-expired lease remains exclusively owned. Activation-failure cleanup preserves `accepted`, `failed_permanent`, valid `in_progress` leases, and existing `pending` retry schedules rather than reviving or accelerating them.
+
+The same transaction-scoped stale-lease normalization applies during reconciliation, claim selection, and every repeated end request. Any path that observes an expired eighth attempt finalizes it as `failed_permanent`; scheduling cannot revive it as `pending`. Activation-failure cleanup establishes exact user, local-session, handshake-request, and upstream-call identity attribution before mutating a row. A different newly created call ID never replaces, ends, or schedules the row's existing identity. Only that unattached new ID may receive best-effort in-memory cleanup after transaction closure; failure leaves the documented distributed-commit orphan risk because two identities cannot safely share one local row.
+
+Before the upstream-call unique index is created, migration validates every non-null stored call ID. Invalid identities are cleared and classified without HTTP. Duplicate valid identities retain one deterministic survivor: a consistent terminal record is preferred, followed by a consistent terminating record, a consistent active record, stable recency, and finally the highest local ID. Non-survivors are ended when necessary, have the duplicate identity cleared, and become `not_applicable`; migration never hangs up the survivor.
+
+If valid SDP and a call ID are returned but activation fails, BusinessBuilder withholds SDP, durably records pending cleanup when possible, and attempts immediate hangup outside the transaction. A database outage after call creation may prevent durable retry storage, so an in-memory best-effort hangup is attempted. A duplicate call ID already owned by another local row is not blindly terminated. These are explicit distributed-commit residual risks.
+
+Worker voice maintenance remains bounded per iteration and runs before generic work, while the existing generic queue keeps its prior drain behavior: processed work continues without an added polling delay and idle iterations sleep. This prevents an idle busy loop without reducing established generic throughput or starving bounded voice maintenance.
+
 ## 12. Security contract
 
 - `OPENAI_API_KEY` remains server-side.
@@ -473,6 +514,10 @@ Phase 2B.2A makes BusinessBuilder's local admission and accounting state expire 
 - Transcript size is bounded by the approved canonical message limit.
 - Session responses use `Cache-Control: no-store`.
 - Logs must not contain API keys, authorization headers, cookies, SDP bodies, raw audio, safety identifiers, or full sensitive transcripts.
+- Logs and browser responses must not contain `Location` values, upstream call IDs, termination claim tokens, or OpenAI hangup response bodies.
+- Call IDs are limited to 255 UTF-8 bytes and reject whitespace, controls, path separators, ambiguous percent encoding, queries, fragments, and dot segments. No undocumented `rtc_` prefix rule is imposed.
+- Hangup requests use bounded connect/read timeouts and never follow redirects.
+- Duplicate termination races are controlled by database claims, expiring leases, and claim-token guarded finalization.
 - User-facing errors are non-secret and operational logs use safe classifications and correlation IDs.
 - Browser control remains disabled and independent from the voice feature flag.
 - No second authentication system is introduced.
@@ -557,6 +602,8 @@ No callback from an older generation may move `stopping`, `stopped`, or `exiting
 | Maximum-duration timeout | `stopping` then `stopped` | Voice reached its maximum duration. Start a new session or use text mode. | Yes subject to limits | Yes | Clean all | Finalize `max_duration_reached` |
 | Server-enforced expiry | `stopping`/`disconnected` then `stopped` | The voice session expired. Start again or use text mode. | Yes subject to limits | Yes | Clean all when notified/detected | Server finalizes `server_expired` authoritatively |
 
+For termination failures, local user-facing state remains sanitized. `429`, timeout, connection failure, and OpenAI `5xx` schedule bounded retries. `401`/`403`, redirects, unexpected successful statuses other than `200`, and other undocumented `4xx` responses become permanent safe classifications. Unknown or already-ended calls are not treated as successful without explicit official documentation.
+
 ## 16. Feature flag and rollout contract
 
 Real voice remains disabled by default until Phase 2F passes.
@@ -585,6 +632,7 @@ Rollout gates:
 - local browser review without production enablement;
 - explicit deployment approval; and
 - production smoke test only after that approval.
+- verified liveness of the existing `businessbuilder-ai-worker` service and successful processing of a synthetic mocked termination path.
 
 ## 17. Phase 2B–2F implementation plan
 
@@ -603,6 +651,7 @@ Rollout gates:
 - Correct `OpenAI-Safety-Identifier` and use server-secret HMAC derivation.
 - Add server-side feature-flag, entitlement/preference, CSRF/origin, voice, content-type, transcript-limit, and admission checks.
 - Make admission atomic and add periodic stale-session/server-expiry reconciliation without a Phase 2A schema change.
+- Capture and validate the server-owned `Location` call ID, store it atomically during activation, and add durable upstream termination intent, leases, bounded retries, and existing-worker processing.
 
 **Acceptance tests**
 
@@ -612,6 +661,9 @@ Rollout gates:
 - Safety identifier is stable, secret-keyed, and not the internal user ID.
 - Concurrent admission cannot exceed the configured active limit on SQLite and PostgreSQL.
 - Upstream timeout/failure finalizes the local record.
+- Exact `201` creation and `Location` validation with no call ID exposed to the browser.
+- Exact `200` hangup acceptance, sanitized failure classification, claim-token finalization, stale-lease recovery, retry exhaustion, and no HTTP inside database transactions.
+- Expiry schedules termination for independent worker processing without sideband.
 - Disabled feature flag rejects direct route use.
 - One numeric canonical agent-message limit is documented and enforced.
 
@@ -799,6 +851,9 @@ Current official OpenAI sources:
 - [Voice activity detection](https://developers.openai.com/api/docs/guides/realtime-vad)
 - [Realtime transcription](https://developers.openai.com/api/docs/guides/realtime-transcription)
 - [Webhooks and server-side controls](https://developers.openai.com/api/docs/guides/realtime-server-controls)
+- [Create Realtime call](https://developers.openai.com/api/reference/resources/realtime/subresources/calls/methods/create)
+- [Hang up Realtime call](https://developers.openai.com/api/reference/resources/realtime/subresources/calls/methods/hangup)
+- [Realtime SIP hangup guidance](https://developers.openai.com/api/docs/guides/realtime-sip#hang-up-the-call)
 - [Voice-agent architecture](https://developers.openai.com/api/docs/guides/voice-agents)
 - [`gpt-realtime-2.1` model](https://developers.openai.com/api/docs/models/gpt-realtime-2.1)
 
@@ -815,6 +870,10 @@ The official documentation is authoritative for OpenAI model availability, field
 - Voice identity: saved server-allowlisted voice with safe fallback, no mid-session change, and no impersonation; one consistent BusinessBuilder personality.
 - Spoken exit: exact normalized six-phrase allowlist.
 - Cleanup: one idempotent operation for every exit/failure path.
+- Upstream call identity: server-owned `Location` extraction only; never browser supplied or browser returned.
+- Termination: local `ended` is distinct from `pending`, `in_progress`, `accepted`, and `failed_permanent`; only exact upstream `200` means accepted initiation.
+- Scheduling: expiry is database-only and the existing worker performs leased, bounded, at-least-once hangup attempts; production worker liveness is a rollout gate.
+- Sideband: not required for Phase 2B.2B hangup and remains outside this phase.
 - Security: server-only key, pinned HTTPS endpoint, documented safety header, secret HMAC identifier, same-origin/CSRF, bounded input, non-sensitive logs.
 - Privacy: raw microphone audio is not intentionally stored by BusinessBuilder but is transmitted to OpenAI during an active session.
 - Availability: dedicated server-side voice-runtime flag, disabled by default and independent of browser control.
