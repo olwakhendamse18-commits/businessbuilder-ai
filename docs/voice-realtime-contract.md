@@ -634,6 +634,55 @@ Rollout gates:
 - production smoke test only after that approval.
 - verified liveness of the existing `businessbuilder-ai-worker` service and successful processing of a synthetic mocked termination path.
 
+### 16.1 Phase 2B.2C.1 worker-liveness contract
+
+Production worker liveness is represented by distinct states:
+
+- **started**: database initialization and the startup heartbeat succeeded;
+- **healthy**: a full worker iteration completed without an unhandled error;
+- **polling**: a recent completed loop boundary updated `last_poll_at`;
+- **database-capable**: the worker wrote a heartbeat that the readiness command can read through the web service's database connection;
+- **hangup-configured**: trusted deployment configuration needed by upstream hangup is present, without implying that an OpenAI request succeeded; and
+- **end-to-end verified**: the later database-only canary and separately authorized deployment verification have passed.
+
+The repeatable SQLite/PostgreSQL schema is one bounded row per logical role:
+
+```text
+worker_heartbeats
+  worker_role TEXT PRIMARY KEY
+  instance_id TEXT NOT NULL
+  deployed_commit TEXT NULL
+  started_at TIMESTAMP NOT NULL
+  last_poll_at TIMESTAMP NOT NULL
+  last_success_at TIMESTAMP NULL
+  last_voice_maintenance_at TIMESTAMP NULL
+  last_generic_job_at TIMESTAMP NULL
+  last_error_code TEXT NULL
+  updated_at TIMESTAMP NOT NULL
+```
+
+The approved role is `businessbuilder-worker`. `worker_role` is limited to 64 safe characters, the cryptographically random per-process `instance_id` to 120 safe characters, `last_error_code` to 120 safe characters, and `deployed_commit` to a validated lowercase 40-character ASCII hexadecimal value or `NULL`. Validation uses each exact supplied string: surrounding whitespace, controls, null bytes, Unicode lookalikes, and excessive lengths are rejected rather than stripped or truncated. Valid uppercase commit hexadecimal normalizes to lowercase only after exact validation, and the readiness CLI uses this same validator. The table stores no secret, user, session, call, claim, transcript, SDP, URL, API-key, or database-location data. Startup atomically replaces the role row and its instance ownership. Periodic writes require both the exact role and exact instance ID, so an older process cannot overwrite a replacement process.
+
+On Render, deployed commit resolution reads only `RENDER_GIT_COMMIT` when `RENDER=true`. Invalid or absent metadata becomes unknown. Runtime code must not inspect `.git`, execute Git, accept a browser commit, or make a new environment variable mandatory.
+
+Startup order is schema initialization, random instance generation, trusted commit resolution, then an immediate atomic heartbeat upsert. Startup heartbeat failure logs only `worker_heartbeat_start_failed` and prevents polling. Normal successful writes use process-local monotonic throttling and occur no more than once every 30 seconds; the first completed loop may write immediately. `last_poll_at` means the polling-loop boundary completed. `last_success_at` means the full iteration completed without an unhandled error. Voice and generic timestamps update only after their respective work returns, with generic time recorded only when a job was actually processed. A successful iteration clears the previous safe error code. Heartbeat transactions are fresh and short-lived and never remain open during HTTP, generic processing, research, monitoring, sleep, or voice termination work.
+
+A heartbeat is stale when either `last_poll_at` or `last_success_at` is missing, malformed, or older than 600 seconds. Heartbeat update failure is non-critical to already-authorized worker work and logs only a fixed safe classification. Heartbeat ownership is a fencing token for the logical role: detection may occur at the next bounded heartbeat interval, but `worker_heartbeat_ownership_lost` is not recoverable. The superseded process logs that fixed event once without instance identity, immediately stops polling, performs no later voice or generic claim, does not sleep and retry, and cannot overwrite the replacement heartbeat. Every normal, error, or recovery heartbeat path checks this result outside the broad ordinary-exception retry behavior. An ordinary `Exception` escaping a worker iteration logs only `worker_iteration_failed`, makes a rate-limited best-effort error heartbeat, sleeps for the existing polling delay, and retries. `KeyboardInterrupt`, `SystemExit`, startup migration failure, and startup heartbeat failure are not swallowed.
+
+Worker cadence remains unchanged: bounded voice maintenance runs first, one generic job runs next, processed work continues without a new delay, and a fully idle iteration sleeps using the existing `WORKER_POLL_SECONDS` setting. Voice-maintenance failure remains isolated from generic processing. Only one generic worker instance is approved; Phase 2B.2C.1 does not change generic claiming, retry behavior, voice batch limits, voice leases, or voice retries.
+
+Authorized deployment shells may run:
+
+```text
+flask check-worker-liveness --expected-commit <40-character-sha>
+```
+
+The command emits only `status`, the fixed role, aggregate heartbeat/success/maintenance ages, and `commit=match|mismatch|unknown`. Exit codes are `0` live/matching, `2` missing, `3` stale, `4` live/mismatching, `5` live/unknown commit, and `6` database or schema unavailable, in that precedence order. It never emits instance identity, raw timestamps, database information, secrets, user/call/claim identifiers, or raw errors. Reading the worker-written row through the web service's database connection is privacy-safe evidence that both roles share a database; no database fingerprint is calculated or printed.
+
+`VOICE_RUNTIME_ENABLED=false` continues to block new admission and upstream creation but must not block authenticated end requests, expiry reconciliation, pending claims, hangup retries, worker maintenance, or the maintenance CLI. Heartbeats operate independently of the creation flag. Browser control remains separately disabled.
+
+Heartbeat evidence proves recent process polling and shared-database access. It does not prove a successful OpenAI hangup. No canary is added in Phase 2B.2C.1; a dedicated database-only canary remains the Phase 2B.2C.2 gate. Deployment verification remains separate, no deployment-file change is authorized here, and production voice activation remains **NO-GO** after heartbeat implementation alone.
+
 ## 17. Phase 2B–2F implementation plan
 
 ### 17.1 Phase 2B — Secure current handshake

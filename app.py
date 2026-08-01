@@ -315,6 +315,23 @@ def sql(query):
     return query
 
 
+def _create_worker_heartbeat_schema(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS worker_heartbeats (
+            worker_role TEXT PRIMARY KEY,
+            instance_id TEXT NOT NULL,
+            deployed_commit TEXT,
+            started_at TIMESTAMP NOT NULL,
+            last_poll_at TIMESTAMP NOT NULL,
+            last_success_at TIMESTAMP,
+            last_voice_maintenance_at TIMESTAMP,
+            last_generic_job_at TIMESTAMP,
+            last_error_code TEXT,
+            updated_at TIMESTAMP NOT NULL
+        )
+    """)
+
+
 def _init_db_with_connection(conn):
     cur = conn.cursor()
 
@@ -1304,6 +1321,8 @@ def _init_db_with_connection(conn):
     """)
     _reconcile_voice_sessions_in_transaction(cur)
     _reconcile_voice_call_ids_for_migration(cur)
+
+    _create_worker_heartbeat_schema(cur)
 
     execute_schema(f"""
         CREATE TABLE IF NOT EXISTS agent_research_jobs (
@@ -3925,6 +3944,14 @@ VOICE_TERMINATION_LEASE_SECONDS = 30
 VOICE_TERMINATION_BATCH_LIMIT = 5
 VOICE_HANGUP_CONNECT_TIMEOUT_SECONDS = 3.0
 VOICE_HANGUP_READ_TIMEOUT_SECONDS = 10.0
+WORKER_ROLE = "businessbuilder-worker"
+WORKER_HEARTBEAT_INTERVAL_SECONDS = 30
+WORKER_HEARTBEAT_STALE_SECONDS = 600
+WORKER_ROLE_MAX_CHARS = 64
+WORKER_INSTANCE_ID_MAX_CHARS = 120
+WORKER_ERROR_CODE_MAX_CHARS = 120
+WORKER_SAFE_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]+$")
+WORKER_COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 VOICE_TERMINATION_STATES = frozenset({
     "not_applicable", "not_requested", "pending", "in_progress",
     "accepted", "failed_permanent"
@@ -4019,6 +4046,314 @@ def parse_db_datetime(value):
         except ValueError:
             continue
     return None
+
+
+def normalize_worker_role(value):
+    if not isinstance(value, str):
+        return None
+    normalized = value
+    if (
+        not normalized
+        or len(normalized) > WORKER_ROLE_MAX_CHARS
+        or not WORKER_SAFE_IDENTIFIER_PATTERN.fullmatch(normalized)
+    ):
+        return None
+    return normalized
+
+
+def normalize_worker_instance_id(value):
+    if not isinstance(value, str):
+        return None
+    normalized = value
+    if (
+        not normalized
+        or len(normalized) > WORKER_INSTANCE_ID_MAX_CHARS
+        or not WORKER_SAFE_IDENTIFIER_PATTERN.fullmatch(normalized)
+    ):
+        return None
+    return normalized
+
+
+def validate_worker_commit(value):
+    if (
+        not isinstance(value, str)
+        or len(value) != 40
+        or not WORKER_COMMIT_PATTERN.fullmatch(value)
+    ):
+        return None
+    return value.lower()
+
+
+def normalize_worker_error_code(value):
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return None
+    normalized = value
+    if (
+        not normalized
+        or len(normalized) > WORKER_ERROR_CODE_MAX_CHARS
+        or not WORKER_SAFE_IDENTIFIER_PATTERN.fullmatch(normalized)
+    ):
+        return None
+    return normalized.lower()
+
+
+def resolve_worker_deployed_commit():
+    if str(os.getenv("RENDER") or "").lower() != "true":
+        return None
+    return validate_worker_commit(os.getenv("RENDER_GIT_COMMIT"))
+
+
+def start_worker_heartbeat(
+    worker_role, instance_id, deployed_commit, now=None
+):
+    role = normalize_worker_role(worker_role)
+    process_instance = normalize_worker_instance_id(instance_id)
+    commit = validate_worker_commit(deployed_commit)
+    if not role or not process_instance or (
+        deployed_commit is not None and commit is None
+    ):
+        logger.warning("worker_heartbeat_start_failed")
+        return {"ok": False, "code": "worker_heartbeat_start_failed"}
+
+    conn = None
+    timestamp = now or utc_now()
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(sql("""
+            INSERT INTO worker_heartbeats (
+                worker_role, instance_id, deployed_commit, started_at,
+                last_poll_at, last_success_at,
+                last_voice_maintenance_at, last_generic_job_at,
+                last_error_code, updated_at
+            ) VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)
+            ON CONFLICT (worker_role) DO UPDATE SET
+                instance_id = excluded.instance_id,
+                deployed_commit = excluded.deployed_commit,
+                started_at = excluded.started_at,
+                last_poll_at = excluded.last_poll_at,
+                last_success_at = NULL,
+                last_voice_maintenance_at = NULL,
+                last_generic_job_at = NULL,
+                last_error_code = NULL,
+                updated_at = excluded.updated_at
+        """), (
+            role, process_instance, commit, timestamp, timestamp, timestamp
+        ))
+        conn.commit()
+        return {"ok": True, "code": "worker_heartbeat_started"}
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("worker_heartbeat_start_failed")
+        return {"ok": False, "code": "worker_heartbeat_start_failed"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def update_worker_heartbeat(
+    worker_role,
+    instance_id,
+    deployed_commit,
+    poll_completed=False,
+    iteration_succeeded=False,
+    voice_maintenance_completed=False,
+    generic_job_completed=False,
+    error_code=None,
+    now=None,
+):
+    role = normalize_worker_role(worker_role)
+    process_instance = normalize_worker_instance_id(instance_id)
+    commit = validate_worker_commit(deployed_commit)
+    safe_error_code = normalize_worker_error_code(error_code)
+    if (
+        not role
+        or not process_instance
+        or (deployed_commit is not None and commit is None)
+        or (error_code is not None and safe_error_code is None)
+    ):
+        logger.warning("worker_heartbeat_update_failed")
+        return {"ok": False, "code": "worker_heartbeat_update_failed"}
+
+    timestamp = now or utc_now()
+    assignments = ["deployed_commit = ?", "updated_at = ?"]
+    values = [commit, timestamp]
+    if poll_completed:
+        assignments.append("last_poll_at = ?")
+        values.append(timestamp)
+    if iteration_succeeded:
+        assignments.extend(["last_success_at = ?", "last_error_code = NULL"])
+        values.append(timestamp)
+    elif safe_error_code is not None:
+        assignments.append("last_error_code = ?")
+        values.append(safe_error_code)
+    if voice_maintenance_completed:
+        assignments.append("last_voice_maintenance_at = ?")
+        values.append(timestamp)
+    if generic_job_completed:
+        assignments.append("last_generic_job_at = ?")
+        values.append(timestamp)
+    values.extend([role, process_instance])
+
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(sql(f"""
+            UPDATE worker_heartbeats
+            SET {', '.join(assignments)}
+            WHERE worker_role = ? AND instance_id = ?
+        """), tuple(values))
+        if cur.rowcount != 1:
+            conn.rollback()
+            return {"ok": False, "code": "worker_heartbeat_ownership_lost"}
+        conn.commit()
+        return {"ok": True, "code": "worker_heartbeat_updated"}
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("worker_heartbeat_update_failed")
+        return {"ok": False, "code": "worker_heartbeat_update_failed"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def _worker_timestamp_age_seconds(value, now):
+    parsed = parse_db_datetime(value)
+    if parsed is None:
+        return None
+    return max(0, int((now - parsed).total_seconds()))
+
+
+def _empty_worker_liveness(worker_role, available=True):
+    return {
+        "available": available,
+        "found": False,
+        "worker_role": worker_role,
+        "deployed_commit": None,
+        "started_at": None,
+        "last_poll_at": None,
+        "last_success_at": None,
+        "last_voice_maintenance_at": None,
+        "last_generic_job_at": None,
+        "last_error_code": None,
+        "heartbeat_age_seconds": None,
+        "success_age_seconds": None,
+        "maintenance_age_seconds": None,
+        "stale": True,
+    }
+
+
+def get_worker_liveness(worker_role, now=None):
+    role = normalize_worker_role(worker_role)
+    if not role:
+        return _empty_worker_liveness(WORKER_ROLE)
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(sql("""
+            SELECT worker_role, deployed_commit, started_at, last_poll_at,
+                   last_success_at, last_voice_maintenance_at,
+                   last_generic_job_at, last_error_code
+            FROM worker_heartbeats
+            WHERE worker_role = ?
+            LIMIT 1
+        """), (role,))
+        row = cur.fetchone()
+        if not row:
+            return _empty_worker_liveness(role)
+        current_time = now or utc_now()
+        heartbeat_age = _worker_timestamp_age_seconds(row[3], current_time)
+        success_age = _worker_timestamp_age_seconds(row[4], current_time)
+        maintenance_age = _worker_timestamp_age_seconds(row[5], current_time)
+        stale = (
+            heartbeat_age is None
+            or success_age is None
+            or heartbeat_age > WORKER_HEARTBEAT_STALE_SECONDS
+            or success_age > WORKER_HEARTBEAT_STALE_SECONDS
+        )
+        return {
+            "available": True,
+            "found": True,
+            "worker_role": row[0],
+            "deployed_commit": validate_worker_commit(row[1]),
+            "started_at": parse_db_datetime(row[2]),
+            "last_poll_at": parse_db_datetime(row[3]),
+            "last_success_at": parse_db_datetime(row[4]),
+            "last_voice_maintenance_at": parse_db_datetime(row[5]),
+            "last_generic_job_at": parse_db_datetime(row[6]),
+            "last_error_code": normalize_worker_error_code(row[7]),
+            "heartbeat_age_seconds": heartbeat_age,
+            "success_age_seconds": success_age,
+            "maintenance_age_seconds": maintenance_age,
+            "stale": stale,
+        }
+    except Exception:
+        logger.warning("worker_database_unavailable")
+        return _empty_worker_liveness(role, available=False)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _worker_cli_age(value):
+    return "unknown" if value is None else str(int(value))
+
+
+@app.cli.command("check-worker-liveness")
+@click.option("--expected-commit", required=True)
+def check_worker_liveness_command(expected_commit):
+    expected = validate_worker_commit(expected_commit)
+    if expected is None:
+        raise click.BadParameter(
+            "must be exactly 40 hexadecimal characters",
+            param_hint="--expected-commit",
+        )
+    result = get_worker_liveness(WORKER_ROLE)
+    if not result.get("available"):
+        status, exit_code = "unavailable", 6
+        commit_state = "unknown"
+    elif not result.get("found"):
+        status, exit_code = "missing", 2
+        commit_state = "unknown"
+    else:
+        deployed_commit = result.get("deployed_commit")
+        commit_state = (
+            "unknown" if deployed_commit is None
+            else "match" if deployed_commit == expected
+            else "mismatch"
+        )
+        if result.get("stale"):
+            status, exit_code = "stale", 3
+        elif commit_state == "unknown":
+            status, exit_code = "live", 5
+        elif commit_state == "mismatch":
+            status, exit_code = "live", 4
+        else:
+            status, exit_code = "live", 0
+
+    click.echo(f"status={status}")
+    click.echo(f"role={WORKER_ROLE}")
+    click.echo(
+        "heartbeat_age_seconds="
+        f"{_worker_cli_age(result.get('heartbeat_age_seconds'))}"
+    )
+    click.echo(
+        "success_age_seconds="
+        f"{_worker_cli_age(result.get('success_age_seconds'))}"
+    )
+    click.echo(f"commit={commit_state}")
+    click.echo(
+        "maintenance_age_seconds="
+        f"{_worker_cli_age(result.get('maintenance_age_seconds'))}"
+    )
+    if exit_code:
+        raise click.exceptions.Exit(exit_code)
 
 
 def get_voice_config():
@@ -7651,8 +7986,8 @@ For legal, tax, financial, payment, health, or compliance topics, prefer officia
         save_memory(user_id, job[2], "tool_result", f"research_{job_id}_summary", summary, 0.65)
         create_agent_alert(user_id, job[2], "research_completed", "Research task completed", f"Research completed for: {job[5][:160]}", "success")
         return result, None
-    except Exception as error:
-        logger.warning("Research job failed: %s", error)
+    except Exception:
+        logger.warning("research_job_failed")
         update_research_job(user_id, job_id, status="failed", error_message="Research failed. Text and voice chat are still available.")
         return None, "Research failed. Text and voice chat are still available."
 
@@ -7759,9 +8094,9 @@ def run_background_job_once(worker_id="worker"):
         elif job[3] == "monitor_rule_check":
             run_monitor_rule(job[1], job[4])
         complete_background_job(job[0])
-    except Exception as error:
+    except Exception:
         fail_background_job(job[0], "Background job failed.")
-        logger.warning("Background job failed: %s", error)
+        logger.warning("background_job_failed")
     return True
 
 
