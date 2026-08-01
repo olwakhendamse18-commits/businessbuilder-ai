@@ -1,4 +1,5 @@
 import argparse
+import contextvars
 import logging
 import os
 import secrets
@@ -13,6 +14,7 @@ from app import (
     init_db,
     resolve_worker_deployed_commit,
     run_background_job_once,
+    run_worker_canary_once,
     run_voice_maintenance_once,
     start_worker_heartbeat,
     update_worker_heartbeat,
@@ -21,6 +23,9 @@ from app import (
 
 logger = logging.getLogger(__name__)
 WORKER_OWNERSHIP_LOST = "worker_heartbeat_ownership_lost"
+_worker_canary_context = contextvars.ContextVar(
+    "worker_canary_context", default=None
+)
 
 
 def heartbeat_ownership_lost(result):
@@ -36,8 +41,14 @@ def stop_for_heartbeat_ownership_loss():
 
 
 def run_worker_iteration_details(worker_id):
+    canary_context = _worker_canary_context.get()
+    worker_role, instance_id, deployed_commit = (
+        canary_context if canary_context is not None else (None, None, None)
+    )
     voice_processed = False
     voice_maintenance_completed = False
+    canary_processed = False
+    canary_completed = False
     try:
         voice_counts = run_voice_maintenance_once()
         voice_maintenance_completed = True
@@ -49,12 +60,59 @@ def run_worker_iteration_details(worker_id):
         )
     except Exception:
         logger.warning("voice_maintenance_failed")
+
+    canary = {
+        "processed": False,
+        "completed": False,
+        "code": "worker_canary_no_work",
+    }
+    if worker_role is not None and instance_id is not None:
+        try:
+            canary = run_worker_canary_once(
+                worker_role, instance_id, deployed_commit
+            )
+        except Exception:
+            logger.warning("worker_canary_failed")
+            canary = {
+                "processed": False,
+                "completed": False,
+                "code": "worker_canary_unavailable",
+            }
+        if heartbeat_ownership_lost(canary):
+            return {
+                "processed": bool(voice_processed),
+                "voice_maintenance_completed": voice_maintenance_completed,
+                "canary_completed": False,
+                "generic_job_completed": False,
+                "ownership_lost": True,
+            }
+        canary_processed = bool(canary.get("processed"))
+        canary_completed = bool(canary.get("completed"))
+        if canary.get("code") == "worker_canary_unavailable":
+            logger.warning("worker_canary_unavailable")
+
     background_processed = run_background_job_once(worker_id)
     return {
-        "processed": bool(voice_processed or background_processed),
+        "processed": bool(
+            voice_processed or canary_processed or background_processed
+        ),
         "voice_maintenance_completed": voice_maintenance_completed,
+        "canary_completed": canary_completed,
         "generic_job_completed": bool(background_processed),
+        "ownership_lost": False,
     }
+
+
+def run_worker_iteration_with_canary(
+    worker_id, worker_role, instance_id, deployed_commit
+):
+    context_token = _worker_canary_context.set(
+        (worker_role, instance_id, deployed_commit)
+    )
+    try:
+        return run_worker_iteration_details(worker_id)
+    finally:
+        _worker_canary_context.reset(context_token)
 
 
 def run_worker_iteration(worker_id):
@@ -103,7 +161,11 @@ def run_worker(
     poll_seconds = get_monitoring_config()["worker_poll_seconds"]
 
     if once:
-        details = run_worker_iteration_details(worker_id)
+        details = run_worker_iteration_with_canary(
+            worker_id, WORKER_ROLE, instance_id, deployed_commit
+        )
+        if details.get("ownership_lost"):
+            return stop_for_heartbeat_ownership_loss()
         heartbeat = update_worker_heartbeat(
             WORKER_ROLE,
             instance_id,
@@ -124,7 +186,9 @@ def run_worker(
 
     while not stop_requested.is_set():
         try:
-            details = run_worker_iteration_details(worker_id)
+            details = run_worker_iteration_with_canary(
+                worker_id, WORKER_ROLE, instance_id, deployed_commit
+            )
         except Exception:
             logger.warning("worker_iteration_failed")
             monotonic_now = monotonic_fn()
@@ -145,6 +209,8 @@ def run_worker(
                     return stop_for_heartbeat_ownership_loss()
             stop_requested.wait(poll_seconds)
         else:
+            if details.get("ownership_lost"):
+                return stop_for_heartbeat_ownership_loss()
             pending_voice_maintenance = (
                 pending_voice_maintenance
                 or details["voice_maintenance_completed"]

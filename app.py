@@ -332,6 +332,26 @@ def _create_worker_heartbeat_schema(cur):
     """)
 
 
+def _create_worker_canary_schema(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS worker_canary_probes (
+            worker_role TEXT PRIMARY KEY,
+            probe_id TEXT NOT NULL,
+            expected_commit TEXT NOT NULL,
+            status TEXT NOT NULL,
+            requested_at TIMESTAMP NOT NULL,
+            expires_at TIMESTAMP NOT NULL,
+            claimed_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            claim_token TEXT,
+            claim_expires_at TIMESTAMP,
+            completed_commit TEXT,
+            result_code TEXT,
+            updated_at TIMESTAMP NOT NULL
+        )
+    """)
+
+
 def _init_db_with_connection(conn):
     cur = conn.cursor()
 
@@ -1323,6 +1343,7 @@ def _init_db_with_connection(conn):
     _reconcile_voice_call_ids_for_migration(cur)
 
     _create_worker_heartbeat_schema(cur)
+    _create_worker_canary_schema(cur)
 
     execute_schema(f"""
         CREATE TABLE IF NOT EXISTS agent_research_jobs (
@@ -3952,6 +3973,18 @@ WORKER_INSTANCE_ID_MAX_CHARS = 120
 WORKER_ERROR_CODE_MAX_CHARS = 120
 WORKER_SAFE_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]+$")
 WORKER_COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
+WORKER_CANARY_EXPIRES_SECONDS = 600
+WORKER_CANARY_CLAIM_LEASE_SECONDS = 30
+WORKER_CANARY_WAIT_DEFAULT_SECONDS = 90
+WORKER_CANARY_WAIT_MAX_SECONDS = 300
+WORKER_CANARY_POLL_SECONDS = 1
+WORKER_CANARY_PROBE_ID_MAX_CHARS = 64
+WORKER_CANARY_CLAIM_TOKEN_MAX_CHARS = 120
+WORKER_CANARY_RESULT_CODE_MAX_CHARS = 120
+WORKER_CANARY_STATUSES = frozenset({
+    "pending", "in_progress", "completed", "expired", "failed"
+})
+WORKER_CANARY_VERIFIED_RESULT = "worker_database_round_trip_verified"
 VOICE_TERMINATION_STATES = frozenset({
     "not_applicable", "not_requested", "pending", "in_progress",
     "accepted", "failed_permanent"
@@ -4097,6 +4130,41 @@ def normalize_worker_error_code(value):
     ):
         return None
     return normalized.lower()
+
+
+def normalize_worker_canary_probe_id(value):
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > WORKER_CANARY_PROBE_ID_MAX_CHARS
+        or not WORKER_SAFE_IDENTIFIER_PATTERN.fullmatch(value)
+    ):
+        return None
+    return value
+
+
+def normalize_worker_canary_claim_token(value):
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > WORKER_CANARY_CLAIM_TOKEN_MAX_CHARS
+        or not WORKER_SAFE_IDENTIFIER_PATTERN.fullmatch(value)
+    ):
+        return None
+    return value
+
+
+def normalize_worker_canary_result_code(value):
+    if value is None:
+        return None
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > WORKER_CANARY_RESULT_CODE_MAX_CHARS
+        or not WORKER_SAFE_IDENTIFIER_PATTERN.fullmatch(value)
+    ):
+        return None
+    return value.lower()
 
 
 def resolve_worker_deployed_commit():
@@ -4354,6 +4422,567 @@ def check_worker_liveness_command(expected_commit):
     )
     if exit_code:
         raise click.exceptions.Exit(exit_code)
+
+
+def _begin_worker_control_transaction(cur):
+    if not using_postgres():
+        cur.execute("PRAGMA busy_timeout = 5000")
+        cur.execute("BEGIN IMMEDIATE")
+
+
+def _worker_canary_row(row):
+    if not row:
+        return None
+    return {
+        "worker_role": row[0],
+        "probe_id": row[1],
+        "expected_commit": row[2],
+        "status": row[3],
+        "requested_at": row[4],
+        "expires_at": row[5],
+        "claimed_at": row[6],
+        "completed_at": row[7],
+        "claim_token": row[8],
+        "claim_expires_at": row[9],
+        "completed_commit": row[10],
+        "result_code": row[11],
+        "updated_at": row[12],
+    }
+
+
+def _load_worker_canary_in_transaction(cur, worker_role, probe_id=None):
+    parameters = [worker_role]
+    probe_filter = ""
+    if probe_id is not None:
+        probe_filter = " AND probe_id = ?"
+        parameters.append(probe_id)
+    query = f"""
+        SELECT worker_role, probe_id, expected_commit, status,
+               requested_at, expires_at, claimed_at, completed_at,
+               claim_token, claim_expires_at, completed_commit,
+               result_code, updated_at
+        FROM worker_canary_probes
+        WHERE worker_role = ?{probe_filter}
+        LIMIT 1
+    """
+    if using_postgres():
+        query += " FOR UPDATE"
+    cur.execute(sql(query), tuple(parameters))
+    return _worker_canary_row(cur.fetchone())
+
+
+def _normalize_worker_canary_in_transaction(cur, canary, now):
+    if not canary:
+        return None
+    status = canary["status"]
+    requested_at = parse_db_datetime(canary["requested_at"])
+    expires_at = parse_db_datetime(canary["expires_at"])
+    claim_expires_at = parse_db_datetime(canary["claim_expires_at"])
+    target_status = status
+    result_code = normalize_worker_canary_result_code(canary["result_code"])
+    clear_claim = False
+
+    if (
+        status not in WORKER_CANARY_STATUSES
+        or requested_at is None
+        or expires_at is None
+        or validate_worker_commit(canary["expected_commit"]) is None
+    ):
+        target_status = "failed"
+        result_code = "worker_canary_malformed"
+        clear_claim = True
+    elif status in {"pending", "in_progress"} and expires_at <= now:
+        target_status = "expired"
+        result_code = "worker_canary_expired"
+        clear_claim = True
+    elif status == "in_progress" and (
+        claim_expires_at is None or claim_expires_at <= now
+    ):
+        target_status = "pending"
+        result_code = None
+        clear_claim = True
+
+    if target_status != status or clear_claim:
+        cur.execute(sql("""
+            UPDATE worker_canary_probes
+            SET status = ?, claim_token = NULL, claim_expires_at = NULL,
+                claimed_at = CASE WHEN ? = 'pending' THEN NULL ELSE claimed_at END,
+                result_code = ?, updated_at = ?
+            WHERE worker_role = ? AND probe_id = ?
+        """), (
+            target_status, target_status, result_code, now,
+            canary["worker_role"], canary["probe_id"],
+        ))
+        canary.update({
+            "status": target_status,
+            "claim_token": None,
+            "claim_expires_at": None,
+            "result_code": result_code,
+            "updated_at": now,
+        })
+        if target_status == "pending":
+            canary["claimed_at"] = None
+    return canary
+
+
+def request_worker_canary(
+    worker_role, expected_commit, now=None, probe_id_factory=None
+):
+    role = normalize_worker_role(worker_role)
+    expected = validate_worker_commit(expected_commit)
+    if not role or expected is None:
+        return {"ok": False, "code": "worker_canary_unavailable"}
+    now = now or utc_now()
+    probe_id_factory = probe_id_factory or (lambda: secrets.token_urlsafe(32))
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        _begin_worker_control_transaction(cur)
+        heartbeat_query = """
+            SELECT deployed_commit, last_poll_at, last_success_at
+            FROM worker_heartbeats WHERE worker_role = ? LIMIT 1
+        """
+        if using_postgres():
+            heartbeat_query += " FOR UPDATE"
+        cur.execute(sql(heartbeat_query), (role,))
+        heartbeat = cur.fetchone()
+        if not heartbeat:
+            conn.commit()
+            return {"ok": False, "code": "worker_canary_worker_missing"}
+        deployed_commit = validate_worker_commit(heartbeat[0])
+        poll_age = _worker_timestamp_age_seconds(heartbeat[1], now)
+        success_age = _worker_timestamp_age_seconds(heartbeat[2], now)
+        if poll_age is None or success_age is None or (
+            poll_age > WORKER_HEARTBEAT_STALE_SECONDS
+            or success_age > WORKER_HEARTBEAT_STALE_SECONDS
+        ):
+            conn.commit()
+            return {"ok": False, "code": "worker_canary_worker_stale"}
+        if deployed_commit is None:
+            conn.commit()
+            return {"ok": False, "code": "worker_canary_commit_unknown"}
+        if deployed_commit != expected:
+            conn.commit()
+            return {"ok": False, "code": "worker_canary_commit_mismatch"}
+
+        existing = _normalize_worker_canary_in_transaction(
+            cur, _load_worker_canary_in_transaction(cur, role), now
+        )
+        if existing and existing["status"] in {"pending", "in_progress"}:
+            existing_expected = validate_worker_commit(
+                existing["expected_commit"]
+            )
+            if existing_expected != expected:
+                conn.commit()
+                return {
+                    "ok": False,
+                    "code": "worker_canary_active_commit_conflict",
+                }
+            conn.commit()
+            return {
+                "ok": True,
+                "code": "worker_canary_already_active",
+                "probe_id": existing["probe_id"],
+            }
+
+        probe_id = normalize_worker_canary_probe_id(probe_id_factory())
+        if probe_id is None:
+            conn.rollback()
+            return {"ok": False, "code": "worker_canary_unavailable"}
+        expires_at = now + timedelta(seconds=WORKER_CANARY_EXPIRES_SECONDS)
+        cur.execute(sql("""
+            INSERT INTO worker_canary_probes (
+                worker_role, probe_id, expected_commit, status,
+                requested_at, expires_at, claimed_at, completed_at,
+                claim_token, claim_expires_at, completed_commit,
+                result_code, updated_at
+            ) VALUES (?, ?, ?, 'pending', ?, ?, NULL, NULL, NULL, NULL,
+                      NULL, NULL, ?)
+            ON CONFLICT (worker_role) DO UPDATE SET
+                probe_id = excluded.probe_id,
+                expected_commit = excluded.expected_commit,
+                status = 'pending',
+                requested_at = excluded.requested_at,
+                expires_at = excluded.expires_at,
+                claimed_at = NULL,
+                completed_at = NULL,
+                claim_token = NULL,
+                claim_expires_at = NULL,
+                completed_commit = NULL,
+                result_code = NULL,
+                updated_at = excluded.updated_at
+        """), (role, probe_id, expected, now, expires_at, now))
+        conn.commit()
+        logger.info("worker_canary_requested role=%s", role)
+        return {
+            "ok": True,
+            "code": "worker_canary_requested",
+            "probe_id": probe_id,
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("worker_canary_unavailable")
+        return {"ok": False, "code": "worker_canary_unavailable"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def claim_worker_canary(
+    worker_role,
+    instance_id,
+    deployed_commit,
+    now=None,
+    claim_token_factory=None,
+):
+    role = normalize_worker_role(worker_role)
+    process_instance = normalize_worker_instance_id(instance_id)
+    commit = validate_worker_commit(deployed_commit)
+    if not role or not process_instance or commit is None:
+        return {"ok": False, "code": "worker_canary_unavailable"}
+    now = now or utc_now()
+    claim_token_factory = claim_token_factory or (
+        lambda: secrets.token_urlsafe(48)
+    )
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        _begin_worker_control_transaction(cur)
+        heartbeat_query = """
+            SELECT instance_id, deployed_commit, last_poll_at, last_success_at
+            FROM worker_heartbeats
+            WHERE worker_role = ? LIMIT 1
+        """
+        if using_postgres():
+            heartbeat_query += " FOR UPDATE"
+        cur.execute(sql(heartbeat_query), (role,))
+        heartbeat = cur.fetchone()
+        if not heartbeat or heartbeat[0] != process_instance:
+            conn.rollback()
+            return {"ok": False, "code": "worker_heartbeat_ownership_lost"}
+        heartbeat_commit = validate_worker_commit(heartbeat[1])
+        if heartbeat_commit is None:
+            conn.rollback()
+            return {"ok": False, "code": "worker_canary_commit_unknown"}
+        if heartbeat_commit != commit:
+            conn.rollback()
+            return {"ok": False, "code": "worker_canary_commit_mismatch"}
+        poll_age = _worker_timestamp_age_seconds(heartbeat[2], now)
+        success_age = _worker_timestamp_age_seconds(heartbeat[3], now)
+        if poll_age is None or success_age is None or (
+            poll_age > WORKER_HEARTBEAT_STALE_SECONDS
+            or success_age > WORKER_HEARTBEAT_STALE_SECONDS
+        ):
+            conn.rollback()
+            return {"ok": False, "code": "worker_canary_worker_stale"}
+        canary = _normalize_worker_canary_in_transaction(
+            cur, _load_worker_canary_in_transaction(cur, role), now
+        )
+        if not canary or canary["status"] != "pending":
+            conn.commit()
+            return {"ok": True, "code": "worker_canary_no_work"}
+        if validate_worker_commit(canary["expected_commit"]) != commit:
+            conn.commit()
+            return {"ok": False, "code": "worker_canary_commit_mismatch"}
+        claim_token = normalize_worker_canary_claim_token(
+            claim_token_factory()
+        )
+        if claim_token is None:
+            conn.rollback()
+            return {"ok": False, "code": "worker_canary_unavailable"}
+        lease_expires_at = now + timedelta(
+            seconds=WORKER_CANARY_CLAIM_LEASE_SECONDS
+        )
+        cur.execute(sql("""
+            UPDATE worker_canary_probes
+            SET status = 'in_progress', claimed_at = ?, claim_token = ?,
+                claim_expires_at = ?, result_code = NULL, updated_at = ?
+            WHERE worker_role = ? AND probe_id = ? AND status = 'pending'
+              AND expires_at > ? AND expected_commit = ?
+        """), (
+            now, claim_token, lease_expires_at, now, role,
+            canary["probe_id"], now, commit,
+        ))
+        if cur.rowcount != 1:
+            conn.rollback()
+            return {"ok": True, "code": "worker_canary_no_work"}
+        conn.commit()
+        return {
+            "ok": True,
+            "code": "worker_canary_claimed",
+            "probe_id": canary["probe_id"],
+            "claim_token": claim_token,
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("worker_canary_unavailable")
+        return {"ok": False, "code": "worker_canary_unavailable"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def finalize_worker_canary(
+    worker_role,
+    instance_id,
+    deployed_commit,
+    probe_id,
+    claim_token,
+    now=None,
+):
+    role = normalize_worker_role(worker_role)
+    process_instance = normalize_worker_instance_id(instance_id)
+    commit = validate_worker_commit(deployed_commit)
+    safe_probe_id = normalize_worker_canary_probe_id(probe_id)
+    safe_claim_token = normalize_worker_canary_claim_token(claim_token)
+    if (
+        not role or not process_instance or commit is None
+        or safe_probe_id is None or safe_claim_token is None
+    ):
+        return {"ok": False, "code": "worker_canary_claim_lost"}
+    now = now or utc_now()
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        _begin_worker_control_transaction(cur)
+        heartbeat_query = """
+            SELECT instance_id, deployed_commit FROM worker_heartbeats
+            WHERE worker_role = ? LIMIT 1
+        """
+        if using_postgres():
+            heartbeat_query += " FOR UPDATE"
+        cur.execute(sql(heartbeat_query), (role,))
+        heartbeat = cur.fetchone()
+        if not heartbeat or heartbeat[0] != process_instance or (
+            validate_worker_commit(heartbeat[1]) != commit
+        ):
+            conn.rollback()
+            return {"ok": False, "code": "worker_heartbeat_ownership_lost"}
+        cur.execute(sql("""
+            UPDATE worker_canary_probes
+            SET status = 'completed', completed_at = ?,
+                completed_commit = ?, result_code = ?,
+                claim_token = NULL, claim_expires_at = NULL, updated_at = ?
+            WHERE worker_role = ? AND probe_id = ?
+              AND status = 'in_progress' AND claim_token = ?
+              AND claim_expires_at > ? AND expires_at > ?
+              AND expected_commit = ?
+        """), (
+            now, commit, WORKER_CANARY_VERIFIED_RESULT, now,
+            role, safe_probe_id, safe_claim_token, now, now, commit,
+        ))
+        if cur.rowcount != 1:
+            conn.rollback()
+            return {"ok": False, "code": "worker_canary_claim_lost"}
+        conn.commit()
+        logger.info("worker_canary_completed role=%s", role)
+        return {"ok": True, "code": WORKER_CANARY_VERIFIED_RESULT}
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("worker_canary_unavailable")
+        return {"ok": False, "code": "worker_canary_unavailable"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def perform_worker_canary_synthetic_step():
+    synthetic_values = ("database", "worker", "canary")
+    return {
+        "ok": len(synthetic_values) == 3,
+        "code": "worker_canary_synthetic_step_completed",
+    }
+
+
+def run_worker_canary_once(worker_role, instance_id, deployed_commit):
+    claim = claim_worker_canary(worker_role, instance_id, deployed_commit)
+    if claim.get("code") == "worker_heartbeat_ownership_lost":
+        return {
+            "processed": False,
+            "completed": False,
+            "code": "worker_heartbeat_ownership_lost",
+        }
+    if claim.get("code") != "worker_canary_claimed":
+        return {
+            "processed": False,
+            "completed": False,
+            "code": claim.get("code") or "worker_canary_unavailable",
+        }
+    try:
+        synthetic = perform_worker_canary_synthetic_step()
+    except Exception:
+        synthetic = None
+    if not isinstance(synthetic, dict) or not synthetic.get("ok") or (
+        synthetic.get("code") != "worker_canary_synthetic_step_completed"
+    ):
+        logger.warning("worker_canary_failed")
+        return {
+            "processed": True,
+            "completed": False,
+            "code": "worker_canary_synthetic_step_failed",
+        }
+    finalization = finalize_worker_canary(
+        worker_role,
+        instance_id,
+        deployed_commit,
+        claim["probe_id"],
+        claim["claim_token"],
+    )
+    return {
+        "processed": True,
+        "completed": bool(finalization.get("ok")),
+        "code": finalization.get("code") or "worker_canary_unavailable",
+    }
+
+
+def get_worker_canary_result(
+    worker_role, probe_id, expected_commit, now=None
+):
+    role = normalize_worker_role(worker_role)
+    safe_probe_id = normalize_worker_canary_probe_id(probe_id)
+    expected = validate_worker_commit(expected_commit)
+    if not role or safe_probe_id is None or expected is None:
+        return {
+            "available": False, "found": False, "status": "failed",
+            "age_seconds": None, "verified": False,
+            "code": "worker_canary_unavailable",
+        }
+    now = now or utc_now()
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        _begin_worker_control_transaction(cur)
+        canary = _normalize_worker_canary_in_transaction(
+            cur,
+            _load_worker_canary_in_transaction(cur, role, safe_probe_id),
+            now,
+        )
+        if not canary:
+            conn.commit()
+            return {
+                "available": True, "found": False, "status": "failed",
+                "age_seconds": None, "verified": False,
+                "code": "worker_canary_missing",
+            }
+        requested_at = parse_db_datetime(canary["requested_at"])
+        age_seconds = (
+            None if requested_at is None
+            else max(0, int((now - requested_at).total_seconds()))
+        )
+        status = canary["status"]
+        completed_commit = validate_worker_commit(
+            canary["completed_commit"]
+        )
+        result_code = normalize_worker_canary_result_code(
+            canary["result_code"]
+        )
+        verified = (
+            status == "completed"
+            and result_code == WORKER_CANARY_VERIFIED_RESULT
+            and completed_commit == expected
+            and validate_worker_commit(canary["expected_commit"]) == expected
+        )
+        conn.commit()
+        return {
+            "available": True,
+            "found": True,
+            "status": status,
+            "age_seconds": age_seconds,
+            "verified": verified,
+            "code": result_code,
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("worker_canary_unavailable")
+        return {
+            "available": False, "found": False, "status": "failed",
+            "age_seconds": None, "verified": False,
+            "code": "worker_canary_unavailable",
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+def _worker_canary_cli_output(status, commit_state, age_seconds, verified):
+    click.echo(f"status={status}")
+    click.echo(f"role={WORKER_ROLE}")
+    click.echo(f"worker_commit={commit_state}")
+    click.echo(
+        "canary_age_seconds="
+        f"{'unknown' if age_seconds is None else int(age_seconds)}"
+    )
+    click.echo(f"result={'verified' if verified else 'not_verified'}")
+
+
+@app.cli.command("verify-worker-canary")
+@click.option("--expected-commit", required=True)
+@click.option(
+    "--wait-seconds",
+    type=click.IntRange(0, WORKER_CANARY_WAIT_MAX_SECONDS),
+    default=WORKER_CANARY_WAIT_DEFAULT_SECONDS,
+    show_default=True,
+)
+def verify_worker_canary_command(expected_commit, wait_seconds):
+    expected = validate_worker_commit(expected_commit)
+    if expected is None:
+        raise click.BadParameter(
+            "must be exactly 40 hexadecimal characters",
+            param_hint="--expected-commit",
+        )
+    requested = request_worker_canary(WORKER_ROLE, expected)
+    request_code = requested.get("code")
+    request_failures = {
+        "worker_canary_worker_missing": ("worker_not_live", "unknown", 2),
+        "worker_canary_worker_stale": ("worker_not_live", "match", 2),
+        "worker_canary_commit_mismatch": ("worker_not_live", "mismatch", 4),
+        "worker_canary_commit_unknown": ("worker_not_live", "unknown", 5),
+        "worker_canary_active_commit_conflict": ("pending", "match", 3),
+        "worker_canary_unavailable": ("unavailable", "unknown", 6),
+    }
+    if request_code in request_failures:
+        status, commit_state, exit_code = request_failures[request_code]
+        _worker_canary_cli_output(status, commit_state, None, False)
+        raise click.exceptions.Exit(exit_code)
+    probe_id = requested.get("probe_id")
+    if normalize_worker_canary_probe_id(probe_id) is None:
+        _worker_canary_cli_output("unavailable", "unknown", None, False)
+        raise click.exceptions.Exit(6)
+
+    remaining = int(wait_seconds)
+    while True:
+        result = get_worker_canary_result(WORKER_ROLE, probe_id, expected)
+        if not result.get("available"):
+            status, exit_code = "unavailable", 6
+        elif result.get("status") == "completed" and result.get("verified"):
+            status, exit_code = "completed", 0
+        elif result.get("status") == "expired":
+            status, exit_code = "expired", 7
+        elif result.get("status") == "failed" or (
+            result.get("status") == "completed" and not result.get("verified")
+        ):
+            status, exit_code = "failed", 8
+        elif remaining <= 0:
+            status, exit_code = "pending", 3
+        else:
+            time.sleep(WORKER_CANARY_POLL_SECONDS)
+            remaining -= WORKER_CANARY_POLL_SECONDS
+            continue
+        _worker_canary_cli_output(
+            status, "match", result.get("age_seconds"),
+            bool(result.get("verified")),
+        )
+        if exit_code:
+            raise click.exceptions.Exit(exit_code)
+        return
 
 
 def get_voice_config():
