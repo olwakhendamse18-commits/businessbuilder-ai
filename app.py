@@ -32,9 +32,14 @@ import urllib.parse
 import unicodedata
 import ipaddress
 import mimetypes
+import uuid
+import zipfile
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from xml.sax.saxutils import escape
+
+
+sqlite3.register_adapter(datetime, lambda value: value.isoformat(" "))
 
 
 load_dotenv()
@@ -45,15 +50,182 @@ secret_key = os.getenv("SECRET_KEY")
 
 if not secret_key:
     if os.getenv("DATABASE_URL"):
-        raise RuntimeError("SECRET_KEY must be configured in production.")
-
-    secret_key = "businessbuilder-local-development-secret"
+        raise RuntimeError("SECRET_KEY must be configured before the application starts.")
+    secret_key = secrets.token_hex(32)
+    logger.warning("ephemeral_local_secret_key_enabled")
 
 app.secret_key = secret_key
 
-UPLOAD_FOLDER = "uploads"
+IS_PRODUCTION = bool(os.getenv("DATABASE_URL"))
+app.config.update(
+    MAX_CONTENT_LENGTH=10 * 1024 * 1024,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=IS_PRODUCTION,
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+)
+configured_trusted_hosts = [
+    host.strip().lower()
+    for host in os.getenv("TRUSTED_HOSTS", "").split(",")
+    if host.strip()
+]
+if configured_trusted_hosts:
+    app.config["TRUSTED_HOSTS"] = configured_trusted_hosts
+
+UPLOAD_STORAGE_DIR = os.getenv("UPLOAD_STORAGE_DIR", "").strip()
+UPLOADS_ENABLED = not IS_PRODUCTION or bool(UPLOAD_STORAGE_DIR)
+UPLOAD_FOLDER = UPLOAD_STORAGE_DIR or "uploads"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+if UPLOADS_ENABLED:
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+GENERAL_CSRF_SESSION_KEY = "_businessbuilder_csrf"
+CSRF_EXEMPT_ENDPOINTS = {
+    "paystack_webhook",
+    "api_agent_message",
+    "api_realtime_session",
+    "api_realtime_session_end",
+}
+AUTH_RATE_LIMIT_WINDOW_SECONDS = 15 * 60
+AUTH_RATE_LIMIT_MAX_FAILURES = 5
+AUTH_RATE_LIMIT_MAX_KEYS = 4096
+AUTH_PASSWORD_MIN_LENGTH = 12
+AUTH_PASSWORD_MAX_LENGTH = 256
+_auth_failure_lock = threading.Lock()
+_auth_failures = {}
+
+
+def get_csrf_token():
+    token = session.get(GENERAL_CSRF_SESSION_KEY)
+    if not isinstance(token, str) or len(token) != 64:
+        token = secrets.token_hex(32)
+        session[GENERAL_CSRF_SESSION_KEY] = token
+    return token
+
+
+def csrf_token_is_valid():
+    expected = session.get(GENERAL_CSRF_SESSION_KEY)
+    supplied = request.headers.get("X-CSRF-Token") or request.form.get("_csrf_token")
+    return (
+        isinstance(expected, str)
+        and isinstance(supplied, str)
+        and len(expected) == 64
+        and len(supplied) == 64
+        and hmac.compare_digest(expected, supplied)
+    )
+
+
+def _auth_rate_limit_key(email):
+    remote_address = (request.remote_addr or "unknown")[:64]
+    normalized_email = (email or "").strip().lower()[:254]
+    return hashlib.sha256(
+        f"{remote_address}\n{normalized_email}".encode("utf-8")
+    ).hexdigest()
+
+
+def auth_rate_limit_status(email, now=None):
+    current_time = time.monotonic() if now is None else float(now)
+    key = _auth_rate_limit_key(email)
+    with _auth_failure_lock:
+        recent = [
+            timestamp for timestamp in _auth_failures.get(key, [])
+            if current_time - timestamp < AUTH_RATE_LIMIT_WINDOW_SECONDS
+        ]
+        if recent:
+            _auth_failures[key] = recent
+        else:
+            _auth_failures.pop(key, None)
+        if len(recent) < AUTH_RATE_LIMIT_MAX_FAILURES:
+            return False, 0
+        retry_after = max(
+            1,
+            int(AUTH_RATE_LIMIT_WINDOW_SECONDS - (current_time - recent[0]))
+        )
+        return True, retry_after
+
+
+def record_auth_failure(email, now=None):
+    current_time = time.monotonic() if now is None else float(now)
+    key = _auth_rate_limit_key(email)
+    with _auth_failure_lock:
+        if key not in _auth_failures and len(_auth_failures) >= AUTH_RATE_LIMIT_MAX_KEYS:
+            _auth_failures.pop(next(iter(_auth_failures)), None)
+        recent = [
+            timestamp for timestamp in _auth_failures.get(key, [])
+            if current_time - timestamp < AUTH_RATE_LIMIT_WINDOW_SECONDS
+        ]
+        recent.append(current_time)
+        _auth_failures[key] = recent[-AUTH_RATE_LIMIT_MAX_FAILURES:]
+
+
+def clear_auth_failures(email):
+    key = _auth_rate_limit_key(email)
+    with _auth_failure_lock:
+        _auth_failures.pop(key, None)
+
+
+def get_public_base_url():
+    configured = os.getenv("PUBLIC_BASE_URL", "").strip()
+    if not configured:
+        return None if IS_PRODUCTION else request.host_url.rstrip("/")
+    parsed = urllib.parse.urlsplit(configured)
+    if (
+        parsed.scheme.lower() not in ({"https"} if IS_PRODUCTION else {"http", "https"})
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+    ):
+        return None
+    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+
+
+@app.context_processor
+def inject_security_context():
+    return {"csrf_token": get_csrf_token()}
+
+
+@app.before_request
+def enforce_csrf_protection():
+    if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return None
+    if request.endpoint in CSRF_EXEMPT_ENDPOINTS:
+        return None
+    if csrf_token_is_valid() or request_is_same_origin():
+        return None
+    if request.path.startswith("/api/") or request.is_json:
+        return jsonify({
+            "error": "Request verification failed.",
+            "code": "csrf_failed"
+        }), 403
+    return render_error("Request verification failed. Refresh the page and try again.", 403)
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), geolocation=(), payment=(), microphone=(self)"
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+        "form-action 'self'; script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
+        "font-src 'self' data:; connect-src 'self'; media-src 'self' blob:"
+    )
+    if IS_PRODUCTION:
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains"
+        )
+    return response
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=openai_api_key) if openai_api_key else None
@@ -1907,6 +2079,42 @@ def image_to_base64(filepath):
         ).decode("utf-8")
 
 
+ALLOWED_UPLOAD_EXTENSIONS = {".txt", ".pdf", ".docx", ".png", ".jpg", ".jpeg", ".webp"}
+MAX_DOCX_UNCOMPRESSED_BYTES = 25 * 1024 * 1024
+
+
+def validate_uploaded_file(filepath, extension):
+    try:
+        with open(filepath, "rb") as uploaded:
+            header = uploaded.read(16)
+        if extension == ".txt":
+            with open(filepath, "rb") as uploaded:
+                uploaded.read().decode("utf-8")
+            return True
+        if extension == ".pdf":
+            return header.startswith(b"%PDF-")
+        if extension == ".docx":
+            if not zipfile.is_zipfile(filepath):
+                return False
+            with zipfile.ZipFile(filepath) as archive:
+                names = set(archive.namelist())
+                total_size = sum(item.file_size for item in archive.infolist())
+            return (
+                "[Content_Types].xml" in names
+                and "word/document.xml" in names
+                and total_size <= MAX_DOCX_UNCOMPRESSED_BYTES
+            )
+        if extension == ".png":
+            return header.startswith(b"\x89PNG\r\n\x1a\n")
+        if extension in {".jpg", ".jpeg"}:
+            return header.startswith(b"\xff\xd8\xff")
+        if extension == ".webp":
+            return header.startswith(b"RIFF") and header[8:12] == b"WEBP"
+    except (OSError, UnicodeDecodeError, zipfile.BadZipFile):
+        return False
+    return False
+
+
 # -----------------------------
 # PAYMENT HELPERS
 # -----------------------------
@@ -2948,7 +3156,6 @@ def update_approval_task(user_id, task_id, status):
     conn.commit()
     conn.close()
     return changed
-    return tickets
 
 
 def save_pricing_advice(user_id, data, content):
@@ -9174,8 +9381,8 @@ User request:
                 ]
             )
             reply = response.choices[0].message.content
-        except Exception as error:
-            logger.warning("Command Center agent fallback used: %s", error)
+        except Exception:
+            logger.warning("command_center_agent_fallback code=upstream_generation_failed")
 
     if not reply:
         reply = local_agent_reply(user_message, active_project, memories, approval_needed)
@@ -12211,10 +12418,15 @@ def signup():
             message="Enter a valid email address."
         ), 400
 
-    if not raw_password:
+    if len(raw_password) < AUTH_PASSWORD_MIN_LENGTH:
         return render_template(
             "signup.html",
-            message="Enter a password."
+            message=f"Use a password with at least {AUTH_PASSWORD_MIN_LENGTH} characters."
+        ), 400
+    if len(raw_password) > AUTH_PASSWORD_MAX_LENGTH:
+        return render_template(
+            "signup.html",
+            message="That password is too long."
         ), 400
 
     password = generate_password_hash(raw_password)
@@ -12266,7 +12478,9 @@ def signup():
         if not user:
             raise RuntimeError("Created user could not be loaded.")
 
+        session.clear()
         session["user_id"] = user[0]
+        session.permanent = True
 
         send_email(
             email,
@@ -12304,6 +12518,14 @@ def login():
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "")
 
+    limited, retry_after = auth_rate_limit_status(email)
+    if limited:
+        response = render_template(
+            "login.html",
+            message="Too many sign-in attempts. Wait a few minutes and try again."
+        ), 429
+        return response[0], response[1], {"Retry-After": str(retry_after)}
+
     if not is_valid_email(email) or not password:
         return render_template(
             "login.html",
@@ -12326,17 +12548,23 @@ def login():
     conn.close()
 
     if user and check_password_hash(user[1], password):
+        clear_auth_failures(email)
+        session.clear()
         session["user_id"] = user[0]
+        session.permanent = True
         return redirect("/command-center")
 
+    record_auth_failure(email)
     return render_template(
         "login.html",
         message="Invalid email or password."
     ), 401
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["GET", "POST"])
 def logout():
+    if request.method == "GET":
+        return render_template("logout.html")
     session.clear()
     return redirect("/login")
 
@@ -13506,7 +13734,7 @@ def ai_store_agent():
     )
 
 
-@app.route("/generate_store_agent_task/<task_type>", methods=["GET", "POST"])
+@app.route("/generate_store_agent_task/<task_type>", methods=["POST"])
 def generate_store_agent_task(task_type):
     if "user_id" not in session:
         return redirect("/login")
@@ -14002,7 +14230,7 @@ def product_finder():
     )
 
 
-@app.route("/generate_product_research", methods=["GET", "POST"])
+@app.route("/generate_product_research", methods=["POST"])
 def generate_product_research():
     if "user_id" not in session:
         return redirect("/login")
@@ -14011,9 +14239,6 @@ def generate_product_research():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
-
-    if request.method == "GET":
-        return redirect("/product_finder")
 
     if usage_limit_reached(user_id, "product_research"):
         return usage_limit_redirect("product_research", "/product_finder")
@@ -14140,7 +14365,7 @@ def product_research_detail(research_id):
     )
 
 
-@app.route("/create_product_research_shopify_products")
+@app.route("/create_product_research_shopify_products", methods=["POST"])
 def create_product_research_shopify_products():
     if "user_id" not in session:
         return redirect("/login")
@@ -14310,21 +14535,12 @@ def launch_package():
     if not user_package_at_least(user_id, "Pro"):
         return package_access_redirect("Pro")
 
-    if usage_limit_reached(user_id, "launch_package"):
-        return usage_limit_redirect("launch_package")
-
-    send_launch_package_email_once(user_id)
-
     launch_data = get_launch_package_data(user_id)
     launch_data["premium_build"] = user_package_at_least(user_id, "Premium Build")
-    response = render_template("launch_package.html", **launch_data)
-
-    log_usage(user_id, "launch_package")
-
-    return response
+    return render_template("launch_package.html", **launch_data)
 
 
-@app.route("/download_launch_package")
+@app.route("/download_launch_package", methods=["POST"])
 def download_launch_package():
     if "user_id" not in session:
         return redirect("/login")
@@ -14370,7 +14586,7 @@ def business_plan(plan_id):
     )
 
 
-@app.route("/download_business_plan/<int:plan_id>")
+@app.route("/download_business_plan/<int:plan_id>", methods=["POST"])
 def download_business_plan(plan_id):
     if "user_id" not in session:
         return redirect("/login")
@@ -14645,7 +14861,7 @@ def update_settings():
     return redirect("/settings?settings_notice=saved")
 
 
-@app.route("/connect_canva")
+@app.route("/connect_canva", methods=["POST"])
 def connect_canva():
     if "user_id" not in session:
         return redirect("/login")
@@ -14817,6 +15033,22 @@ def health_check():
     })
 
 
+@app.route("/healthz")
+def healthz():
+    connection = None
+    try:
+        connection = db()
+        cursor = connection.cursor()
+        cursor.execute(sql("SELECT 1"))
+        ready = cursor.fetchone() is not None
+    except (sqlite3.Error, psycopg2.Error):
+        ready = False
+    finally:
+        if connection:
+            connection.close()
+    return jsonify({"status": "ok" if ready else "unavailable"}), 200 if ready else 503
+
+
 @app.route("/app_connection_agent")
 def app_connection_agent():
     if "user_id" not in session:
@@ -14851,15 +15083,12 @@ def recommend_apps():
     )
 
 
-@app.route("/generate_app_recommendations", methods=["GET", "POST"])
+@app.route("/generate_app_recommendations", methods=["POST"])
 def generate_app_recommendations():
     if "user_id" not in session:
         return redirect("/login")
     if not user_package_at_least(session["user_id"], "Pro"):
         return package_access_redirect("Pro")
-    if request.method == "GET":
-        return redirect("/recommend_apps")
-
     user_id = session["user_id"]
     data = {
         "business_type": request.form.get("business_type", "").strip(),
@@ -15014,7 +15243,7 @@ Safety rules:
 """
 
 
-@app.route("/create_app_action_draft/<platform>/<action_type>", methods=["GET", "POST"])
+@app.route("/create_app_action_draft/<platform>/<action_type>", methods=["POST"])
 def create_app_action_draft(platform, action_type):
     if "user_id" not in session:
         return redirect("/login")
@@ -15168,16 +15397,13 @@ def email_marketing():
     )
 
 
-@app.route("/generate_email_campaign", methods=["GET", "POST"])
+@app.route("/generate_email_campaign", methods=["POST"])
 def generate_email_campaign():
     if "user_id" not in session:
         return redirect("/login")
 
     if not user_package_at_least(session["user_id"], "Pro"):
         return package_access_redirect("Pro")
-    if request.method == "GET":
-        return redirect("/email_marketing")
-
     user_id = session["user_id"]
     if usage_limit_reached(user_id, "email_campaign"):
         return usage_limit_redirect("email_campaign", "/email_marketing")
@@ -15281,13 +15507,10 @@ def domain_helper():
     )
 
 
-@app.route("/generate_domain_advice", methods=["GET", "POST"])
+@app.route("/generate_domain_advice", methods=["POST"])
 def generate_domain_advice():
     if "user_id" not in session:
         return redirect("/login")
-
-    if request.method == "GET":
-        return redirect("/domain_helper")
 
     user_id = session["user_id"]
     if usage_limit_reached(user_id, "domain_guide"):
@@ -15564,13 +15787,10 @@ def generate_marketing_launch_plan(): return generate_launch_tool("marketing_lau
 def marketing_launch_plan(output_id): return render_launch_tool_result("marketing_launch_agent", output_id)
 
 
-@app.route("/generate_domain_buying_plan", methods=["GET", "POST"])
+@app.route("/generate_domain_buying_plan", methods=["POST"])
 def generate_domain_buying_plan():
     if "user_id" not in session:
         return redirect("/login")
-    if request.method == "GET":
-        return redirect("/domain_buying_assistant")
-
     user_id = session["user_id"]
     data = {
         "business_name": request.form.get("business_name", "").strip(),
@@ -15660,13 +15880,10 @@ def business_setup_agent():
     )
 
 
-@app.route("/generate_business_setup_plan", methods=["GET", "POST"])
+@app.route("/generate_business_setup_plan", methods=["POST"])
 def generate_business_setup_plan():
     if "user_id" not in session:
         return redirect("/login")
-    if request.method == "GET":
-        return redirect("/business_setup_agent")
-
     user_id = session["user_id"]
     data = {
         "business_name": request.form.get("business_name", "").strip(),
@@ -15915,13 +16132,10 @@ def pricing_advisor():
     )
 
 
-@app.route("/generate_pricing_advice", methods=["GET", "POST"])
+@app.route("/generate_pricing_advice", methods=["POST"])
 def generate_pricing_advice():
     if "user_id" not in session:
         return redirect("/login")
-
-    if request.method == "GET":
-        return redirect("/pricing_advisor")
 
     user_id = session["user_id"]
     if usage_limit_reached(user_id, "pricing_advice"):
@@ -16005,13 +16219,10 @@ def payment_guide():
     )
 
 
-@app.route("/generate_payment_guide", methods=["GET", "POST"])
+@app.route("/generate_payment_guide", methods=["POST"])
 def generate_payment_guide():
     if "user_id" not in session:
         return redirect("/login")
-
-    if request.method == "GET":
-        return redirect("/payment_guide")
 
     user_id = session["user_id"]
     if usage_limit_reached(user_id, "payment_guide"):
@@ -16094,13 +16305,10 @@ def supplier_finder():
     )
 
 
-@app.route("/generate_supplier_recommendations", methods=["GET", "POST"])
+@app.route("/generate_supplier_recommendations", methods=["POST"])
 def generate_supplier_recommendations():
     if "user_id" not in session:
         return redirect("/login")
-
-    if request.method == "GET":
-        return redirect("/supplier_finder")
 
     user_id = session["user_id"]
     if usage_limit_reached(user_id, "supplier_guide"):
@@ -16406,7 +16614,7 @@ def create_business_project():
     return redirect(f"/project/{project_id}")
 
 
-@app.route("/switch_business_project/<int:project_id>")
+@app.route("/switch_business_project/<int:project_id>", methods=["POST"])
 def switch_business_project(project_id):
     if "user_id" not in session:
         return redirect("/login")
@@ -16508,33 +16716,70 @@ def upload_file():
 
     if not user_has_paid(session["user_id"]):
         return redirect("/dashboard")
+    if not UPLOADS_ENABLED:
+        return render_error(
+            "Uploads are unavailable until durable storage is configured.",
+            503,
+            "/dashboard"
+        )
 
     file = request.files.get("file")
 
     if not file:
         return redirect("/dashboard")
 
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(
+    original_filename = secure_filename(file.filename or "")
+    extension = os.path.splitext(original_filename)[1].lower()
+    if not original_filename or extension not in ALLOWED_UPLOAD_EXTENSIONS:
+        return redirect("/dashboard?upload_error=unsupported_file")
+
+    user_upload_root = os.path.abspath(os.path.join(
         app.config["UPLOAD_FOLDER"],
-        filename
-    )
+        str(session["user_id"])
+    ))
+    upload_root = os.path.abspath(app.config["UPLOAD_FOLDER"])
+    if os.path.commonpath([upload_root, user_upload_root]) != upload_root:
+        return redirect("/dashboard?upload_error=invalid_path")
+    os.makedirs(user_upload_root, exist_ok=True)
+    stored_filename = f"{uuid.uuid4().hex}{extension}"
+    filepath = os.path.join(user_upload_root, stored_filename)
 
-    file.save(filepath)
+    try:
+        file.save(filepath)
+        if not validate_uploaded_file(filepath, extension):
+            os.remove(filepath)
+            return redirect("/dashboard?upload_error=invalid_file")
+    except OSError:
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except OSError:
+                pass
+        return redirect("/dashboard?upload_error=save_failed")
 
-    conn = db()
-    cur = conn.cursor()
-
-    cur.execute(
-        sql("""
-            INSERT INTO uploads (user_id, filename, filepath)
-            VALUES (?, ?, ?)
-        """),
-        (session["user_id"], filename, filepath)
-    )
-
-    conn.commit()
-    conn.close()
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(
+            sql("""
+                INSERT INTO uploads (user_id, filename, filepath)
+                VALUES (?, ?, ?)
+            """),
+            (session["user_id"], original_filename, filepath)
+        )
+        conn.commit()
+    except Exception:
+        if conn:
+            conn.rollback()
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass
+        raise
+    finally:
+        if conn:
+            conn.close()
 
     return redirect("/dashboard")
 
@@ -16543,7 +16788,7 @@ def upload_file():
 # CHAT ROUTES
 # -----------------------------
 
-@app.route("/new_chat")
+@app.route("/new_chat", methods=["POST"])
 def new_chat():
     if "user_id" not in session:
         return redirect("/login")
@@ -16585,12 +16830,12 @@ def messages():
 # PAYMENT ROUTES
 # -----------------------------
 
-@app.route("/paystack_checkout")
+@app.route("/paystack_checkout", methods=["POST"])
 def paystack_checkout():
     if "user_id" not in session:
         return redirect("/login")
 
-    plan_name = request.args.get("plan", "starter")
+    plan_name = request.form.get("plan", "starter")
     plan = get_paystack_plan(plan_name)
 
     if not plan:
@@ -16602,8 +16847,9 @@ def paystack_checkout():
 
     plan_slug = plan_name.strip().lower()
     paystack_secret = os.getenv("PAYSTACK_SECRET_KEY")
+    public_base_url = get_public_base_url()
 
-    if not paystack_secret:
+    if not paystack_secret or not public_base_url:
         return render_error(
             "Payment checkout is temporarily unavailable. Please try again later.",
             503
@@ -16640,8 +16886,8 @@ def paystack_checkout():
         "amount": amount,
         "currency": plan["currency"],
         "callback_url": (
-            request.host_url
-            + "payment_success?"
+            public_base_url
+            + "/payment_success?"
             + urllib.parse.urlencode({"plan": plan_slug})
         ),
         "metadata": {
@@ -16891,16 +17137,15 @@ def build_approval():
     if requested_action not in BUILD_APPROVAL_ACTIONS:
         requested_action = "full_build"
 
-    if requested_action == "product_research_products" and request.values.get("research_id"):
-        session["product_research_id"] = request.values.get("research_id")
-
     if not user_package_at_least(user_id, "Pro"):
         return package_access_redirect("Pro")
 
     if request.method == "POST":
+        if requested_action == "product_research_products" and request.form.get("research_id"):
+            session["product_research_id"] = request.form.get("research_id")
         grant_build_approval(requested_action)
 
-        return redirect(BUILD_APPROVAL_ACTIONS[requested_action])
+        return redirect(BUILD_APPROVAL_ACTIONS[requested_action], code=307)
 
     workflow_answers = get_nonempty_workflow_answers(user_id)
     shopify_plans = get_shopify_plans(user_id)
@@ -16909,6 +17154,7 @@ def build_approval():
     return render_template(
         "build_approval.html",
         requested_action=requested_action,
+        requested_research_id=request.args.get("research_id", ""),
         workflow_answers=workflow_answers,
         latest_shopify_plan=shopify_plans[0] if shopify_plans else None,
         latest_canva_design_brief=latest_canva_design_brief,
@@ -16948,7 +17194,7 @@ def build_approval():
     )
 
 
-@app.route("/complete_step/<int:step_number>/<step_name>")
+@app.route("/complete_step/<int:step_number>/<step_name>", methods=["POST"])
 def complete_step(step_number, step_name):
     if "user_id" not in session:
         return redirect("/login")
@@ -17024,7 +17270,7 @@ def workflow_step(step_number):
     )
 
 
-@app.route("/generate_business_plan")
+@app.route("/generate_business_plan", methods=["POST"])
 def generate_business_plan():
     if "user_id" not in session:
         return redirect("/login")
@@ -17112,7 +17358,7 @@ User workflow answers:
     return redirect(f"/business_plan/{plan_id}")
 
 
-@app.route("/generate_shopify_plan")
+@app.route("/generate_shopify_plan", methods=["POST"])
 def generate_shopify_plan():
     if "user_id" not in session:
         return redirect("/login")
@@ -17189,7 +17435,7 @@ User workflow answers:
     return redirect(f"/shopify_plan/{plan_id}")
 
 
-@app.route("/generate_canva_branding")
+@app.route("/generate_canva_branding", methods=["POST"])
 def generate_canva_branding():
     if "user_id" not in session:
         return redirect("/login")
@@ -17268,7 +17514,7 @@ User workflow answers:
     return redirect(f"/canva_branding/{package_id}")
 
 
-@app.route("/generate_canva_design_brief")
+@app.route("/generate_canva_design_brief", methods=["POST"])
 def generate_canva_design_brief():
     if "user_id" not in session:
         return redirect("/login")
@@ -17360,7 +17606,7 @@ User workflow answers:
     return redirect(f"/canva_design_brief/{brief_id}")
 
 
-@app.route("/create_canva_design")
+@app.route("/create_canva_design", methods=["POST"])
 def create_canva_design_from_brief():
     if "user_id" not in session:
         return redirect("/login")
@@ -17411,7 +17657,7 @@ def create_canva_design_from_brief():
     return redirect("/dashboard?canva_design=created")
 
 
-@app.route("/create_canva_designs")
+@app.route("/create_canva_designs", methods=["POST"])
 def create_canva_designs_from_brief():
     if "user_id" not in session:
         return redirect("/login")
@@ -17491,7 +17737,7 @@ def create_canva_designs_from_brief():
     )
 
 
-@app.route("/generate_build_quote")
+@app.route("/generate_build_quote", methods=["POST"])
 def generate_build_quote():
     if "user_id" not in session:
         return redirect("/login")
@@ -17809,7 +18055,7 @@ def create_shopify_assets_from_store_package(user_id, store_package):
     return created_assets, failed_actions
 
 
-@app.route("/generate_full_store")
+@app.route("/generate_full_store", methods=["POST"])
 def generate_full_store():
     if "user_id" not in session:
         return redirect("/login")
@@ -17985,7 +18231,7 @@ def store_build(build_id):
     )
 
 
-@app.route("/download_store_build/<int:build_id>")
+@app.route("/download_store_build/<int:build_id>", methods=["POST"])
 def download_store_build(build_id):
     if "user_id" not in session:
         return redirect("/login")
@@ -18018,7 +18264,7 @@ def download_store_build(build_id):
     return response
 
 
-@app.route("/create_shopify_product")
+@app.route("/create_shopify_product", methods=["POST"])
 def create_shopify_product_from_workflow():
     if "user_id" not in session:
         return redirect("/login")
@@ -18119,7 +18365,7 @@ User workflow answers:
     return redirect("/dashboard?shopify_product=created")
 
 
-@app.route("/build_shopify_store_draft")
+@app.route("/build_shopify_store_draft", methods=["POST"])
 def build_shopify_store_draft():
     if "user_id" not in session:
         return redirect("/login")
@@ -18353,7 +18599,7 @@ User workflow answers:
         return redirect("/business_workflow?store_draft_error=create_failed")
 
     if continue_full_build:
-        return redirect("/create_canva_designs")
+        return redirect("/create_canva_designs", code=307)
 
     return redirect(
         f"/shopify_build_summary?draft_store=created"
@@ -18364,7 +18610,7 @@ User workflow answers:
     )
 
 
-@app.route("/create_shopify_products")
+@app.route("/create_shopify_products", methods=["POST"])
 def create_shopify_products_from_workflow():
     if "user_id" not in session:
         return redirect("/login")

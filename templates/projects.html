@@ -70,7 +70,7 @@
                     <p>{{ project[2] or "No business idea notes saved yet." }}</p>
                     <div class="card-actions">
                         <a href="/project/{{ project[0] }}" class="primary-button">View Project</a>
-                        <a href="/switch_business_project/{{ project[0] }}" class="secondary-button">Make Active</a>
+                        <form method="POST" action="/switch_business_project/{{ project[0] }}"><button type="submit" class="secondary-button">Make Active</button></form>
                     </div>
                 </article>
             {% else %}

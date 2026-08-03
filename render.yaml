@@ -7,8 +7,9 @@ services:
     runtime: python
     repo: https://github.com/olwakhendamse18-commits/businessbuilder-ai.git
     branch: master
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.lock
     startCommand: gunicorn app:app
+    healthCheckPath: /healthz
     autoDeployTrigger: "off"
     envVars:
       - key: DATABASE_URL
@@ -17,6 +18,16 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: TRUSTED_HOSTS
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: UPLOAD_STORAGE_DIR
+        sync: false
+      - key: VOICE_RUNTIME_ENABLED
+        value: "false"
       - key: BROWSER_CONTROL_ENABLED
         value: "false"
       - key: RESEARCH_USE_OPENAI_BACKGROUND_MODE
@@ -27,7 +38,7 @@ services:
     runtime: python
     repo: https://github.com/olwakhendamse18-commits/businessbuilder-ai.git
     branch: master
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.lock
     startCommand: python worker.py
     autoDeployTrigger: "off"
     numInstances: 1
@@ -39,6 +50,10 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: VOICE_RUNTIME_ENABLED
+        value: "false"
       - key: BROWSER_CONTROL_ENABLED
         value: "false"
       - key: RESEARCH_USE_OPENAI_BACKGROUND_MODE

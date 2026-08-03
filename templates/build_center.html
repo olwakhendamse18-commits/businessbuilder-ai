@@ -148,7 +148,7 @@
             <div class="card-actions">
                 {% if pro_package %}
                     <a href="/launch_package" class="primary-button">View Launch Package</a>
-                    {% if premium_build %}<a href="/download_launch_package" class="secondary-button">Download Premium Launch PDF</a>{% else %}<a href="/pricing" class="secondary-button">Upgrade for Premium PDF</a>{% endif %}
+                    {% if premium_build %}<form method="POST" action="/download_launch_package"><button type="submit" class="secondary-button">Download Premium Launch PDF</button></form>{% else %}<a href="/pricing" class="secondary-button">Upgrade for Premium PDF</a>{% endif %}
                 {% else %}
                     <a href="/pricing" class="primary-button">Unlock Launch Package with Pro</a>
                 {% endif %}

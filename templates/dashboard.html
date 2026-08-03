@@ -362,7 +362,7 @@
                             <p>{{ latest_plan[2][:180] }}{% if latest_plan[2]|length > 180 %}...{% endif %}</p>
                             <div class="card-actions">
                                 <a href="/business_plan/{{ latest_plan[0] }}" class="primary-button">View Plan</a>
-                                <a href="/download_business_plan/{{ latest_plan[0] }}" class="secondary-button">Download PDF</a>
+                                <form method="POST" action="/download_business_plan/{{ latest_plan[0] }}"><button type="submit" class="secondary-button">Download PDF</button></form>
                             </div>
                         {% else %}
                             <h3>No business plan yet</h3>
@@ -379,7 +379,7 @@
                             <p>Status: {{ latest_build[4]|replace("_", " ")|title }}</p>
                             <div class="card-actions">
                                 <a href="/store_build/{{ latest_build[0] }}" class="primary-button">View Store Build</a>
-                                <a href="/download_store_build/{{ latest_build[0] }}" class="secondary-button">Download PDF</a>
+                                <form method="POST" action="/download_store_build/{{ latest_build[0] }}"><button type="submit" class="secondary-button">Download PDF</button></form>
                             </div>
                         {% else %}
                             <h3>No store build yet</h3>
@@ -409,7 +409,7 @@
                             <p>Combine your strategy, product research, store assets, Canva outputs, and launch checklist.</p>
                             <div class="card-actions">
                                 <a href="/launch_package" class="primary-button">View Launch Package</a>
-                                <a href="/download_launch_package" class="secondary-button">Download PDF</a>
+                                <form method="POST" action="/download_launch_package"><button type="submit" class="secondary-button">Download PDF</button></form>
                             </div>
                         {% else %}
                             <h3>Launch package locked</h3>

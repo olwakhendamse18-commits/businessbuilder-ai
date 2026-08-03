@@ -1,12 +1,12 @@
 # BusinessBuilder AI Phase 2 Realtime Voice Contract
 
-Status: **Frozen for Phase 2A review**
+Status: **Active implementation contract through Phase 2B.2C.2**
 
-Applies to repository SHA: `eac5ebcb010e071ba50d2f073d9b635aa789a994`
+Applies to: **the Phase 2B.2C.2 implementation and subsequent security-only hardening until superseded by a reviewed contract revision**
 
 Feature status: **Disabled by default; no production activation authorized**
 
-Last source review: 2026-07-24
+Last source review: 2026-08-03
 
 ## 1. Purpose and normative language
 
@@ -14,7 +14,7 @@ This document freezes the architecture, authority boundaries, event contract, li
 
 The words **must**, **must not**, **required**, and **prohibited** are normative. Any implementation that differs from this contract requires explicit review and an update to this document before activation.
 
-Phase 2A is documentation only. It does not authorize microphone access, a Realtime connection, an OpenAI API request, an external action, browser control, deployment, or production enablement.
+Historical note: Phase 2A was documentation-only. The later Phase 2B implementation remains disabled by default and does not authorize microphone access, a Realtime connection, an OpenAI API request, an external action, browser control, deployment, or production enablement.
 
 ## 2. Frozen architecture and authority
 

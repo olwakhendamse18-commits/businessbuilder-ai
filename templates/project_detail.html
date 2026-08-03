@@ -48,7 +48,7 @@
             <h2>Continue this business build</h2>
             <p>Use this project as active context for chat and business tools.</p>
             <div class="generator-actions">
-                <a href="/switch_business_project/{{ project[0] }}" class="primary-button">Make Active</a>
+                <form method="POST" action="/switch_business_project/{{ project[0] }}"><button type="submit" class="primary-button">Make Active</button></form>
                 <a href="/business_workflow" class="secondary-button">Open Workflow</a>
                 <a href="/product_finder" class="secondary-button">Find Products</a>
                 <a href="/ai_store_agent" class="secondary-button">AI Store Agent</a>

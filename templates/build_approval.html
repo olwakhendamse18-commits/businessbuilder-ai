@@ -5,6 +5,7 @@
     <title>Build Approval - BusinessBuilder AI</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
 </head>
 
 <body>
@@ -174,6 +175,7 @@
 
                 <form method="POST" action="/build_approval">
                     <input type="hidden" name="action" value="product_research_products">
+                    {% if requested_research_id %}<input type="hidden" name="research_id" value="{{ requested_research_id }}">{% endif %}
                     <button type="submit">Approve Product Finder Drafts</button>
                 </form>
 

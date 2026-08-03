@@ -5,3 +5,4 @@ __pycache__/
 uploads/
 browser_artifacts/
 debug.log
+*.log
