@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voice Command Center | BusinessBuilder AI</title>
     {% include "_pwa_head.html" %}
-    <link rel="stylesheet" href="/static/css/voice-command-center.css">
+    <link rel="stylesheet" href="/static/css/voice-command-center.css?v=20260803-voice">
 </head>
-<body class="voice-command-page" data-voice-state="idle" data-motion-level="{{ visual_preferences.motion_level }}">
+<body class="voice-command-page" data-voice-state="idle" data-voice-phase="ready" data-cinematic-mode="off" data-motion-level="{{ visual_preferences.motion_level }}">
 <a class="voice-skip-link" href="#voiceCoreTitle">Skip to voice status</a>
 
 <div class="voice-boot-screen" id="voiceBootScreen" aria-hidden="true">
@@ -19,11 +19,11 @@
     <header class="voice-topbar">
         <a class="voice-brand" href="/command-center" aria-label="Return to BusinessBuilder AI Command Center">
             <span class="voice-brand-mark" aria-hidden="true">BB</span>
-            <span><strong>BusinessBuilder AI</strong><small>Voice Command Center · Phase 1</small></span>
+            <span><strong>BusinessBuilder AI</strong><small>Voice Command Center · Guided agent</small></span>
         </a>
         <div class="voice-system-facts" aria-label="Voice preview system status">
             <span><small>Local time</small><strong id="voiceLocalTime">--:--</strong></span>
-            <span><small>Panel state</small><strong id="voiceTopState">Voice Preview</strong></span>
+            <span><small>Panel state</small><strong id="voiceTopState">Voice Ready</strong></span>
             <span><small>Active project</small><strong>{{ active_project[2] if active_project else "Not loaded" }}</strong></span>
             <span><small>Session</small><strong>Authenticated</strong></span>
             <span><small>Duration</small><strong id="voiceTopDuration">00:00</strong></span>
@@ -31,16 +31,17 @@
         </div>
         <div class="voice-topbar-status" aria-label="Voice connection status">
             <span class="voice-status-light" aria-hidden="true"></span>
-            <span><strong id="connectionLabel">Not Connected</strong><small>Voice Preview</small></span>
+            <span><strong id="connectionLabel">Not Connected</strong><small>{{ "Runtime ready" if voice_config.enabled and profile[4] else "Safe standby" }}</small></span>
         </div>
         <button class="voice-exit-button" id="exitVoiceButton" type="button">
             <span aria-hidden="true">×</span> Exit Voice Panel
         </button>
     </header>
 
-    <div class="voice-mobile-tools" aria-label="Voice panel controls">
-        <button type="button" data-panel-target="voiceProjectPanel" aria-controls="voiceProjectPanel" aria-expanded="false">Project context</button>
-        <button type="button" data-panel-target="voiceOperationsPanel" aria-controls="voiceOperationsPanel" aria-expanded="false">Operations</button>
+    <div class="voice-mobile-tools voice-focus-tools" aria-label="Voice workspace controls">
+        <button type="button" data-panel-target="voiceProjectPanel" aria-controls="voiceProjectPanel" aria-expanded="false"><span aria-hidden="true">◫</span> Project context</button>
+        <button type="button" data-panel-target="voiceOperationsPanel" aria-controls="voiceOperationsPanel" aria-expanded="false"><span aria-hidden="true">⌁</span> Business systems</button>
+        <button type="button" id="voiceCinematicToggle" aria-pressed="false"><span aria-hidden="true">✦</span> <strong>Cinematic: Off</strong></button>
     </div>
 
     <div class="voice-layout">
@@ -86,12 +87,30 @@
 
         <section class="voice-core-column" aria-labelledby="voiceCoreTitle">
             <div class="voice-greeting" id="voiceGreeting">
-                <p class="voice-kicker">Context synchronized locally</p>
+                <p class="voice-kicker">Business context synchronized</p>
                 <h1>Good {{ greeting_period }}, <span>{{ profile[2] or "founder" }}</span>.</h1>
-                <p>Voice Preview is ready. {{ "Your project context is loaded" if active_project else "No active project is loaded" }}.</p>
-                <p class="voice-greeting-next"><span>Next step</span> {{ progress.next_step.title }}</p>
-                <p>How may I assist with your business today?</p>
+                <p>Your voice-only Builder is ready. Start voice, then speak naturally.</p>
             </div>
+
+            <section class="voice-next-mission-card" aria-labelledby="voiceNextMissionTitle">
+                <div class="voice-mission-index" aria-hidden="true">NEXT</div>
+                <div>
+                    <p class="voice-kicker">Recommended mission</p>
+                    <h2 id="voiceNextMissionTitle">{{ progress.next_step.title }}</h2>
+                    <p>{{ progress.next_step.description }}</p>
+                </div>
+                <div class="voice-mission-actions">
+                    <span>Say: “Guide me through my next mission.”</span>
+                    <a href="{{ progress.next_step.url }}">Open mission</a>
+                </div>
+            </section>
+
+            <ol class="voice-phase-track" id="voicePhaseTrack" aria-label="Live voice phases">
+                <li data-voice-phase-step="listening"><i aria-hidden="true"></i><span>Listening</span></li>
+                <li data-voice-phase-step="thinking"><i aria-hidden="true"></i><span>Thinking</span></li>
+                <li data-voice-phase-step="speaking"><i aria-hidden="true"></i><span>Speaking</span></li>
+                <li data-voice-phase-step="approval"><i aria-hidden="true"></i><span>Approval Required</span></li>
+            </ol>
 
             <section class="voice-core" id="voiceCore" aria-labelledby="voiceCoreTitle">
                 <div class="voice-core-grid" aria-hidden="true"></div>
@@ -118,15 +137,15 @@
                 <div class="voice-core-center">
                     <span class="voice-connection-chip" id="voiceConnectionChip"><i aria-hidden="true"></i> Not Connected</span>
                     <p class="voice-state-overline">Current state</p>
-                    <h2 id="voiceCoreTitle">Voice Preview</h2>
+                    <h2 id="voiceCoreTitle">Voice Ready</h2>
                     <div class="voice-waveform" id="voiceWaveform" aria-hidden="true">
                         {% for bar in range(24) %}<span style="--bar-index: {{ bar }}"></span>{% endfor %}
                     </div>
-                    <p class="voice-caption" id="voiceCaption">Voice connection will be enabled in Phase 2.</p>
-                    <div class="voice-core-readouts" aria-label="Preview readiness">
+                    <p class="voice-caption" id="voiceCaption">{{ "Press Start Voice to request microphone permission." if voice_config.enabled and profile[4] else "Live voice is safely unavailable until your preference and the server runtime are enabled." }}</p>
+                    <div class="voice-core-readouts" aria-label="Voice readiness">
                         <span><small>Mic</small><strong id="coreMicStatus">Not requested</strong></span>
-                        <span><small>Assistant</small><strong>Preview ready</strong></span>
-                        <span><small>Connection</small><strong>Offline</strong></span>
+                        <span><small>Assistant</small><strong>Context ready</strong></span>
+                        <span><small>Connection</small><strong id="coreConnectionStatus">Offline</strong></span>
                         <span><small>Context</small><strong>{{ "Loaded" if active_project else "Not loaded" }}</strong></span>
                     </div>
                 </div>
@@ -144,32 +163,42 @@
                 <div class="voice-function-label voice-function-launch" data-tooltip="Real launch progress from completed steps" aria-label="Launch progress: {{ progress.percentage }} percent"><span>Launch</span><strong>{{ progress.percentage }}%</strong></div>
             </section>
 
-            <div class="voice-screen-reader-state" id="voiceScreenReaderState" role="status" aria-live="polite">Voice Preview is disconnected. Microphone access has not been requested.</div>
+            <div class="voice-screen-reader-state" id="voiceScreenReaderState" role="status" aria-live="polite">Voice is disconnected. Microphone access has not been requested.</div>
 
-            <section class="voice-control-rail" aria-labelledby="voiceControlsTitle">
-                <div class="voice-privacy-status"><span aria-hidden="true">◇</span><strong>Privacy protected</strong><small>No microphone · No raw audio · No external request</small></div>
-                <div class="voice-control-deck">
-                    <h2 class="voice-visually-hidden" id="voiceControlsTitle">Voice controls</h2>
-                    <button class="voice-control voice-control-primary" id="startVoicePrototype" type="button"><span aria-hidden="true">◉</span><strong>Start Voice</strong><small>Preview only</small></button>
-                    <button class="voice-control is-disabled" id="muteVoicePrototype" type="button" disabled aria-disabled="true"><span aria-hidden="true">⌁</span><strong>Mute</strong><small>Phase 2</small></button>
-                    <button class="voice-control is-disabled" id="stopSpeakingPrototype" type="button" disabled aria-disabled="true"><span aria-hidden="true">■</span><strong>Stop Speaking</strong><small>Phase 2</small></button>
-                    <button class="voice-control" id="exitVoiceSecondary" type="button"><span aria-hidden="true">↙</span><strong>Exit Voice Panel</strong><small>Return to text</small></button>
+            <section class="voice-conversation-log" aria-labelledby="voiceConversationTitle">
+                <div><p class="voice-kicker">Spoken session</p><h2 id="voiceConversationTitle">Conversation</h2></div>
+                <div id="voiceConversationFeed" class="voice-conversation-feed" aria-live="polite">
+                    <p class="voice-conversation-empty" id="voiceConversationEmpty">Your completed transcript and Builder’s canonical reply will appear here. Raw audio is never saved.</p>
                 </div>
-                <div class="voice-keyboard-hints" aria-label="Keyboard shortcuts"><span><kbd>Esc</kbd> Exit</span><span><kbd>M</kbd> Mute</span><span><kbd>Space</kbd> Stop speaking</span></div>
             </section>
 
-            <p class="voice-safety-note"><span aria-hidden="true">◇</span> Phase 1 visual prototype · No microphone access · No raw audio · No Realtime session · No external action</p>
+            <audio id="voiceRemoteAudio" autoplay playsinline></audio>
+
+            <section class="voice-control-rail" aria-labelledby="voiceControlsTitle">
+                <div class="voice-privacy-status"><span aria-hidden="true">◇</span><strong>Privacy protected</strong><small>Explicit start · No raw audio saved · Approval gates stay active</small></div>
+                <div class="voice-control-deck">
+                    <h2 class="voice-visually-hidden" id="voiceControlsTitle">Voice controls</h2>
+                    <button class="voice-control voice-control-primary {% if not voice_config.enabled or not profile[4] %}is-disabled{% endif %}" id="startVoice" type="button" {% if not voice_config.enabled or not profile[4] %}disabled aria-disabled="true"{% endif %}><span aria-hidden="true">◉</span><strong>Start Voice</strong><small>{{ "Ask for mic" if voice_config.enabled and profile[4] else "Unavailable" }}</small></button>
+                    <button class="voice-control is-disabled" id="muteVoice" type="button" disabled aria-disabled="true" aria-pressed="false"><span aria-hidden="true">⌁</span><strong>Mute</strong><small>Microphone</small></button>
+                    <button class="voice-control is-disabled" id="stopSpeaking" type="button" disabled aria-disabled="true"><span aria-hidden="true">■</span><strong>Stop Speaking</strong><small>Keep session</small></button>
+                    <button class="voice-control is-disabled" id="stopVoice" type="button" disabled aria-disabled="true"><span aria-hidden="true">◌</span><strong>End Session</strong><small>Stop microphone</small></button>
+                    <button class="voice-control" id="exitVoiceSecondary" type="button"><span aria-hidden="true">↙</span><strong>Exit Voice Panel</strong><small>Return to text</small></button>
+                </div>
+                <div class="voice-keyboard-hints" aria-label="Keyboard shortcuts"><span><kbd>Esc</kbd> Exit</span><span><kbd>M</kbd> Mute</span><span><kbd>Space</kbd> Stop speaking</span><span><kbd>C</kbd> Cinematic</span></div>
+            </section>
+
+            <p class="voice-safety-note"><span aria-hidden="true">◇</span> {% if not voice_config.enabled %}Live voice runtime is disabled on this server. Text mode remains available.{% elif not profile[4] %}Voice is off in your Builder preferences. <a href="/command-center">Open voice preferences</a> before starting.{% else %}Voice sends completed transcripts through the same approval-based Builder used by text chat. No raw audio is saved.{% endif %}</p>
 
             {% if local_demo_enabled %}
                 <details class="voice-demo-controller" open>
                     <summary aria-controls="voiceDemoControls">
-                        <span><small>Local development only</small><strong id="demoControllerTitle">Prototype Protection</strong></span>
+                        <span><small>Local development only</small><strong id="demoControllerTitle">Visual state tester</strong></span>
                         <span class="voice-demo-disclosure">Show or hide</span>
                     </summary>
                     <div class="voice-demo-controls" id="voiceDemoControls" aria-labelledby="demoControllerTitle">
                         <label for="voiceDemoState">Visual state</label>
                         <select id="voiceDemoState">
-                            {% for state in ["idle", "requesting_microphone", "connecting", "listening", "user_speaking", "thinking", "speaking", "muted", "waiting_for_approval", "completed", "error", "exiting"] %}
+                            {% for state in ["idle", "unavailable", "requesting_microphone", "connecting", "connected", "listening", "user_speaking", "processing_transcript", "thinking", "speaking", "muted", "waiting_for_approval", "completed", "stopped", "error", "exiting"] %}
                                 <option value="{{ state }}">{{ state|replace("_", " ")|title }}</option>
                             {% endfor %}
                         </select>
@@ -215,7 +244,7 @@
                     <span data-status="{{ 'active' if visual_state.active_research_count else 'idle' }}"><small>Research</small><strong>{{ visual_state.active_research_count ~ " active" if visual_state.active_research_count else "Idle" }}</strong></span>
                     <span data-status="unknown"><small>Worker</small><strong>Could not verify</strong></span>
                     <span data-status="disabled"><small>Browser control</small><strong>Disabled</strong></span>
-                    <span data-status="idle"><small>Voice system</small><strong>Not Connected</strong></span>
+                    <span data-status="{{ 'idle' if voice_config.enabled and profile[4] else 'disabled' }}"><small>Voice system</small><strong>{{ "Ready to start" if voice_config.enabled and profile[4] else "Safe standby" }}</strong></span>
                 </div>
             </section>
 
@@ -240,13 +269,22 @@
 <div class="voice-panel-backdrop" id="voicePanelBackdrop" hidden></div>
 
 <script>
-window.BB_VOICE_PROTOTYPE = {
+window.BB_VOICE_COMMAND_CENTER = {
     conversationId: {{ conversation[0] }},
     projectId: {{ active_project[0] if active_project else "null" }},
+    voiceRuntimeEnabled: {{ "true" if voice_config.enabled else "false" }},
+    voicePreferenceEnabled: {{ "true" if profile[4] else "false" }},
+    voiceCsrfToken: {{ voice_csrf_token|tojson }},
+    realtimeSessionUrl: "/api/realtime/session",
+    realtimeEndUrl: "/api/realtime/session/end",
+    agentMessageUrl: "/api/agent/message",
+    maxVoiceSeconds: {{ voice_config.session_max_seconds }},
+    idleTimeoutSeconds: {{ voice_config.idle_timeout_seconds }},
     motionLevel: {{ visual_preferences.motion_level|tojson }},
     demoEnabled: {{ "true" if local_demo_enabled else "false" }}
 };
 </script>
-<script src="/static/js/voice-command-center.js"></script>
+<script src="/static/js/realtime-voice.js?v=20260803-voice"></script>
+<script src="/static/js/voice-command-center.js?v=20260803-voice"></script>
 </body>
 </html>
