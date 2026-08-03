@@ -14,6 +14,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from cryptography.fernet import Fernet, InvalidToken
 
+import click
 import requests
 import sqlite3
 import os
@@ -25,12 +26,20 @@ import secrets
 import psycopg2
 import re
 import json
+import threading
+import time
 import urllib.parse
+import unicodedata
 import ipaddress
 import mimetypes
-from datetime import datetime, timezone
+import uuid
+import zipfile
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from xml.sax.saxutils import escape
+
+
+sqlite3.register_adapter(datetime, lambda value: value.isoformat(" "))
 
 
 load_dotenv()
@@ -41,15 +50,182 @@ secret_key = os.getenv("SECRET_KEY")
 
 if not secret_key:
     if os.getenv("DATABASE_URL"):
-        raise RuntimeError("SECRET_KEY must be configured in production.")
-
-    secret_key = "businessbuilder-local-development-secret"
+        raise RuntimeError("SECRET_KEY must be configured before the application starts.")
+    secret_key = secrets.token_hex(32)
+    logger.warning("ephemeral_local_secret_key_enabled")
 
 app.secret_key = secret_key
 
-UPLOAD_FOLDER = "uploads"
+IS_PRODUCTION = bool(os.getenv("DATABASE_URL"))
+app.config.update(
+    MAX_CONTENT_LENGTH=10 * 1024 * 1024,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=IS_PRODUCTION,
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+)
+configured_trusted_hosts = [
+    host.strip().lower()
+    for host in os.getenv("TRUSTED_HOSTS", "").split(",")
+    if host.strip()
+]
+if configured_trusted_hosts:
+    app.config["TRUSTED_HOSTS"] = configured_trusted_hosts
+
+UPLOAD_STORAGE_DIR = os.getenv("UPLOAD_STORAGE_DIR", "").strip()
+UPLOADS_ENABLED = not IS_PRODUCTION or bool(UPLOAD_STORAGE_DIR)
+UPLOAD_FOLDER = UPLOAD_STORAGE_DIR or "uploads"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+if UPLOADS_ENABLED:
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+GENERAL_CSRF_SESSION_KEY = "_businessbuilder_csrf"
+CSRF_EXEMPT_ENDPOINTS = {
+    "paystack_webhook",
+    "api_agent_message",
+    "api_realtime_session",
+    "api_realtime_session_end",
+}
+AUTH_RATE_LIMIT_WINDOW_SECONDS = 15 * 60
+AUTH_RATE_LIMIT_MAX_FAILURES = 5
+AUTH_RATE_LIMIT_MAX_KEYS = 4096
+AUTH_PASSWORD_MIN_LENGTH = 12
+AUTH_PASSWORD_MAX_LENGTH = 256
+_auth_failure_lock = threading.Lock()
+_auth_failures = {}
+
+
+def get_csrf_token():
+    token = session.get(GENERAL_CSRF_SESSION_KEY)
+    if not isinstance(token, str) or len(token) != 64:
+        token = secrets.token_hex(32)
+        session[GENERAL_CSRF_SESSION_KEY] = token
+    return token
+
+
+def csrf_token_is_valid():
+    expected = session.get(GENERAL_CSRF_SESSION_KEY)
+    supplied = request.headers.get("X-CSRF-Token") or request.form.get("_csrf_token")
+    return (
+        isinstance(expected, str)
+        and isinstance(supplied, str)
+        and len(expected) == 64
+        and len(supplied) == 64
+        and hmac.compare_digest(expected, supplied)
+    )
+
+
+def _auth_rate_limit_key(email):
+    remote_address = (request.remote_addr or "unknown")[:64]
+    normalized_email = (email or "").strip().lower()[:254]
+    return hashlib.sha256(
+        f"{remote_address}\n{normalized_email}".encode("utf-8")
+    ).hexdigest()
+
+
+def auth_rate_limit_status(email, now=None):
+    current_time = time.monotonic() if now is None else float(now)
+    key = _auth_rate_limit_key(email)
+    with _auth_failure_lock:
+        recent = [
+            timestamp for timestamp in _auth_failures.get(key, [])
+            if current_time - timestamp < AUTH_RATE_LIMIT_WINDOW_SECONDS
+        ]
+        if recent:
+            _auth_failures[key] = recent
+        else:
+            _auth_failures.pop(key, None)
+        if len(recent) < AUTH_RATE_LIMIT_MAX_FAILURES:
+            return False, 0
+        retry_after = max(
+            1,
+            int(AUTH_RATE_LIMIT_WINDOW_SECONDS - (current_time - recent[0]))
+        )
+        return True, retry_after
+
+
+def record_auth_failure(email, now=None):
+    current_time = time.monotonic() if now is None else float(now)
+    key = _auth_rate_limit_key(email)
+    with _auth_failure_lock:
+        if key not in _auth_failures and len(_auth_failures) >= AUTH_RATE_LIMIT_MAX_KEYS:
+            _auth_failures.pop(next(iter(_auth_failures)), None)
+        recent = [
+            timestamp for timestamp in _auth_failures.get(key, [])
+            if current_time - timestamp < AUTH_RATE_LIMIT_WINDOW_SECONDS
+        ]
+        recent.append(current_time)
+        _auth_failures[key] = recent[-AUTH_RATE_LIMIT_MAX_FAILURES:]
+
+
+def clear_auth_failures(email):
+    key = _auth_rate_limit_key(email)
+    with _auth_failure_lock:
+        _auth_failures.pop(key, None)
+
+
+def get_public_base_url():
+    configured = os.getenv("PUBLIC_BASE_URL", "").strip()
+    if not configured:
+        return None if IS_PRODUCTION else request.host_url.rstrip("/")
+    parsed = urllib.parse.urlsplit(configured)
+    if (
+        parsed.scheme.lower() not in ({"https"} if IS_PRODUCTION else {"http", "https"})
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+    ):
+        return None
+    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+
+
+@app.context_processor
+def inject_security_context():
+    return {"csrf_token": get_csrf_token()}
+
+
+@app.before_request
+def enforce_csrf_protection():
+    if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return None
+    if request.endpoint in CSRF_EXEMPT_ENDPOINTS:
+        return None
+    if csrf_token_is_valid() or request_is_same_origin():
+        return None
+    if request.path.startswith("/api/") or request.is_json:
+        return jsonify({
+            "error": "Request verification failed.",
+            "code": "csrf_failed"
+        }), 403
+    return render_error("Request verification failed. Refresh the page and try again.", 403)
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), geolocation=(), payment=(), microphone=(self)"
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+        "form-action 'self'; script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
+        "font-src 'self' data:; connect-src 'self'; media-src 'self' blob:"
+    )
+    if IS_PRODUCTION:
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains"
+        )
+    return response
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=openai_api_key) if openai_api_key else None
@@ -294,7 +470,9 @@ def db():
     if database_url:
         return psycopg2.connect(database_url)
 
-    return sqlite3.connect("business_ai.db")
+    conn = sqlite3.connect("business_ai.db", timeout=5)
+    conn.execute("PRAGMA busy_timeout = 5000")
+    return conn
 
 
 def sql(query):
@@ -309,8 +487,44 @@ def sql(query):
     return query
 
 
-def init_db():
-    conn = db()
+def _create_worker_heartbeat_schema(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS worker_heartbeats (
+            worker_role TEXT PRIMARY KEY,
+            instance_id TEXT NOT NULL,
+            deployed_commit TEXT,
+            started_at TIMESTAMP NOT NULL,
+            last_poll_at TIMESTAMP NOT NULL,
+            last_success_at TIMESTAMP,
+            last_voice_maintenance_at TIMESTAMP,
+            last_generic_job_at TIMESTAMP,
+            last_error_code TEXT,
+            updated_at TIMESTAMP NOT NULL
+        )
+    """)
+
+
+def _create_worker_canary_schema(cur):
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS worker_canary_probes (
+            worker_role TEXT PRIMARY KEY,
+            probe_id TEXT NOT NULL,
+            expected_commit TEXT NOT NULL,
+            status TEXT NOT NULL,
+            requested_at TIMESTAMP NOT NULL,
+            expires_at TIMESTAMP NOT NULL,
+            claimed_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            claim_token TEXT,
+            claim_expires_at TIMESTAMP,
+            completed_commit TEXT,
+            result_code TEXT,
+            updated_at TIMESTAMP NOT NULL
+        )
+    """)
+
+
+def _init_db_with_connection(conn):
     cur = conn.cursor()
 
     id_type = "SERIAL PRIMARY KEY" if using_postgres() else "INTEGER PRIMARY KEY AUTOINCREMENT"
@@ -1224,16 +1438,84 @@ def init_db():
             user_id INTEGER NOT NULL,
             conversation_id INTEGER,
             project_id INTEGER,
-            status TEXT NOT NULL DEFAULT 'active',
+            status TEXT NOT NULL DEFAULT 'starting',
             model_name TEXT,
             voice_name TEXT,
+            handshake_request_id TEXT,
+            upstream_call_id TEXT,
+            termination_status TEXT NOT NULL DEFAULT 'not_applicable',
+            termination_attempts INTEGER NOT NULL DEFAULT 0,
+            termination_requested_at TIMESTAMP,
+            termination_last_attempt_at TIMESTAMP,
+            termination_next_attempt_at TIMESTAMP,
+            termination_accepted_at TIMESTAMP,
+            termination_error_code TEXT,
+            termination_claim_token TEXT,
+            termination_lease_expires_at TIMESTAMP,
             started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP,
             ended_at TIMESTAMP,
             duration_seconds INTEGER NOT NULL DEFAULT 0,
             disconnect_reason TEXT,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    voice_session_columns = {
+        "handshake_request_id": "TEXT",
+        "expires_at": "TIMESTAMP",
+        "updated_at": "TIMESTAMP",
+        "upstream_call_id": "TEXT",
+        "termination_status": "TEXT NOT NULL DEFAULT 'not_applicable'",
+        "termination_attempts": "INTEGER NOT NULL DEFAULT 0",
+        "termination_requested_at": "TIMESTAMP",
+        "termination_last_attempt_at": "TIMESTAMP",
+        "termination_next_attempt_at": "TIMESTAMP",
+        "termination_accepted_at": "TIMESTAMP",
+        "termination_error_code": "TEXT",
+        "termination_claim_token": "TEXT",
+        "termination_lease_expires_at": "TIMESTAMP"
+    }
+    if using_postgres():
+        cur.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'agent_voice_sessions'
+        """)
+        existing_voice_session_columns = {row[0] for row in cur.fetchall()}
+    else:
+        cur.execute("PRAGMA table_info(agent_voice_sessions)")
+        existing_voice_session_columns = {row[1] for row in cur.fetchall()}
+    added_upstream_call_id = "upstream_call_id" not in existing_voice_session_columns
+    for column_name, column_type in voice_session_columns.items():
+        if column_name not in existing_voice_session_columns:
+            cur.execute(
+                f"ALTER TABLE agent_voice_sessions ADD COLUMN {column_name} {column_type}"
+            )
+    if added_upstream_call_id:
+        cur.execute("""
+            UPDATE agent_voice_sessions
+            SET status = 'ended',
+                ended_at = COALESCE(ended_at, CURRENT_TIMESTAMP),
+                disconnect_reason = COALESCE(
+                    disconnect_reason,
+                    'upstream_call_unidentified_migration'
+                ),
+                termination_status = 'not_applicable',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE status IN ('starting', 'active')
+        """)
+    cur.execute("""
+        UPDATE agent_voice_sessions
+        SET updated_at = COALESCE(updated_at, created_at, started_at, CURRENT_TIMESTAMP)
+        WHERE updated_at IS NULL
+    """)
+    _reconcile_voice_sessions_in_transaction(cur)
+    _reconcile_voice_call_ids_for_migration(cur)
+
+    _create_worker_heartbeat_schema(cur)
+    _create_worker_canary_schema(cur)
 
     execute_schema(f"""
         CREATE TABLE IF NOT EXISTS agent_research_jobs (
@@ -1498,8 +1780,58 @@ def init_db():
         ON agent_message_requests (user_id, request_id)
     """))
 
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_voice_sessions_user_request
+        ON agent_voice_sessions (user_id, handshake_request_id)
+        WHERE handshake_request_id IS NOT NULL
+    """)
+
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_voice_sessions_user_nonterminal
+        ON agent_voice_sessions (user_id)
+        WHERE status IN ('starting', 'active')
+    """)
+
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_voice_sessions_status_expires_user
+        ON agent_voice_sessions (status, expires_at, user_id)
+    """)
+
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_voice_sessions_upstream_call
+        ON agent_voice_sessions (upstream_call_id)
+        WHERE upstream_call_id IS NOT NULL
+    """)
+
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_voice_sessions_termination_due
+        ON agent_voice_sessions (
+            termination_status,
+            termination_next_attempt_at,
+            termination_lease_expires_at
+        )
+    """)
+
     conn.commit()
-    conn.close()
+
+
+def init_db():
+    conn = None
+    try:
+        conn = db()
+        if not using_postgres():
+            conn.execute("BEGIN IMMEDIATE")
+        _init_db_with_connection(conn)
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning(
+            "database_initialization_failed code=schema_migration_failed"
+        )
+        raise RuntimeError("database_initialization_failed") from None
+    finally:
+        if conn:
+            conn.close()
 
 
 # -----------------------------
@@ -1745,6 +2077,42 @@ def image_to_base64(filepath):
         return base64.b64encode(
             image_file.read()
         ).decode("utf-8")
+
+
+ALLOWED_UPLOAD_EXTENSIONS = {".txt", ".pdf", ".docx", ".png", ".jpg", ".jpeg", ".webp"}
+MAX_DOCX_UNCOMPRESSED_BYTES = 25 * 1024 * 1024
+
+
+def validate_uploaded_file(filepath, extension):
+    try:
+        with open(filepath, "rb") as uploaded:
+            header = uploaded.read(16)
+        if extension == ".txt":
+            with open(filepath, "rb") as uploaded:
+                uploaded.read().decode("utf-8")
+            return True
+        if extension == ".pdf":
+            return header.startswith(b"%PDF-")
+        if extension == ".docx":
+            if not zipfile.is_zipfile(filepath):
+                return False
+            with zipfile.ZipFile(filepath) as archive:
+                names = set(archive.namelist())
+                total_size = sum(item.file_size for item in archive.infolist())
+            return (
+                "[Content_Types].xml" in names
+                and "word/document.xml" in names
+                and total_size <= MAX_DOCX_UNCOMPRESSED_BYTES
+            )
+        if extension == ".png":
+            return header.startswith(b"\x89PNG\r\n\x1a\n")
+        if extension in {".jpg", ".jpeg"}:
+            return header.startswith(b"\xff\xd8\xff")
+        if extension == ".webp":
+            return header.startswith(b"RIFF") and header[8:12] == b"WEBP"
+    except (OSError, UnicodeDecodeError, zipfile.BadZipFile):
+        return False
+    return False
 
 
 # -----------------------------
@@ -2788,7 +3156,6 @@ def update_approval_task(user_id, task_id, status):
     conn.commit()
     conn.close()
     return changed
-    return tickets
 
 
 def save_pricing_advice(user_id, data, content):
@@ -3788,6 +4155,58 @@ VOICE_DEFAULT_SESSION_MAX_MINUTES = 10
 VOICE_DEFAULT_DAILY_MAX_MINUTES = 20
 VOICE_DEFAULT_IDLE_TIMEOUT_SECONDS = 90
 VOICE_SESSION_RATE_LIMIT_DAILY = 20
+AGENT_MESSAGE_MAX_CHARS = 12000
+VOICE_CSRF_HEADER = "X-BusinessBuilder-CSRF"
+VOICE_CSRF_SESSION_KEY = "_businessbuilder_voice_csrf"
+VOICE_REQUEST_ID_HEADER = "X-BusinessBuilder-Voice-Request-ID"
+VOICE_REQUEST_ID_MAX_CHARS = 120
+VOICE_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]+$")
+VOICE_HANDSHAKE_GRACE_SECONDS = 60
+VOICE_RECONCILE_INTERVAL_SECONDS = 60
+VOICE_ADMISSION_LOCK_NAMESPACE = 1112957523
+OPENAI_REALTIME_CALLS_ENDPOINT = "https://api.openai.com/v1/realtime/calls"
+OPENAI_REALTIME_WEBRTC_ENDPOINT = OPENAI_REALTIME_CALLS_ENDPOINT
+VOICE_UPSTREAM_CALL_ID_MAX_BYTES = 255
+VOICE_TERMINATION_MAX_ATTEMPTS = 8
+VOICE_TERMINATION_LEASE_SECONDS = 30
+VOICE_TERMINATION_BATCH_LIMIT = 5
+VOICE_HANGUP_CONNECT_TIMEOUT_SECONDS = 3.0
+VOICE_HANGUP_READ_TIMEOUT_SECONDS = 10.0
+WORKER_ROLE = "businessbuilder-worker"
+WORKER_HEARTBEAT_INTERVAL_SECONDS = 30
+WORKER_HEARTBEAT_STALE_SECONDS = 600
+WORKER_ROLE_MAX_CHARS = 64
+WORKER_INSTANCE_ID_MAX_CHARS = 120
+WORKER_ERROR_CODE_MAX_CHARS = 120
+WORKER_SAFE_IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z0-9_.:-]+$")
+WORKER_COMMIT_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
+WORKER_CANARY_EXPIRES_SECONDS = 600
+WORKER_CANARY_CLAIM_LEASE_SECONDS = 30
+WORKER_CANARY_WAIT_DEFAULT_SECONDS = 90
+WORKER_CANARY_WAIT_MAX_SECONDS = 300
+WORKER_CANARY_POLL_SECONDS = 1
+WORKER_CANARY_PROBE_ID_MAX_CHARS = 64
+WORKER_CANARY_CLAIM_TOKEN_MAX_CHARS = 120
+WORKER_CANARY_RESULT_CODE_MAX_CHARS = 120
+WORKER_CANARY_STATUSES = frozenset({
+    "pending", "in_progress", "completed", "expired", "failed"
+})
+WORKER_CANARY_VERIFIED_RESULT = "worker_database_round_trip_verified"
+VOICE_TERMINATION_STATES = frozenset({
+    "not_applicable", "not_requested", "pending", "in_progress",
+    "accepted", "failed_permanent"
+})
+OPENAI_REALTIME_MODEL = "gpt-realtime-2.1"
+OPENAI_REALTIME_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe"
+OPENAI_REALTIME_DEFAULT_VOICE = "marin"
+# Phase 2B.1 pins the current documented model and built-in Realtime voices.
+OPENAI_REALTIME_MODEL_ALLOWLIST = frozenset({"gpt-realtime-2.1"})
+OPENAI_REALTIME_VOICE_ALLOWLIST = frozenset({
+    "alloy", "ash", "ballad", "coral", "echo",
+    "sage", "shimmer", "verse", "marin", "cedar"
+})
+_voice_reconcile_lock = threading.Lock()
+_voice_reconcile_last_run = 0.0
 RESEARCH_QUERY_MAX_CHARS = 900
 RESEARCH_TYPES = {"quick", "standard", "deep"}
 RESEARCH_STATUSES = {"planned", "queued", "researching", "synthesizing", "completed", "failed", "cancelled"}
@@ -3869,6 +4288,910 @@ def parse_db_datetime(value):
     return None
 
 
+def normalize_worker_role(value):
+    if not isinstance(value, str):
+        return None
+    normalized = value
+    if (
+        not normalized
+        or len(normalized) > WORKER_ROLE_MAX_CHARS
+        or not WORKER_SAFE_IDENTIFIER_PATTERN.fullmatch(normalized)
+    ):
+        return None
+    return normalized
+
+
+def normalize_worker_instance_id(value):
+    if not isinstance(value, str):
+        return None
+    normalized = value
+    if (
+        not normalized
+        or len(normalized) > WORKER_INSTANCE_ID_MAX_CHARS
+        or not WORKER_SAFE_IDENTIFIER_PATTERN.fullmatch(normalized)
+    ):
+        return None
+    return normalized
+
+
+def validate_worker_commit(value):
+    if (
+        not isinstance(value, str)
+        or len(value) != 40
+        or not WORKER_COMMIT_PATTERN.fullmatch(value)
+    ):
+        return None
+    return value.lower()
+
+
+def normalize_worker_error_code(value):
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        return None
+    normalized = value
+    if (
+        not normalized
+        or len(normalized) > WORKER_ERROR_CODE_MAX_CHARS
+        or not WORKER_SAFE_IDENTIFIER_PATTERN.fullmatch(normalized)
+    ):
+        return None
+    return normalized.lower()
+
+
+def normalize_worker_canary_probe_id(value):
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > WORKER_CANARY_PROBE_ID_MAX_CHARS
+        or not WORKER_SAFE_IDENTIFIER_PATTERN.fullmatch(value)
+    ):
+        return None
+    return value
+
+
+def normalize_worker_canary_claim_token(value):
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > WORKER_CANARY_CLAIM_TOKEN_MAX_CHARS
+        or not WORKER_SAFE_IDENTIFIER_PATTERN.fullmatch(value)
+    ):
+        return None
+    return value
+
+
+def normalize_worker_canary_result_code(value):
+    if value is None:
+        return None
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > WORKER_CANARY_RESULT_CODE_MAX_CHARS
+        or not WORKER_SAFE_IDENTIFIER_PATTERN.fullmatch(value)
+    ):
+        return None
+    return value.lower()
+
+
+def resolve_worker_deployed_commit():
+    if str(os.getenv("RENDER") or "").lower() != "true":
+        return None
+    return validate_worker_commit(os.getenv("RENDER_GIT_COMMIT"))
+
+
+def start_worker_heartbeat(
+    worker_role, instance_id, deployed_commit, now=None
+):
+    role = normalize_worker_role(worker_role)
+    process_instance = normalize_worker_instance_id(instance_id)
+    commit = validate_worker_commit(deployed_commit)
+    if not role or not process_instance or (
+        deployed_commit is not None and commit is None
+    ):
+        logger.warning("worker_heartbeat_start_failed")
+        return {"ok": False, "code": "worker_heartbeat_start_failed"}
+
+    conn = None
+    timestamp = now or utc_now()
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(sql("""
+            INSERT INTO worker_heartbeats (
+                worker_role, instance_id, deployed_commit, started_at,
+                last_poll_at, last_success_at,
+                last_voice_maintenance_at, last_generic_job_at,
+                last_error_code, updated_at
+            ) VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)
+            ON CONFLICT (worker_role) DO UPDATE SET
+                instance_id = excluded.instance_id,
+                deployed_commit = excluded.deployed_commit,
+                started_at = excluded.started_at,
+                last_poll_at = excluded.last_poll_at,
+                last_success_at = NULL,
+                last_voice_maintenance_at = NULL,
+                last_generic_job_at = NULL,
+                last_error_code = NULL,
+                updated_at = excluded.updated_at
+        """), (
+            role, process_instance, commit, timestamp, timestamp, timestamp
+        ))
+        conn.commit()
+        return {"ok": True, "code": "worker_heartbeat_started"}
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("worker_heartbeat_start_failed")
+        return {"ok": False, "code": "worker_heartbeat_start_failed"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def update_worker_heartbeat(
+    worker_role,
+    instance_id,
+    deployed_commit,
+    poll_completed=False,
+    iteration_succeeded=False,
+    voice_maintenance_completed=False,
+    generic_job_completed=False,
+    error_code=None,
+    now=None,
+):
+    role = normalize_worker_role(worker_role)
+    process_instance = normalize_worker_instance_id(instance_id)
+    commit = validate_worker_commit(deployed_commit)
+    safe_error_code = normalize_worker_error_code(error_code)
+    if (
+        not role
+        or not process_instance
+        or (deployed_commit is not None and commit is None)
+        or (error_code is not None and safe_error_code is None)
+    ):
+        logger.warning("worker_heartbeat_update_failed")
+        return {"ok": False, "code": "worker_heartbeat_update_failed"}
+
+    timestamp = now or utc_now()
+    assignments = ["deployed_commit = ?", "updated_at = ?"]
+    values = [commit, timestamp]
+    if poll_completed:
+        assignments.append("last_poll_at = ?")
+        values.append(timestamp)
+    if iteration_succeeded:
+        assignments.extend(["last_success_at = ?", "last_error_code = NULL"])
+        values.append(timestamp)
+    elif safe_error_code is not None:
+        assignments.append("last_error_code = ?")
+        values.append(safe_error_code)
+    if voice_maintenance_completed:
+        assignments.append("last_voice_maintenance_at = ?")
+        values.append(timestamp)
+    if generic_job_completed:
+        assignments.append("last_generic_job_at = ?")
+        values.append(timestamp)
+    values.extend([role, process_instance])
+
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(sql(f"""
+            UPDATE worker_heartbeats
+            SET {', '.join(assignments)}
+            WHERE worker_role = ? AND instance_id = ?
+        """), tuple(values))
+        if cur.rowcount != 1:
+            conn.rollback()
+            return {"ok": False, "code": "worker_heartbeat_ownership_lost"}
+        conn.commit()
+        return {"ok": True, "code": "worker_heartbeat_updated"}
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("worker_heartbeat_update_failed")
+        return {"ok": False, "code": "worker_heartbeat_update_failed"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def _worker_timestamp_age_seconds(value, now):
+    parsed = parse_db_datetime(value)
+    if parsed is None:
+        return None
+    return max(0, int((now - parsed).total_seconds()))
+
+
+def _empty_worker_liveness(worker_role, available=True):
+    return {
+        "available": available,
+        "found": False,
+        "worker_role": worker_role,
+        "deployed_commit": None,
+        "started_at": None,
+        "last_poll_at": None,
+        "last_success_at": None,
+        "last_voice_maintenance_at": None,
+        "last_generic_job_at": None,
+        "last_error_code": None,
+        "heartbeat_age_seconds": None,
+        "success_age_seconds": None,
+        "maintenance_age_seconds": None,
+        "stale": True,
+    }
+
+
+def get_worker_liveness(worker_role, now=None):
+    role = normalize_worker_role(worker_role)
+    if not role:
+        return _empty_worker_liveness(WORKER_ROLE)
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(sql("""
+            SELECT worker_role, deployed_commit, started_at, last_poll_at,
+                   last_success_at, last_voice_maintenance_at,
+                   last_generic_job_at, last_error_code
+            FROM worker_heartbeats
+            WHERE worker_role = ?
+            LIMIT 1
+        """), (role,))
+        row = cur.fetchone()
+        if not row:
+            return _empty_worker_liveness(role)
+        current_time = now or utc_now()
+        heartbeat_age = _worker_timestamp_age_seconds(row[3], current_time)
+        success_age = _worker_timestamp_age_seconds(row[4], current_time)
+        maintenance_age = _worker_timestamp_age_seconds(row[5], current_time)
+        stale = (
+            heartbeat_age is None
+            or success_age is None
+            or heartbeat_age > WORKER_HEARTBEAT_STALE_SECONDS
+            or success_age > WORKER_HEARTBEAT_STALE_SECONDS
+        )
+        return {
+            "available": True,
+            "found": True,
+            "worker_role": row[0],
+            "deployed_commit": validate_worker_commit(row[1]),
+            "started_at": parse_db_datetime(row[2]),
+            "last_poll_at": parse_db_datetime(row[3]),
+            "last_success_at": parse_db_datetime(row[4]),
+            "last_voice_maintenance_at": parse_db_datetime(row[5]),
+            "last_generic_job_at": parse_db_datetime(row[6]),
+            "last_error_code": normalize_worker_error_code(row[7]),
+            "heartbeat_age_seconds": heartbeat_age,
+            "success_age_seconds": success_age,
+            "maintenance_age_seconds": maintenance_age,
+            "stale": stale,
+        }
+    except Exception:
+        logger.warning("worker_database_unavailable")
+        return _empty_worker_liveness(role, available=False)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _worker_cli_age(value):
+    return "unknown" if value is None else str(int(value))
+
+
+@app.cli.command("check-worker-liveness")
+@click.option("--expected-commit", required=True)
+def check_worker_liveness_command(expected_commit):
+    expected = validate_worker_commit(expected_commit)
+    if expected is None:
+        raise click.BadParameter(
+            "must be exactly 40 hexadecimal characters",
+            param_hint="--expected-commit",
+        )
+    result = get_worker_liveness(WORKER_ROLE)
+    if not result.get("available"):
+        status, exit_code = "unavailable", 6
+        commit_state = "unknown"
+    elif not result.get("found"):
+        status, exit_code = "missing", 2
+        commit_state = "unknown"
+    else:
+        deployed_commit = result.get("deployed_commit")
+        commit_state = (
+            "unknown" if deployed_commit is None
+            else "match" if deployed_commit == expected
+            else "mismatch"
+        )
+        if result.get("stale"):
+            status, exit_code = "stale", 3
+        elif commit_state == "unknown":
+            status, exit_code = "live", 5
+        elif commit_state == "mismatch":
+            status, exit_code = "live", 4
+        else:
+            status, exit_code = "live", 0
+
+    click.echo(f"status={status}")
+    click.echo(f"role={WORKER_ROLE}")
+    click.echo(
+        "heartbeat_age_seconds="
+        f"{_worker_cli_age(result.get('heartbeat_age_seconds'))}"
+    )
+    click.echo(
+        "success_age_seconds="
+        f"{_worker_cli_age(result.get('success_age_seconds'))}"
+    )
+    click.echo(f"commit={commit_state}")
+    click.echo(
+        "maintenance_age_seconds="
+        f"{_worker_cli_age(result.get('maintenance_age_seconds'))}"
+    )
+    if exit_code:
+        raise click.exceptions.Exit(exit_code)
+
+
+def _begin_worker_control_transaction(cur):
+    if not using_postgres():
+        cur.execute("PRAGMA busy_timeout = 5000")
+        cur.execute("BEGIN IMMEDIATE")
+
+
+def _worker_canary_row(row):
+    if not row:
+        return None
+    return {
+        "worker_role": row[0],
+        "probe_id": row[1],
+        "expected_commit": row[2],
+        "status": row[3],
+        "requested_at": row[4],
+        "expires_at": row[5],
+        "claimed_at": row[6],
+        "completed_at": row[7],
+        "claim_token": row[8],
+        "claim_expires_at": row[9],
+        "completed_commit": row[10],
+        "result_code": row[11],
+        "updated_at": row[12],
+    }
+
+
+def _load_worker_canary_in_transaction(cur, worker_role, probe_id=None):
+    parameters = [worker_role]
+    probe_filter = ""
+    if probe_id is not None:
+        probe_filter = " AND probe_id = ?"
+        parameters.append(probe_id)
+    query = f"""
+        SELECT worker_role, probe_id, expected_commit, status,
+               requested_at, expires_at, claimed_at, completed_at,
+               claim_token, claim_expires_at, completed_commit,
+               result_code, updated_at
+        FROM worker_canary_probes
+        WHERE worker_role = ?{probe_filter}
+        LIMIT 1
+    """
+    if using_postgres():
+        query += " FOR UPDATE"
+    cur.execute(sql(query), tuple(parameters))
+    return _worker_canary_row(cur.fetchone())
+
+
+def _normalize_worker_canary_in_transaction(cur, canary, now):
+    if not canary:
+        return None
+    status = canary["status"]
+    requested_at = parse_db_datetime(canary["requested_at"])
+    expires_at = parse_db_datetime(canary["expires_at"])
+    claim_expires_at = parse_db_datetime(canary["claim_expires_at"])
+    target_status = status
+    result_code = normalize_worker_canary_result_code(canary["result_code"])
+    clear_claim = False
+
+    if (
+        status not in WORKER_CANARY_STATUSES
+        or requested_at is None
+        or expires_at is None
+        or validate_worker_commit(canary["expected_commit"]) is None
+    ):
+        target_status = "failed"
+        result_code = "worker_canary_malformed"
+        clear_claim = True
+    elif status in {"pending", "in_progress"} and expires_at <= now:
+        target_status = "expired"
+        result_code = "worker_canary_expired"
+        clear_claim = True
+    elif status == "in_progress" and (
+        claim_expires_at is None or claim_expires_at <= now
+    ):
+        target_status = "pending"
+        result_code = None
+        clear_claim = True
+
+    if target_status != status or clear_claim:
+        cur.execute(sql("""
+            UPDATE worker_canary_probes
+            SET status = ?, claim_token = NULL, claim_expires_at = NULL,
+                claimed_at = CASE WHEN ? = 'pending' THEN NULL ELSE claimed_at END,
+                result_code = ?, updated_at = ?
+            WHERE worker_role = ? AND probe_id = ?
+        """), (
+            target_status, target_status, result_code, now,
+            canary["worker_role"], canary["probe_id"],
+        ))
+        canary.update({
+            "status": target_status,
+            "claim_token": None,
+            "claim_expires_at": None,
+            "result_code": result_code,
+            "updated_at": now,
+        })
+        if target_status == "pending":
+            canary["claimed_at"] = None
+    return canary
+
+
+def request_worker_canary(
+    worker_role, expected_commit, now=None, probe_id_factory=None
+):
+    role = normalize_worker_role(worker_role)
+    expected = validate_worker_commit(expected_commit)
+    if not role or expected is None:
+        return {"ok": False, "code": "worker_canary_unavailable"}
+    now = now or utc_now()
+    probe_id_factory = probe_id_factory or (lambda: secrets.token_urlsafe(32))
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        _begin_worker_control_transaction(cur)
+        heartbeat_query = """
+            SELECT deployed_commit, last_poll_at, last_success_at
+            FROM worker_heartbeats WHERE worker_role = ? LIMIT 1
+        """
+        if using_postgres():
+            heartbeat_query += " FOR UPDATE"
+        cur.execute(sql(heartbeat_query), (role,))
+        heartbeat = cur.fetchone()
+        if not heartbeat:
+            conn.commit()
+            return {"ok": False, "code": "worker_canary_worker_missing"}
+        deployed_commit = validate_worker_commit(heartbeat[0])
+        poll_age = _worker_timestamp_age_seconds(heartbeat[1], now)
+        success_age = _worker_timestamp_age_seconds(heartbeat[2], now)
+        if poll_age is None or success_age is None or (
+            poll_age > WORKER_HEARTBEAT_STALE_SECONDS
+            or success_age > WORKER_HEARTBEAT_STALE_SECONDS
+        ):
+            conn.commit()
+            return {"ok": False, "code": "worker_canary_worker_stale"}
+        if deployed_commit is None:
+            conn.commit()
+            return {"ok": False, "code": "worker_canary_commit_unknown"}
+        if deployed_commit != expected:
+            conn.commit()
+            return {"ok": False, "code": "worker_canary_commit_mismatch"}
+
+        existing = _normalize_worker_canary_in_transaction(
+            cur, _load_worker_canary_in_transaction(cur, role), now
+        )
+        if existing and existing["status"] in {"pending", "in_progress"}:
+            existing_expected = validate_worker_commit(
+                existing["expected_commit"]
+            )
+            if existing_expected != expected:
+                conn.commit()
+                return {
+                    "ok": False,
+                    "code": "worker_canary_active_commit_conflict",
+                }
+            conn.commit()
+            return {
+                "ok": True,
+                "code": "worker_canary_already_active",
+                "probe_id": existing["probe_id"],
+            }
+
+        probe_id = normalize_worker_canary_probe_id(probe_id_factory())
+        if probe_id is None:
+            conn.rollback()
+            return {"ok": False, "code": "worker_canary_unavailable"}
+        expires_at = now + timedelta(seconds=WORKER_CANARY_EXPIRES_SECONDS)
+        cur.execute(sql("""
+            INSERT INTO worker_canary_probes (
+                worker_role, probe_id, expected_commit, status,
+                requested_at, expires_at, claimed_at, completed_at,
+                claim_token, claim_expires_at, completed_commit,
+                result_code, updated_at
+            ) VALUES (?, ?, ?, 'pending', ?, ?, NULL, NULL, NULL, NULL,
+                      NULL, NULL, ?)
+            ON CONFLICT (worker_role) DO UPDATE SET
+                probe_id = excluded.probe_id,
+                expected_commit = excluded.expected_commit,
+                status = 'pending',
+                requested_at = excluded.requested_at,
+                expires_at = excluded.expires_at,
+                claimed_at = NULL,
+                completed_at = NULL,
+                claim_token = NULL,
+                claim_expires_at = NULL,
+                completed_commit = NULL,
+                result_code = NULL,
+                updated_at = excluded.updated_at
+        """), (role, probe_id, expected, now, expires_at, now))
+        conn.commit()
+        logger.info("worker_canary_requested role=%s", role)
+        return {
+            "ok": True,
+            "code": "worker_canary_requested",
+            "probe_id": probe_id,
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("worker_canary_unavailable")
+        return {"ok": False, "code": "worker_canary_unavailable"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def claim_worker_canary(
+    worker_role,
+    instance_id,
+    deployed_commit,
+    now=None,
+    claim_token_factory=None,
+):
+    role = normalize_worker_role(worker_role)
+    process_instance = normalize_worker_instance_id(instance_id)
+    commit = validate_worker_commit(deployed_commit)
+    if not role or not process_instance or commit is None:
+        return {"ok": False, "code": "worker_canary_unavailable"}
+    now = now or utc_now()
+    claim_token_factory = claim_token_factory or (
+        lambda: secrets.token_urlsafe(48)
+    )
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        _begin_worker_control_transaction(cur)
+        heartbeat_query = """
+            SELECT instance_id, deployed_commit, last_poll_at, last_success_at
+            FROM worker_heartbeats
+            WHERE worker_role = ? LIMIT 1
+        """
+        if using_postgres():
+            heartbeat_query += " FOR UPDATE"
+        cur.execute(sql(heartbeat_query), (role,))
+        heartbeat = cur.fetchone()
+        if not heartbeat or heartbeat[0] != process_instance:
+            conn.rollback()
+            return {"ok": False, "code": "worker_heartbeat_ownership_lost"}
+        heartbeat_commit = validate_worker_commit(heartbeat[1])
+        if heartbeat_commit is None:
+            conn.rollback()
+            return {"ok": False, "code": "worker_canary_commit_unknown"}
+        if heartbeat_commit != commit:
+            conn.rollback()
+            return {"ok": False, "code": "worker_canary_commit_mismatch"}
+        poll_age = _worker_timestamp_age_seconds(heartbeat[2], now)
+        success_age = _worker_timestamp_age_seconds(heartbeat[3], now)
+        if poll_age is None or success_age is None or (
+            poll_age > WORKER_HEARTBEAT_STALE_SECONDS
+            or success_age > WORKER_HEARTBEAT_STALE_SECONDS
+        ):
+            conn.rollback()
+            return {"ok": False, "code": "worker_canary_worker_stale"}
+        canary = _normalize_worker_canary_in_transaction(
+            cur, _load_worker_canary_in_transaction(cur, role), now
+        )
+        if not canary or canary["status"] != "pending":
+            conn.commit()
+            return {"ok": True, "code": "worker_canary_no_work"}
+        if validate_worker_commit(canary["expected_commit"]) != commit:
+            conn.commit()
+            return {"ok": False, "code": "worker_canary_commit_mismatch"}
+        claim_token = normalize_worker_canary_claim_token(
+            claim_token_factory()
+        )
+        if claim_token is None:
+            conn.rollback()
+            return {"ok": False, "code": "worker_canary_unavailable"}
+        lease_expires_at = now + timedelta(
+            seconds=WORKER_CANARY_CLAIM_LEASE_SECONDS
+        )
+        cur.execute(sql("""
+            UPDATE worker_canary_probes
+            SET status = 'in_progress', claimed_at = ?, claim_token = ?,
+                claim_expires_at = ?, result_code = NULL, updated_at = ?
+            WHERE worker_role = ? AND probe_id = ? AND status = 'pending'
+              AND expires_at > ? AND expected_commit = ?
+        """), (
+            now, claim_token, lease_expires_at, now, role,
+            canary["probe_id"], now, commit,
+        ))
+        if cur.rowcount != 1:
+            conn.rollback()
+            return {"ok": True, "code": "worker_canary_no_work"}
+        conn.commit()
+        return {
+            "ok": True,
+            "code": "worker_canary_claimed",
+            "probe_id": canary["probe_id"],
+            "claim_token": claim_token,
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("worker_canary_unavailable")
+        return {"ok": False, "code": "worker_canary_unavailable"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def finalize_worker_canary(
+    worker_role,
+    instance_id,
+    deployed_commit,
+    probe_id,
+    claim_token,
+    now=None,
+):
+    role = normalize_worker_role(worker_role)
+    process_instance = normalize_worker_instance_id(instance_id)
+    commit = validate_worker_commit(deployed_commit)
+    safe_probe_id = normalize_worker_canary_probe_id(probe_id)
+    safe_claim_token = normalize_worker_canary_claim_token(claim_token)
+    if (
+        not role or not process_instance or commit is None
+        or safe_probe_id is None or safe_claim_token is None
+    ):
+        return {"ok": False, "code": "worker_canary_claim_lost"}
+    now = now or utc_now()
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        _begin_worker_control_transaction(cur)
+        heartbeat_query = """
+            SELECT instance_id, deployed_commit FROM worker_heartbeats
+            WHERE worker_role = ? LIMIT 1
+        """
+        if using_postgres():
+            heartbeat_query += " FOR UPDATE"
+        cur.execute(sql(heartbeat_query), (role,))
+        heartbeat = cur.fetchone()
+        if not heartbeat or heartbeat[0] != process_instance or (
+            validate_worker_commit(heartbeat[1]) != commit
+        ):
+            conn.rollback()
+            return {"ok": False, "code": "worker_heartbeat_ownership_lost"}
+        cur.execute(sql("""
+            UPDATE worker_canary_probes
+            SET status = 'completed', completed_at = ?,
+                completed_commit = ?, result_code = ?,
+                claim_token = NULL, claim_expires_at = NULL, updated_at = ?
+            WHERE worker_role = ? AND probe_id = ?
+              AND status = 'in_progress' AND claim_token = ?
+              AND claim_expires_at > ? AND expires_at > ?
+              AND expected_commit = ?
+        """), (
+            now, commit, WORKER_CANARY_VERIFIED_RESULT, now,
+            role, safe_probe_id, safe_claim_token, now, now, commit,
+        ))
+        if cur.rowcount != 1:
+            conn.rollback()
+            return {"ok": False, "code": "worker_canary_claim_lost"}
+        conn.commit()
+        logger.info("worker_canary_completed role=%s", role)
+        return {"ok": True, "code": WORKER_CANARY_VERIFIED_RESULT}
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("worker_canary_unavailable")
+        return {"ok": False, "code": "worker_canary_unavailable"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def perform_worker_canary_synthetic_step():
+    synthetic_values = ("database", "worker", "canary")
+    return {
+        "ok": len(synthetic_values) == 3,
+        "code": "worker_canary_synthetic_step_completed",
+    }
+
+
+def run_worker_canary_once(worker_role, instance_id, deployed_commit):
+    claim = claim_worker_canary(worker_role, instance_id, deployed_commit)
+    if claim.get("code") == "worker_heartbeat_ownership_lost":
+        return {
+            "processed": False,
+            "completed": False,
+            "code": "worker_heartbeat_ownership_lost",
+        }
+    if claim.get("code") != "worker_canary_claimed":
+        return {
+            "processed": False,
+            "completed": False,
+            "code": claim.get("code") or "worker_canary_unavailable",
+        }
+    try:
+        synthetic = perform_worker_canary_synthetic_step()
+    except Exception:
+        synthetic = None
+    if not isinstance(synthetic, dict) or not synthetic.get("ok") or (
+        synthetic.get("code") != "worker_canary_synthetic_step_completed"
+    ):
+        logger.warning("worker_canary_failed")
+        return {
+            "processed": True,
+            "completed": False,
+            "code": "worker_canary_synthetic_step_failed",
+        }
+    finalization = finalize_worker_canary(
+        worker_role,
+        instance_id,
+        deployed_commit,
+        claim["probe_id"],
+        claim["claim_token"],
+    )
+    return {
+        "processed": True,
+        "completed": bool(finalization.get("ok")),
+        "code": finalization.get("code") or "worker_canary_unavailable",
+    }
+
+
+def get_worker_canary_result(
+    worker_role, probe_id, expected_commit, now=None
+):
+    role = normalize_worker_role(worker_role)
+    safe_probe_id = normalize_worker_canary_probe_id(probe_id)
+    expected = validate_worker_commit(expected_commit)
+    if not role or safe_probe_id is None or expected is None:
+        return {
+            "available": False, "found": False, "status": "failed",
+            "age_seconds": None, "verified": False,
+            "code": "worker_canary_unavailable",
+        }
+    now = now or utc_now()
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        _begin_worker_control_transaction(cur)
+        canary = _normalize_worker_canary_in_transaction(
+            cur,
+            _load_worker_canary_in_transaction(cur, role, safe_probe_id),
+            now,
+        )
+        if not canary:
+            conn.commit()
+            return {
+                "available": True, "found": False, "status": "failed",
+                "age_seconds": None, "verified": False,
+                "code": "worker_canary_missing",
+            }
+        requested_at = parse_db_datetime(canary["requested_at"])
+        age_seconds = (
+            None if requested_at is None
+            else max(0, int((now - requested_at).total_seconds()))
+        )
+        status = canary["status"]
+        completed_commit = validate_worker_commit(
+            canary["completed_commit"]
+        )
+        result_code = normalize_worker_canary_result_code(
+            canary["result_code"]
+        )
+        verified = (
+            status == "completed"
+            and result_code == WORKER_CANARY_VERIFIED_RESULT
+            and completed_commit == expected
+            and validate_worker_commit(canary["expected_commit"]) == expected
+        )
+        conn.commit()
+        return {
+            "available": True,
+            "found": True,
+            "status": status,
+            "age_seconds": age_seconds,
+            "verified": verified,
+            "code": result_code,
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("worker_canary_unavailable")
+        return {
+            "available": False, "found": False, "status": "failed",
+            "age_seconds": None, "verified": False,
+            "code": "worker_canary_unavailable",
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+def _worker_canary_cli_output(status, commit_state, age_seconds, verified):
+    click.echo(f"status={status}")
+    click.echo(f"role={WORKER_ROLE}")
+    click.echo(f"worker_commit={commit_state}")
+    click.echo(
+        "canary_age_seconds="
+        f"{'unknown' if age_seconds is None else int(age_seconds)}"
+    )
+    click.echo(f"result={'verified' if verified else 'not_verified'}")
+
+
+@app.cli.command("verify-worker-canary")
+@click.option("--expected-commit", required=True)
+@click.option(
+    "--wait-seconds",
+    type=click.IntRange(0, WORKER_CANARY_WAIT_MAX_SECONDS),
+    default=WORKER_CANARY_WAIT_DEFAULT_SECONDS,
+    show_default=True,
+)
+def verify_worker_canary_command(expected_commit, wait_seconds):
+    expected = validate_worker_commit(expected_commit)
+    if expected is None:
+        raise click.BadParameter(
+            "must be exactly 40 hexadecimal characters",
+            param_hint="--expected-commit",
+        )
+    requested = request_worker_canary(WORKER_ROLE, expected)
+    request_code = requested.get("code")
+    request_failures = {
+        "worker_canary_worker_missing": ("worker_not_live", "unknown", 2),
+        "worker_canary_worker_stale": ("worker_not_live", "match", 2),
+        "worker_canary_commit_mismatch": ("worker_not_live", "mismatch", 4),
+        "worker_canary_commit_unknown": ("worker_not_live", "unknown", 5),
+        "worker_canary_active_commit_conflict": ("pending", "match", 3),
+        "worker_canary_unavailable": ("unavailable", "unknown", 6),
+    }
+    if request_code in request_failures:
+        status, commit_state, exit_code = request_failures[request_code]
+        _worker_canary_cli_output(status, commit_state, None, False)
+        raise click.exceptions.Exit(exit_code)
+    probe_id = requested.get("probe_id")
+    if normalize_worker_canary_probe_id(probe_id) is None:
+        _worker_canary_cli_output("unavailable", "unknown", None, False)
+        raise click.exceptions.Exit(6)
+
+    remaining = int(wait_seconds)
+    while True:
+        result = get_worker_canary_result(WORKER_ROLE, probe_id, expected)
+        if not result.get("available"):
+            status, exit_code = "unavailable", 6
+        elif result.get("status") == "completed" and result.get("verified"):
+            status, exit_code = "completed", 0
+        elif result.get("status") == "expired":
+            status, exit_code = "expired", 7
+        elif result.get("status") == "failed" or (
+            result.get("status") == "completed" and not result.get("verified")
+        ):
+            status, exit_code = "failed", 8
+        elif remaining <= 0:
+            status, exit_code = "pending", 3
+        else:
+            time.sleep(WORKER_CANARY_POLL_SECONDS)
+            remaining -= WORKER_CANARY_POLL_SECONDS
+            continue
+        _worker_canary_cli_output(
+            status, "match", result.get("age_seconds"),
+            bool(result.get("verified")),
+        )
+        if exit_code:
+            raise click.exceptions.Exit(exit_code)
+        return
+
+
 def get_voice_config():
     max_minutes = env_int(
         "VOICE_SESSION_MAX_MINUTES",
@@ -3889,9 +5212,9 @@ def get_voice_config():
         maximum=600
     )
     return {
-        "enabled": env_bool("VOICE_ENABLED", True),
-        "model": os.getenv("OPENAI_REALTIME_MODEL", "gpt-realtime-2.1").strip() or "gpt-realtime-2.1",
-        "voice": os.getenv("OPENAI_REALTIME_VOICE", "marin").strip() or "marin",
+        "enabled": env_bool("VOICE_RUNTIME_ENABLED", False),
+        "model": OPENAI_REALTIME_MODEL,
+        "voice": OPENAI_REALTIME_DEFAULT_VOICE,
         "handshake_timeout_seconds": env_int("VOICE_HANDSHAKE_TIMEOUT_SECONDS", 12, minimum=5, maximum=30),
         "session_max_minutes": max_minutes,
         "daily_max_minutes": daily_minutes,
@@ -3899,6 +5222,56 @@ def get_voice_config():
         "session_max_seconds": max_minutes * 60,
         "daily_max_seconds": daily_minutes * 60
     }
+
+
+def get_voice_csrf_token():
+    token = session.get(VOICE_CSRF_SESSION_KEY)
+    if not isinstance(token, str) or len(token) < 32:
+        token = secrets.token_urlsafe(32)
+        session[VOICE_CSRF_SESSION_KEY] = token
+    return token
+
+
+def request_is_same_origin():
+    fetch_site = (request.headers.get("Sec-Fetch-Site") or "").strip().lower()
+    if fetch_site in {"cross-site", "none"}:
+        return False
+
+    supplied_origin = (request.headers.get("Origin") or "").strip()
+    if not supplied_origin:
+        referer = (request.headers.get("Referer") or "").strip()
+        if not referer:
+            return False
+        parsed_referer = urllib.parse.urlsplit(referer)
+        supplied_origin = f"{parsed_referer.scheme}://{parsed_referer.netloc}"
+
+    expected = urllib.parse.urlsplit(request.host_url)
+    supplied = urllib.parse.urlsplit(supplied_origin)
+    return (
+        supplied.scheme.lower() in {"http", "https"}
+        and supplied.scheme.lower() == expected.scheme.lower()
+        and supplied.netloc.lower() == expected.netloc.lower()
+        and not supplied.username
+        and not supplied.password
+    )
+
+
+def voice_csrf_is_valid():
+    expected = session.get(VOICE_CSRF_SESSION_KEY)
+    supplied = request.headers.get(VOICE_CSRF_HEADER)
+    return (
+        isinstance(expected, str)
+        and isinstance(supplied, str)
+        and hmac.compare_digest(expected, supplied)
+    )
+
+
+def resolve_realtime_voice(user_id, profile=None):
+    profile = profile or get_agent_profile(user_id)
+    selected_voice = str(profile[5] if profile and len(profile) > 5 else "").strip().lower()
+    if selected_voice in OPENAI_REALTIME_VOICE_ALLOWLIST:
+        return selected_voice
+    return OPENAI_REALTIME_DEFAULT_VOICE
 
 
 def command_center_live_model_enabled():
@@ -5384,12 +6757,13 @@ def get_active_voice_session(user_id):
     cur.execute(sql("""
         SELECT id, user_id, conversation_id, project_id, status, model_name,
                voice_name, started_at, ended_at, duration_seconds,
-               disconnect_reason, created_at
+               disconnect_reason, created_at, handshake_request_id, expires_at,
+               updated_at
         FROM agent_voice_sessions
-        WHERE user_id = ? AND status = ?
+        WHERE user_id = ? AND status IN ('starting', 'active')
         ORDER BY id DESC
         LIMIT 1
-    """), (user_id, "active"))
+    """), (user_id,))
     row = cur.fetchone()
     conn.close()
     return row
@@ -5401,7 +6775,8 @@ def get_user_voice_sessions(user_id, limit=100):
     cur.execute(sql("""
         SELECT id, user_id, conversation_id, project_id, status, model_name,
                voice_name, started_at, ended_at, duration_seconds,
-               disconnect_reason, created_at
+               disconnect_reason, created_at, handshake_request_id, expires_at,
+               updated_at
         FROM agent_voice_sessions
         WHERE user_id = ?
         ORDER BY id DESC
@@ -5429,147 +6804,1644 @@ def get_user_voice_usage(user_id):
     return {"seconds_today": total_seconds, "sessions_today": sessions_today}
 
 
-def can_start_voice_session(user_id):
-    config = get_voice_config()
-    if not config["enabled"]:
-        return False, "Voice mode is currently disabled. Text mode is still available."
-    if not os.getenv("OPENAI_API_KEY"):
-        return False, "Voice mode is not configured yet. OPENAI_API_KEY is missing on the server."
-    if get_active_voice_session(user_id):
-        return False, "A voice session is already active. Stop it before starting another one."
-    usage = get_user_voice_usage(user_id)
-    if usage["sessions_today"] >= VOICE_SESSION_RATE_LIMIT_DAILY:
-        return False, "You have reached today's voice session start limit. Text mode is still available."
-    if usage["seconds_today"] >= config["daily_max_seconds"]:
-        return False, "You have reached today's voice minutes limit. Text mode is still available."
-    return True, ""
+def normalize_voice_request_id(value):
+    if value is None or value == "":
+        return None, "voice_request_id_required"
+    if (
+        not isinstance(value, str)
+        or len(value) > VOICE_REQUEST_ID_MAX_CHARS
+        or not VOICE_REQUEST_ID_PATTERN.fullmatch(value)
+    ):
+        return None, "invalid_voice_request_id"
+    return value, None
 
 
-def start_voice_session(user_id, conversation_id, project_id):
-    config = get_voice_config()
-    conn = db()
-    cur = conn.cursor()
-    values = (user_id, conversation_id, project_id, "active", config["model"], config["voice"])
-    if using_postgres():
-        cur.execute(sql("""
-            INSERT INTO agent_voice_sessions (
-                user_id, conversation_id, project_id, status, model_name, voice_name
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            RETURNING id
-        """), values)
-        session_id = cur.fetchone()[0]
-    else:
-        cur.execute(sql("""
-            INSERT INTO agent_voice_sessions (
-                user_id, conversation_id, project_id, status, model_name, voice_name
-            ) VALUES (?, ?, ?, ?, ?, ?)
-        """), values)
-        session_id = cur.lastrowid
-    conn.commit()
-    conn.close()
-    return session_id
+def _voice_admission_result(ok, code="", status=200, message="", **values):
+    result = {
+        "ok": ok,
+        "code": code,
+        "status": status,
+        "message": message,
+        "retryable": code in {
+            "voice_handshake_in_progress",
+            "voice_session_active",
+            "voice_admission_busy"
+        }
+    }
+    result.update(values)
+    return result
 
 
-def finish_voice_session(user_id, voice_session_id, reason="client_disconnected"):
-    conn = db()
-    cur = conn.cursor()
-    cur.execute(sql("""
-        SELECT started_at
-        FROM agent_voice_sessions
-        WHERE user_id = ? AND id = ?
-        LIMIT 1
-    """), (user_id, voice_session_id))
-    row = cur.fetchone()
-    if not row:
-        conn.close()
+def _end_voice_row_in_transaction(cur, row, reason, now):
+    session_id, user_id, status, started_value = row[0], row[1], row[2], row[3]
+    if status == "ended":
         return False
-    started_at = parse_db_datetime(row[0])
-    duration = max(0, int((utc_now() - started_at).total_seconds())) if started_at else 0
+    started_at = parse_db_datetime(started_value)
+    duration = max(0, int((now - started_at).total_seconds())) if started_at else 0
     cur.execute(sql("""
         UPDATE agent_voice_sessions
-        SET status = ?, ended_at = CURRENT_TIMESTAMP, duration_seconds = ?,
-            disconnect_reason = ?
-        WHERE user_id = ? AND id = ?
-    """), ("ended", duration, str(reason or "client_disconnected")[:120], user_id, voice_session_id))
-    conn.commit()
-    conn.close()
-    return True
+        SET status = 'ended',
+            ended_at = COALESCE(ended_at, ?),
+            duration_seconds = CASE
+                WHEN duration_seconds > ? THEN duration_seconds
+                ELSE ?
+            END,
+            disconnect_reason = COALESCE(disconnect_reason, ?),
+            updated_at = ?
+        WHERE id = ? AND user_id = ? AND status IN ('starting', 'active')
+    """), (
+        now, duration, duration, str(reason or "server_expired")[:120],
+        now, session_id, user_id
+    ))
+    return cur.rowcount > 0
 
 
-def finish_stale_voice_sessions(user_id):
-    active = get_active_voice_session(user_id)
-    if not active:
+def _clear_unusable_voice_call_identity_in_transaction(
+    cur, row, reason, now
+):
+    voice_session_id, user_id, status, started_value = row[:4]
+    if status in {"starting", "active"}:
+        _end_voice_row_in_transaction(
+            cur,
+            (voice_session_id, user_id, status, started_value),
+            reason,
+            now
+        )
+    cur.execute(sql("""
+        UPDATE agent_voice_sessions
+        SET upstream_call_id = NULL,
+            termination_status = 'not_applicable',
+            termination_attempts = 0,
+            termination_requested_at = NULL,
+            termination_last_attempt_at = NULL,
+            termination_next_attempt_at = NULL,
+            termination_accepted_at = NULL,
+            termination_error_code = ?,
+            termination_claim_token = NULL,
+            termination_lease_expires_at = NULL,
+            duration_seconds = CASE
+                WHEN duration_seconds IS NULL OR duration_seconds < 0 THEN 0
+                ELSE duration_seconds
+            END,
+            disconnect_reason = COALESCE(disconnect_reason, ?),
+            updated_at = ?
+        WHERE id = ? AND user_id = ?
+    """), (
+        reason, reason, now, voice_session_id, user_id
+    ))
+
+
+def _voice_call_id_survivor_key(row):
+    """Rank duplicate owners deterministically without changing call identity.
+
+    A consistent terminal record wins first, then a consistent terminating
+    record, then a consistent active record. Stable recency and ID break ties.
+    """
+    status = row[2]
+    termination_status = row[5] or "not_applicable"
+    if status == "ended" and termination_status in {
+        "accepted", "failed_permanent"
+    }:
+        consistency_rank = 4
+    elif status == "ended" and termination_status in {
+        "pending", "in_progress"
+    }:
+        consistency_rank = 3
+    elif status == "active" and termination_status == "not_requested":
+        consistency_rank = 2
+    elif status == "starting" and termination_status == "not_applicable":
+        consistency_rank = 1
+    else:
+        consistency_rank = 0
+    stable_time = (
+        parse_db_datetime(row[6])
+        or parse_db_datetime(row[7])
+        or parse_db_datetime(row[3])
+        or datetime.min.replace(tzinfo=timezone.utc)
+    )
+    return consistency_rank, stable_time, int(row[0])
+
+
+def _reconcile_valid_voice_call_state_in_transaction(cur, row, now):
+    voice_session_id, user_id, status, started_value = row[:4]
+    termination_status = row[5] or "not_applicable"
+    if status not in {"starting", "active", "ended"}:
+        _clear_unusable_voice_call_identity_in_transaction(
+            cur, row, "invalid_voice_termination_state_reconciled", now
+        )
         return
-    started_at = parse_db_datetime(active[7])
+    if status in {"starting", "active"} and not (
+        status == "active" and termination_status == "not_requested"
+    ):
+        _end_voice_row_in_transaction(
+            cur,
+            (voice_session_id, user_id, status, started_value),
+            "invalid_voice_termination_state_reconciled",
+            now
+        )
+        status = "ended"
+    if status == "starting":
+        _end_voice_row_in_transaction(
+            cur,
+            (voice_session_id, user_id, status, started_value),
+            "identified_starting_session_reconciled",
+            now
+        )
+        status = "ended"
+
+    if status == "active":
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET termination_status = 'not_requested',
+                termination_next_attempt_at = NULL,
+                termination_claim_token = NULL,
+                termination_lease_expires_at = NULL,
+                updated_at = ?
+            WHERE id = ? AND user_id = ? AND status = 'active'
+              AND upstream_call_id IS NOT NULL
+        """), (now, voice_session_id, user_id))
+        return
+
+    if termination_status in {"accepted", "failed_permanent"}:
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET termination_next_attempt_at = NULL,
+                termination_claim_token = NULL,
+                termination_lease_expires_at = NULL,
+                updated_at = ?
+            WHERE id = ? AND user_id = ? AND status = 'ended'
+              AND upstream_call_id IS NOT NULL
+        """), (now, voice_session_id, user_id))
+        return
+    if termination_status == "in_progress":
+        return
+    cur.execute(sql("""
+        UPDATE agent_voice_sessions
+        SET termination_status = 'pending',
+            termination_requested_at = COALESCE(termination_requested_at, ?),
+            termination_next_attempt_at = COALESCE(
+                termination_next_attempt_at, ?
+            ),
+            termination_claim_token = NULL,
+            termination_lease_expires_at = NULL,
+            updated_at = ?
+        WHERE id = ? AND user_id = ? AND status = 'ended'
+          AND upstream_call_id IS NOT NULL
+    """), (now, now, now, voice_session_id, user_id))
+
+
+def _reconcile_voice_call_ids_for_migration(cur, now=None):
+    """Make stored call identities safe before the unique index is created."""
+    now = now or utc_now()
+    cur.execute(sql("""
+        SELECT id, user_id, status, started_at, upstream_call_id,
+               termination_status, updated_at, created_at
+        FROM agent_voice_sessions
+        WHERE upstream_call_id IS NOT NULL
+        ORDER BY id
+    """))
+    rows = cur.fetchall()
+    valid_groups = {}
+    original_stable_times = {
+        row[0]: (row[6], row[7]) for row in rows
+    }
+    for row in rows:
+        call_id = row[4]
+        if not valid_realtime_call_id(call_id):
+            _clear_unusable_voice_call_identity_in_transaction(
+                cur, row, "invalid_upstream_call_id_reconciled", now
+            )
+            continue
+        _reconcile_valid_voice_call_state_in_transaction(cur, row, now)
+
+    _reconcile_stale_voice_termination_leases_in_transaction(cur, now)
+    cur.execute(sql("""
+        SELECT id, user_id, status, started_at, upstream_call_id,
+               termination_status, updated_at, created_at
+        FROM agent_voice_sessions
+        WHERE upstream_call_id IS NOT NULL
+        ORDER BY id
+    """))
+    for row in cur.fetchall():
+        stable_times = original_stable_times.get(
+            row[0], (row[6], row[7])
+        )
+        ranked_row = tuple(row[:6]) + tuple(stable_times)
+        valid_groups.setdefault(row[4], []).append(ranked_row)
+    for duplicate_rows in valid_groups.values():
+        if len(duplicate_rows) <= 1:
+            continue
+        survivor = max(duplicate_rows, key=_voice_call_id_survivor_key)
+        for row in duplicate_rows:
+            if row[0] == survivor[0]:
+                continue
+            _clear_unusable_voice_call_identity_in_transaction(
+                cur, row, "duplicate_upstream_call_id_reconciled", now
+            )
+
+    cur.execute(sql("""
+        SELECT upstream_call_id, status, termination_status,
+               termination_claim_token, termination_next_attempt_at,
+               termination_lease_expires_at
+        FROM agent_voice_sessions
+        WHERE upstream_call_id IS NOT NULL
+        ORDER BY upstream_call_id
+    """))
+    retained_rows = cur.fetchall()
+    retained_call_ids = [row[0] for row in retained_rows]
+    invalid_state = any(
+        not (
+            (row[1] == "active" and row[2] == "not_requested")
+            or (
+                row[1] == "ended"
+                and row[2] in {
+                    "pending", "in_progress",
+                    "accepted", "failed_permanent"
+                }
+            )
+        )
+        or (
+            row[2] != "in_progress"
+            and row[3] is not None
+        )
+        or (row[2] == "accepted" and row[4] is not None)
+        or (
+            row[2] == "in_progress"
+            and (
+                row[3] is None
+                or parse_db_datetime(row[5]) is None
+                or parse_db_datetime(row[5]) <= now
+            )
+        )
+        or (
+            row[2] != "in_progress"
+            and row[5] is not None
+        )
+        for row in retained_rows
+    )
+    if (
+        any(not valid_realtime_call_id(value) for value in retained_call_ids)
+        or len(retained_call_ids) != len(set(retained_call_ids))
+        or invalid_state
+    ):
+        raise RuntimeError("voice_call_id_migration_verification_failed")
+
+
+def _load_voice_termination_row_in_transaction(
+    cur, voice_session_id, user_id
+):
+    query = """
+        SELECT upstream_call_id, termination_status,
+               termination_lease_expires_at, termination_attempts,
+               termination_requested_at, termination_next_attempt_at,
+               termination_claim_token, status
+        FROM agent_voice_sessions
+        WHERE id = ? AND user_id = ?
+        LIMIT 1
+    """
+    if using_postgres():
+        query += " FOR UPDATE"
+    cur.execute(sql(query), (voice_session_id, user_id))
+    return cur.fetchone()
+
+
+def _normalize_stale_voice_termination_in_transaction(
+    cur, voice_session_id, user_id, now, termination_row=None
+):
+    """Normalize one owned termination row without performing network I/O."""
+    termination_row = termination_row or _load_voice_termination_row_in_transaction(
+        cur, voice_session_id, user_id
+    )
+    if not termination_row or termination_row[1] != "in_progress":
+        return termination_row, "unchanged"
+    lease_expires_at = parse_db_datetime(termination_row[2])
+    if lease_expires_at and lease_expires_at > now:
+        return termination_row, "unchanged"
+
+    attempts = int(termination_row[3] or 0)
+    if attempts >= VOICE_TERMINATION_MAX_ATTEMPTS:
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET termination_status = 'failed_permanent',
+                termination_next_attempt_at = NULL,
+                termination_error_code = 'voice_termination_attempts_exhausted',
+                termination_claim_token = NULL,
+                termination_lease_expires_at = NULL,
+                updated_at = ?
+            WHERE id = ? AND user_id = ? AND status = 'ended'
+              AND termination_status = 'in_progress'
+              AND COALESCE(termination_attempts, 0) >= ?
+              AND (
+                  termination_lease_expires_at IS NULL
+                  OR termination_lease_expires_at <= ?
+              )
+        """), (
+            now, voice_session_id, user_id,
+            VOICE_TERMINATION_MAX_ATTEMPTS, now
+        ))
+        action = "exhausted" if cur.rowcount == 1 else "unchanged"
+    else:
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET termination_status = 'pending',
+                termination_next_attempt_at = ?,
+                termination_error_code =
+                    'voice_termination_stale_lease_recovered',
+                termination_claim_token = NULL,
+                termination_lease_expires_at = NULL,
+                updated_at = ?
+            WHERE id = ? AND user_id = ? AND status = 'ended'
+              AND termination_status = 'in_progress'
+              AND COALESCE(termination_attempts, 0) < ?
+              AND (
+                  termination_lease_expires_at IS NULL
+                  OR termination_lease_expires_at <= ?
+              )
+        """), (
+            now, now, voice_session_id, user_id,
+            VOICE_TERMINATION_MAX_ATTEMPTS, now
+        ))
+        action = "recovered" if cur.rowcount == 1 else "unchanged"
+    return _load_voice_termination_row_in_transaction(
+        cur, voice_session_id, user_id
+    ), action
+
+
+def _schedule_voice_termination_in_transaction(cur, voice_session_id, user_id, now):
+    termination_row = _load_voice_termination_row_in_transaction(
+        cur, voice_session_id, user_id
+    )
+    if not termination_row or not termination_row[0]:
+        return "not_applicable"
+    termination_row, _ = _normalize_stale_voice_termination_in_transaction(
+        cur, voice_session_id, user_id, now, termination_row
+    )
+    termination_status = termination_row[1] or "not_applicable"
+    if termination_status in {"accepted", "failed_permanent"}:
+        return termination_status
+    lease_expires_at = parse_db_datetime(termination_row[2])
+    if (
+        termination_status == "in_progress"
+        and lease_expires_at
+        and lease_expires_at > now
+    ):
+        return "in_progress"
+    cur.execute(sql("""
+        UPDATE agent_voice_sessions
+        SET termination_status = 'pending',
+            termination_requested_at = COALESCE(termination_requested_at, ?),
+            termination_next_attempt_at = CASE
+                WHEN termination_status = 'pending'
+                     AND termination_next_attempt_at IS NOT NULL
+                    THEN termination_next_attempt_at
+                ELSE ?
+            END,
+            termination_claim_token = NULL,
+            termination_lease_expires_at = NULL,
+            updated_at = ?
+        WHERE id = ? AND user_id = ?
+          AND upstream_call_id IS NOT NULL
+          AND termination_status IN (
+              'not_requested', 'not_applicable', 'pending'
+          )
+    """), (now, now, now, voice_session_id, user_id))
+    if cur.rowcount == 1:
+        return "pending"
+    refreshed = _load_voice_termination_row_in_transaction(
+        cur, voice_session_id, user_id
+    )
+    return (refreshed[1] if refreshed else "not_applicable")
+
+
+def _reconcile_voice_sessions_in_transaction(cur, user_id=None, now=None):
+    now = now or utc_now()
+    _reconcile_stale_voice_termination_leases_in_transaction(cur, now)
+    params = ()
+    where = "WHERE status IN ('starting', 'active')"
+    if user_id is not None:
+        where += " AND user_id = ?"
+        params = (user_id,)
+    cur.execute(sql(f"""
+        SELECT id, user_id, status, started_at, expires_at, ended_at,
+               duration_seconds, disconnect_reason, updated_at, created_at,
+               upstream_call_id, termination_status,
+               termination_lease_expires_at
+        FROM agent_voice_sessions
+        {where}
+        ORDER BY user_id, id
+    """), params)
+    rows = cur.fetchall()
+    counts = {
+        "handshake_expired": 0,
+        "server_expired": 0,
+        "legacy_session_expired": 0,
+        "invalid_session_timestamp": 0,
+        "duplicate_session_reconciled": 0
+    }
+    candidates = {}
+    session_max_seconds = get_voice_config()["session_max_seconds"]
+    for row in rows:
+        if row[2] not in {"starting", "active"}:
+            continue
+        started_at = parse_db_datetime(row[3]) or parse_db_datetime(row[9])
+        expires_at = parse_db_datetime(row[4])
+        reason = None
+        if expires_at:
+            if now >= expires_at:
+                reason = (
+                    "handshake_expired"
+                    if row[2] == "starting"
+                    else "server_expired"
+                )
+        elif not started_at:
+            reason = "invalid_session_timestamp"
+        elif row[2] == "starting" and now >= (
+            started_at + timedelta(seconds=VOICE_HANDSHAKE_GRACE_SECONDS)
+        ):
+            reason = "handshake_expired"
+        elif row[2] == "active" and now >= (
+            started_at + timedelta(seconds=session_max_seconds)
+        ):
+            reason = "legacy_session_expired"
+        if reason:
+            if _end_voice_row_in_transaction(cur, row, reason, now):
+                counts[reason] += 1
+                _schedule_voice_termination_in_transaction(
+                    cur, row[0], row[1], now
+                )
+            continue
+        candidates.setdefault(row[1], []).append(row)
+
+    for duplicate_rows in candidates.values():
+        if len(duplicate_rows) <= 1:
+            continue
+        def newest_key(row):
+            newest_at = (
+                parse_db_datetime(row[8])
+                or parse_db_datetime(row[3])
+                or parse_db_datetime(row[9])
+                or datetime.min.replace(tzinfo=timezone.utc)
+            )
+            return newest_at, row[0]
+        retained = max(duplicate_rows, key=newest_key)
+        for row in duplicate_rows:
+            if row[0] == retained[0]:
+                continue
+            if _end_voice_row_in_transaction(
+                cur, row, "duplicate_session_reconciled", now
+            ):
+                counts["duplicate_session_reconciled"] += 1
+                _schedule_voice_termination_in_transaction(
+                    cur, row[0], row[1], now
+                )
+    return counts
+
+
+def _voice_usage_in_transaction(cur, user_id, now):
+    cur.execute(sql("""
+        SELECT status, started_at, duration_seconds, created_at
+        FROM agent_voice_sessions
+        WHERE user_id = ?
+    """), (user_id,))
+    sessions_today = 0
+    seconds_today = 0
+    for status, started_value, duration_value, created_value in cur.fetchall():
+        started_at = parse_db_datetime(started_value or created_value)
+        if not started_at or started_at.date() != now.date():
+            continue
+        sessions_today += 1
+        if status == "active":
+            seconds_today += max(0, int((now - started_at).total_seconds()))
+        else:
+            seconds_today += max(0, int(duration_value or 0))
+    return sessions_today, seconds_today
+
+
+def _admit_voice_session_in_transaction(
+    cur, user_id, conversation_id, project_id, handshake_request_id, now
+):
     config = get_voice_config()
-    if started_at and (utc_now() - started_at).total_seconds() > config["session_max_seconds"]:
-        finish_voice_session(user_id, active[0], "max_duration_reached")
+    if not config["enabled"]:
+        return _voice_admission_result(
+            False, "voice_runtime_disabled", 503,
+            "Voice runtime is not available yet. Text mode remains available."
+        )
+    cur.execute(sql("""
+        SELECT voice_enabled, selected_voice
+        FROM agent_profiles
+        WHERE user_id = ?
+        LIMIT 1
+    """), (user_id,))
+    profile = cur.fetchone()
+    if not profile or not bool(profile[0]):
+        return _voice_admission_result(
+            False, "voice_preference_disabled", 403,
+            "Voice is disabled in your BusinessBuilder settings."
+        )
+    if not os.getenv("OPENAI_API_KEY"):
+        return _voice_admission_result(
+            False, "voice_not_configured", 503,
+            "Voice is not configured on the server. Text mode remains available."
+        )
+    if config["model"] not in OPENAI_REALTIME_MODEL_ALLOWLIST:
+        return _voice_admission_result(
+            False, "invalid_realtime_configuration", 503,
+            "Voice configuration is not available. Text mode remains available."
+        )
+
+    _reconcile_voice_sessions_in_transaction(cur, user_id, now)
+    cur.execute(sql("""
+        SELECT id, status
+        FROM agent_voice_sessions
+        WHERE user_id = ? AND handshake_request_id = ?
+        LIMIT 1
+    """), (user_id, handshake_request_id))
+    existing_request = cur.fetchone()
+    if existing_request:
+        if existing_request[1] == "starting":
+            return _voice_admission_result(
+                False, "voice_handshake_in_progress", 409,
+                "This voice handshake is already processing."
+            )
+        if existing_request[1] == "active":
+            return _voice_admission_result(
+                False, "voice_session_active", 409,
+                "This voice session is already active."
+            )
+        return _voice_admission_result(
+            False, "voice_request_id_reused", 409,
+            "Use a new voice request ID for a new SDP offer."
+        )
+
+    cur.execute(sql("""
+        SELECT id FROM agent_voice_sessions
+        WHERE user_id = ? AND status IN ('starting', 'active')
+        LIMIT 1
+    """), (user_id,))
+    if cur.fetchone():
+        return _voice_admission_result(
+            False, "voice_session_active", 409,
+            "Another voice session is already starting or active."
+        )
+    sessions_today, seconds_today = _voice_usage_in_transaction(cur, user_id, now)
+    if sessions_today >= VOICE_SESSION_RATE_LIMIT_DAILY:
+        return _voice_admission_result(
+            False, "voice_rate_limited", 429,
+            "You have reached today's voice session start limit."
+        )
+    if seconds_today >= config["daily_max_seconds"]:
+        return _voice_admission_result(
+            False, "voice_rate_limited", 429,
+            "You have reached today's voice minutes limit."
+        )
+
+    saved_voice = str(profile[1] or "").strip().lower()
+    voice_name = (
+        saved_voice
+        if saved_voice in OPENAI_REALTIME_VOICE_ALLOWLIST
+        else OPENAI_REALTIME_DEFAULT_VOICE
+    )
+    expires_at = now + timedelta(seconds=config["session_max_seconds"])
+    values = (
+        user_id, conversation_id, project_id, "starting", config["model"],
+        voice_name, handshake_request_id, now, expires_at, now, now
+    )
+    insert_sql = """
+        INSERT INTO agent_voice_sessions (
+            user_id, conversation_id, project_id, status, model_name,
+            voice_name, handshake_request_id, started_at, expires_at,
+            created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+    if using_postgres():
+        cur.execute(sql(insert_sql + " RETURNING id"), values)
+        voice_session_id = cur.fetchone()[0]
+    else:
+        cur.execute(sql(insert_sql), values)
+        voice_session_id = cur.lastrowid
+    return _voice_admission_result(
+        True,
+        voice_session_id=voice_session_id,
+        conversation_id=conversation_id,
+        voice_name=voice_name,
+        expires_at=expires_at
+    )
 
 
-def voice_safety_identifier(user_id):
-    seed = f"businessbuilder-ai-realtime-safety:{user_id}".encode("utf-8")
-    return hashlib.sha256(seed).hexdigest()
+def admit_voice_session(
+    user_id, conversation_id, project_id, handshake_request_id, now=None
+):
+    normalized_request_id, error_code = normalize_voice_request_id(
+        handshake_request_id
+    )
+    if error_code:
+        return _voice_admission_result(False, error_code, 400)
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if using_postgres():
+            cur.execute(
+                "SELECT pg_advisory_xact_lock(%s, %s)",
+                (VOICE_ADMISSION_LOCK_NAMESPACE, int(user_id))
+            )
+        else:
+            cur.execute("PRAGMA busy_timeout = 5000")
+            cur.execute("BEGIN IMMEDIATE")
+        result = _admit_voice_session_in_transaction(
+            cur, user_id, conversation_id, project_id,
+            normalized_request_id, now or utc_now()
+        )
+        conn.commit()
+        return result
+    except (sqlite3.OperationalError, psycopg2.Error):
+        if conn:
+            conn.rollback()
+        logger.warning("voice_admission_failed code=voice_admission_busy")
+        return _voice_admission_result(
+            False, "voice_admission_busy", 503,
+            "Voice admission is busy. Please retry."
+        )
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("voice_admission_failed code=voice_admission_busy")
+        return _voice_admission_result(
+            False, "voice_admission_busy", 503,
+            "Voice admission is busy. Please retry."
+        )
+    finally:
+        if conn:
+            conn.close()
+
+
+def activate_voice_session(
+    user_id, voice_session_id, handshake_request_id, upstream_call_id,
+    now=None
+):
+    if not valid_realtime_call_id(upstream_call_id):
+        return {"ok": False, "code": "invalid_upstream_call_location"}
+    conn = None
+    now = now or utc_now()
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if not using_postgres():
+            cur.execute("BEGIN IMMEDIATE")
+        _reconcile_voice_sessions_in_transaction(cur, user_id, now)
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET status = 'active',
+                upstream_call_id = ?,
+                termination_status = 'not_requested',
+                updated_at = ?
+            WHERE id = ? AND user_id = ? AND handshake_request_id = ?
+              AND status = 'starting'
+              AND expires_at IS NOT NULL AND expires_at > ?
+              AND upstream_call_id IS NULL
+        """), (
+            upstream_call_id, now, voice_session_id, user_id,
+            handshake_request_id, now
+        ))
+        activated = cur.rowcount > 0
+        conn.commit()
+        return {
+            "ok": activated,
+            "code": "" if activated else "voice_activation_failed"
+        }
+    except (sqlite3.IntegrityError, psycopg2.IntegrityError):
+        if conn:
+            conn.rollback()
+        logger.warning(
+            "voice_session_activation_failed code=duplicate_upstream_call_id"
+        )
+        return {"ok": False, "code": "duplicate_upstream_call_id"}
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("voice_session_activation_failed code=voice_activation_failed")
+        return {"ok": False, "code": "voice_activation_failed"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def prepare_voice_activation_failure(
+    user_id, voice_session_id, handshake_request_id, upstream_call_id,
+    reason="voice_activation_failed", now=None
+):
+    if not valid_realtime_call_id(upstream_call_id):
+        return {
+            "durable": False,
+            "safe_to_hangup": False,
+            "code": "invalid_upstream_call_location"
+        }
+    conn = None
+    now = now or utc_now()
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if not using_postgres():
+            cur.execute("PRAGMA busy_timeout = 5000")
+            cur.execute("BEGIN IMMEDIATE")
+        row_query = """
+            SELECT id, user_id, status, started_at, expires_at, ended_at,
+                   duration_seconds, disconnect_reason, updated_at, created_at,
+                   upstream_call_id, termination_status,
+                   termination_requested_at, termination_next_attempt_at,
+                   termination_accepted_at, termination_error_code,
+                   termination_attempts, termination_claim_token,
+                   termination_lease_expires_at
+            FROM agent_voice_sessions
+            WHERE id = ? AND user_id = ? AND handshake_request_id = ?
+            LIMIT 1
+        """
+        if using_postgres():
+            row_query += " FOR UPDATE"
+        cur.execute(sql(row_query), (
+            voice_session_id, user_id, handshake_request_id
+        ))
+        row = cur.fetchone()
+        if not row:
+            conn.commit()
+            return {
+                "durable": False,
+                "safe_to_hangup": True,
+                "code": "voice_activation_failed"
+            }
+
+        existing_call_id = row[10]
+        if existing_call_id and existing_call_id != upstream_call_id:
+            conn.commit()
+            return {
+                "durable": False,
+                "safe_to_hangup": True,
+                "code": "upstream_call_identity_conflict"
+            }
+
+        cur.execute(sql("""
+            SELECT id
+            FROM agent_voice_sessions
+            WHERE upstream_call_id = ? AND id <> ?
+            LIMIT 1
+        """), (upstream_call_id, voice_session_id))
+        if cur.fetchone():
+            conn.commit()
+            return {
+                "durable": False,
+                "safe_to_hangup": False,
+                "code": "duplicate_upstream_call_id"
+            }
+        if row[2] in {"starting", "active"} and not _end_voice_row_in_transaction(
+            cur, row, reason, now
+        ):
+            conn.rollback()
+            return {
+                "durable": False,
+                "safe_to_hangup": True,
+                "code": "voice_activation_failed"
+            }
+        if row[2] not in {"starting", "active", "ended"}:
+            conn.commit()
+            return {
+                "durable": False,
+                "safe_to_hangup": True,
+                "code": "voice_activation_failed"
+            }
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET upstream_call_id = ?,
+                termination_status = CASE
+                    WHEN termination_status IN (
+                        'accepted', 'failed_permanent',
+                        'in_progress', 'pending'
+                    ) THEN termination_status
+                    ELSE 'pending'
+                END,
+                termination_requested_at = CASE
+                    WHEN termination_status IN (
+                        'accepted', 'failed_permanent', 'in_progress'
+                    ) THEN termination_requested_at
+                    ELSE COALESCE(termination_requested_at, ?)
+                END,
+                termination_next_attempt_at = CASE
+                    WHEN termination_status IN (
+                        'accepted', 'failed_permanent'
+                    ) THEN NULL
+                    WHEN termination_status IN ('in_progress', 'pending')
+                        THEN termination_next_attempt_at
+                    ELSE COALESCE(termination_next_attempt_at, ?)
+                END,
+                termination_error_code = CASE
+                    WHEN termination_status IN (
+                        'accepted', 'failed_permanent',
+                        'in_progress', 'pending'
+                    ) THEN termination_error_code
+                    ELSE NULL
+                END,
+                termination_claim_token = CASE
+                    WHEN termination_status = 'in_progress'
+                        THEN termination_claim_token
+                    ELSE NULL
+                END,
+                termination_lease_expires_at = CASE
+                    WHEN termination_status = 'in_progress'
+                        THEN termination_lease_expires_at
+                    ELSE NULL
+                END,
+                updated_at = ?
+            WHERE id = ? AND user_id = ? AND handshake_request_id = ?
+              AND status = 'ended'
+              AND (upstream_call_id IS NULL OR upstream_call_id = ?)
+        """), (
+            upstream_call_id, now, now, now, voice_session_id, user_id,
+            handshake_request_id, upstream_call_id
+        ))
+        durable = cur.rowcount == 1
+        if not durable:
+            conn.rollback()
+            return {
+                "durable": False,
+                "safe_to_hangup": True,
+                "code": "voice_activation_failed"
+            }
+        conn.commit()
+        return {
+            "durable": True,
+            "safe_to_hangup": True,
+            "code": ""
+        }
+    except (sqlite3.IntegrityError, psycopg2.IntegrityError):
+        if conn:
+            conn.rollback()
+        logger.warning(
+            "voice_activation_cleanup_failed code=duplicate_upstream_call_id"
+        )
+        return {
+            "durable": False,
+            "safe_to_hangup": False,
+            "code": "duplicate_upstream_call_id"
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning(
+            "voice_activation_cleanup_failed code=voice_activation_failed"
+        )
+        return {
+            "durable": False,
+            "safe_to_hangup": True,
+            "code": "voice_activation_failed"
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+def handle_voice_activation_failure(
+    user_id, voice_session_id, handshake_request_id, upstream_call_id,
+    reason="voice_activation_failed"
+):
+    cleanup = prepare_voice_activation_failure(
+        user_id, voice_session_id, handshake_request_id,
+        upstream_call_id, reason
+    )
+    if cleanup["safe_to_hangup"]:
+        if cleanup["durable"]:
+            attempt_voice_termination_for_session(voice_session_id)
+        else:
+            hangup_realtime_call(upstream_call_id)
+    return cleanup
+
+
+def request_voice_termination(
+    user_id, voice_session_id, reason="client_disconnected", now=None,
+    handshake_request_id=None
+):
+    conn = None
+    now = now or utc_now()
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if not using_postgres():
+            cur.execute("BEGIN IMMEDIATE")
+        request_scope = ""
+        parameters = [user_id, voice_session_id]
+        if handshake_request_id is not None:
+            request_scope = " AND handshake_request_id = ?"
+            parameters.append(handshake_request_id)
+        cur.execute(sql(f"""
+            SELECT id, user_id, status, started_at, expires_at, ended_at,
+                   duration_seconds, disconnect_reason, updated_at, created_at,
+                   upstream_call_id, termination_status,
+                   termination_lease_expires_at
+            FROM agent_voice_sessions
+            WHERE user_id = ? AND id = ?
+            {request_scope}
+            LIMIT 1
+        """), tuple(parameters))
+        row = cur.fetchone()
+        if not row:
+            conn.commit()
+            return {
+                "found": False, "ended": False, "changed": False,
+                "termination_status": "not_applicable"
+            }
+        changed = _end_voice_row_in_transaction(cur, row, reason, now)
+        termination_status = _schedule_voice_termination_in_transaction(
+            cur, voice_session_id, user_id, now
+        )
+        conn.commit()
+        return {
+            "found": True,
+            "ended": True,
+            "changed": changed,
+            "termination_status": termination_status
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("voice_session_finalization_failed")
+        return {
+            "found": False, "ended": False, "changed": False,
+            "termination_status": "not_applicable"
+        }
+    finally:
+        if conn:
+            conn.close()
+
+
+def finish_voice_session(
+    user_id, voice_session_id, reason="client_disconnected", now=None,
+    handshake_request_id=None
+):
+    return request_voice_termination(
+        user_id,
+        voice_session_id,
+        reason,
+        now=now,
+        handshake_request_id=handshake_request_id
+    )
+
+
+def reconcile_expired_voice_sessions(user_id=None, now=None):
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if not using_postgres():
+            cur.execute("BEGIN IMMEDIATE")
+        counts = _reconcile_voice_sessions_in_transaction(
+            cur, user_id, now or utc_now()
+        )
+        conn.commit()
+        counts["ok"] = True
+        counts["total"] = sum(
+            value for key, value in counts.items() if key != "ok"
+        )
+        return counts
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("voice_reconciliation_failed code=local_reconciliation_failed")
+        return {"ok": False, "code": "voice_reconciliation_failed"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def _reconcile_stale_voice_termination_leases_in_transaction(cur, now):
+    query = """
+        SELECT id, user_id
+        FROM agent_voice_sessions
+        WHERE status = 'ended'
+          AND termination_status = 'in_progress'
+          AND (
+              termination_lease_expires_at IS NULL
+              OR termination_lease_expires_at <= ?
+          )
+        ORDER BY id
+    """
+    if using_postgres():
+        query += " FOR UPDATE"
+    cur.execute(sql(query), (now,))
+    stale_rows = cur.fetchall()
+    counts = {"recovered": 0, "exhausted": 0}
+    for voice_session_id, user_id in stale_rows:
+        _, action = _normalize_stale_voice_termination_in_transaction(
+            cur, voice_session_id, user_id, now
+        )
+        if action in counts:
+            counts[action] += 1
+    return counts
+
+
+def claim_due_voice_termination(voice_session_id=None, now=None):
+    conn = None
+    now = now or utc_now()
+    claim_token = secrets.token_urlsafe(32)
+    lease_expires_at = now + timedelta(seconds=VOICE_TERMINATION_LEASE_SECONDS)
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if not using_postgres():
+            cur.execute("PRAGMA busy_timeout = 5000")
+            cur.execute("BEGIN IMMEDIATE")
+        _reconcile_stale_voice_termination_leases_in_transaction(cur, now)
+        parameters = [now, now, VOICE_TERMINATION_MAX_ATTEMPTS]
+        session_filter = ""
+        if voice_session_id is not None:
+            session_filter = " AND id = ?"
+            parameters.append(voice_session_id)
+        query = f"""
+            SELECT id, upstream_call_id, termination_attempts
+            FROM agent_voice_sessions
+            WHERE status = 'ended'
+              AND upstream_call_id IS NOT NULL
+              AND (
+                    (
+                        termination_status = 'pending'
+                        AND (
+                            termination_next_attempt_at IS NULL
+                            OR termination_next_attempt_at <= ?
+                        )
+                    )
+                    OR (
+                        termination_status = 'in_progress'
+                        AND (
+                            termination_lease_expires_at IS NULL
+                            OR termination_lease_expires_at <= ?
+                        )
+                    )
+              )
+              AND termination_attempts < ?
+              {session_filter}
+            ORDER BY COALESCE(termination_next_attempt_at, termination_requested_at),
+                     id
+            LIMIT 1
+        """
+        if using_postgres():
+            query += " FOR UPDATE SKIP LOCKED"
+        cur.execute(sql(query), tuple(parameters))
+        row = cur.fetchone()
+        if not row:
+            conn.commit()
+            return None
+        attempt = int(row[2] or 0) + 1
+        cur.execute(sql("""
+            UPDATE agent_voice_sessions
+            SET termination_status = 'in_progress',
+                termination_attempts = ?,
+                termination_last_attempt_at = ?,
+                termination_claim_token = ?,
+                termination_lease_expires_at = ?,
+                updated_at = ?
+            WHERE id = ? AND status = 'ended'
+              AND upstream_call_id IS NOT NULL
+              AND termination_status IN ('pending', 'in_progress')
+        """), (
+            attempt, now, claim_token, lease_expires_at, now, row[0]
+        ))
+        if cur.rowcount != 1:
+            conn.rollback()
+            return None
+        conn.commit()
+        return {
+            "voice_session_id": row[0],
+            "call_id": row[1],
+            "claim_token": claim_token,
+            "attempt": attempt
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning("voice_termination_claim_failed code=voice_termination_claim_lost")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
+def voice_termination_backoff_seconds(attempt, jitter_seconds=None):
+    schedule = (15, 30, 60, 120, 240, 480, 900)
+    base = schedule[min(max(int(attempt), 1) - 1, len(schedule) - 1)]
+    if jitter_seconds is None:
+        jitter_seconds = secrets.randbelow(6)
+    jitter_seconds = max(0, min(int(jitter_seconds), 5))
+    return base + jitter_seconds
+
+
+def hangup_realtime_call(call_id):
+    if not valid_realtime_call_id(call_id):
+        return {
+            "accepted": False,
+            "retryable": False,
+            "error_code": "upstream_hangup_protocol_error"
+        }
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return {
+            "accepted": False,
+            "retryable": False,
+            "error_code": "upstream_hangup_authentication_failed"
+        }
+    encoded_call_id = urllib.parse.quote(call_id, safe="")
+    hangup_url = (
+        f"{OPENAI_REALTIME_CALLS_ENDPOINT}/{encoded_call_id}/hangup"
+    )
+    try:
+        response = requests.post(
+            hangup_url,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=(
+                VOICE_HANGUP_CONNECT_TIMEOUT_SECONDS,
+                VOICE_HANGUP_READ_TIMEOUT_SECONDS
+            ),
+            allow_redirects=False
+        )
+    except requests.Timeout:
+        return {
+            "accepted": False,
+            "retryable": True,
+            "error_code": "upstream_hangup_timeout"
+        }
+    except requests.ConnectionError:
+        return {
+            "accepted": False,
+            "retryable": True,
+            "error_code": "upstream_hangup_unavailable"
+        }
+    except requests.RequestException:
+        return {
+            "accepted": False,
+            "retryable": True,
+            "error_code": "upstream_hangup_unavailable"
+        }
+    status_code = response.status_code
+    if status_code == 200:
+        return {"accepted": True, "retryable": False, "error_code": ""}
+    if status_code in {401, 403}:
+        return {
+            "accepted": False,
+            "retryable": False,
+            "error_code": "upstream_hangup_authentication_failed"
+        }
+    if status_code == 429:
+        return {
+            "accepted": False,
+            "retryable": True,
+            "error_code": "upstream_hangup_rate_limited"
+        }
+    if status_code >= 500:
+        return {
+            "accepted": False,
+            "retryable": True,
+            "error_code": "upstream_hangup_unavailable"
+        }
+    return {
+        "accepted": False,
+        "retryable": False,
+        "error_code": "upstream_hangup_protocol_error"
+    }
+
+
+def finalize_voice_termination_claim(
+    claim, result, now=None, jitter_seconds=None
+):
+    conn = None
+    now = now or utc_now()
+    try:
+        conn = db()
+        cur = conn.cursor()
+        if not using_postgres():
+            cur.execute("PRAGMA busy_timeout = 5000")
+            cur.execute("BEGIN IMMEDIATE")
+        if result.get("accepted"):
+            target_status = "accepted"
+            cur.execute(sql("""
+                UPDATE agent_voice_sessions
+                SET termination_status = 'accepted',
+                    termination_accepted_at = ?,
+                    termination_next_attempt_at = NULL,
+                    termination_error_code = NULL,
+                    termination_claim_token = NULL,
+                    termination_lease_expires_at = NULL,
+                    updated_at = ?
+                WHERE id = ?
+                  AND termination_status = 'in_progress'
+                  AND termination_claim_token = ?
+            """), (
+                now, now, claim["voice_session_id"], claim["claim_token"]
+            ))
+        elif (
+            result.get("retryable")
+            and claim["attempt"] < VOICE_TERMINATION_MAX_ATTEMPTS
+        ):
+            target_status = "pending"
+            next_attempt_at = now + timedelta(
+                seconds=voice_termination_backoff_seconds(
+                    claim["attempt"], jitter_seconds
+                )
+            )
+            cur.execute(sql("""
+                UPDATE agent_voice_sessions
+                SET termination_status = 'pending',
+                    termination_next_attempt_at = ?,
+                    termination_error_code = ?,
+                    termination_claim_token = NULL,
+                    termination_lease_expires_at = NULL,
+                    updated_at = ?
+                WHERE id = ?
+                  AND termination_status = 'in_progress'
+                  AND termination_claim_token = ?
+            """), (
+                next_attempt_at,
+                str(result.get("error_code") or "voice_termination_retry_scheduled")[:120],
+                now,
+                claim["voice_session_id"],
+                claim["claim_token"]
+            ))
+        else:
+            target_status = "failed_permanent"
+            cur.execute(sql("""
+                UPDATE agent_voice_sessions
+                SET termination_status = 'failed_permanent',
+                    termination_next_attempt_at = NULL,
+                    termination_error_code = ?,
+                    termination_claim_token = NULL,
+                    termination_lease_expires_at = NULL,
+                    updated_at = ?
+                WHERE id = ?
+                  AND termination_status = 'in_progress'
+                  AND termination_claim_token = ?
+            """), (
+                str(result.get("error_code") or "voice_termination_failed")[:120],
+                now,
+                claim["voice_session_id"],
+                claim["claim_token"]
+            ))
+        updated = cur.rowcount == 1
+        conn.commit()
+        return {
+            "updated": updated,
+            "status": target_status if updated else "claim_lost"
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        logger.warning(
+            "voice_termination_finalize_failed code=voice_termination_claim_lost"
+        )
+        return {"updated": False, "status": "claim_lost"}
+    finally:
+        if conn:
+            conn.close()
+
+
+def process_voice_termination_claim(claim, now=None, jitter_seconds=None):
+    result = hangup_realtime_call(claim["call_id"])
+    return finalize_voice_termination_claim(
+        claim, result, now=now, jitter_seconds=jitter_seconds
+    )
+
+
+def attempt_voice_termination_for_session(voice_session_id):
+    claim = claim_due_voice_termination(voice_session_id=voice_session_id)
+    if not claim:
+        return {"processed": False, "status": "pending"}
+    finalization = process_voice_termination_claim(claim)
+    return {
+        "processed": True,
+        "status": finalization["status"]
+    }
+
+
+def run_voice_maintenance_once(limit=VOICE_TERMINATION_BATCH_LIMIT):
+    bounded_limit = max(1, min(int(limit), VOICE_TERMINATION_BATCH_LIMIT))
+    reconciliation = reconcile_expired_voice_sessions()
+    counts = {
+        "reconciliation_ok": bool(reconciliation.get("ok")),
+        "processed": 0,
+        "accepted": 0,
+        "retry_scheduled": 0,
+        "failed_permanent": 0,
+        "claim_lost": 0
+    }
+    for _ in range(bounded_limit):
+        claim = claim_due_voice_termination()
+        if not claim:
+            break
+        finalization = process_voice_termination_claim(claim)
+        counts["processed"] += 1
+        status = finalization["status"]
+        if status in counts:
+            counts[status] += 1
+        elif status == "pending":
+            counts["retry_scheduled"] += 1
+    return counts
+
+
+@app.before_request
+def opportunistic_voice_session_reconciliation():
+    global _voice_reconcile_last_run
+    if app.config.get("TESTING") or request.endpoint == "static":
+        return None
+    monotonic_now = time.monotonic()
+    if monotonic_now - _voice_reconcile_last_run < VOICE_RECONCILE_INTERVAL_SECONDS:
+        return None
+    if not _voice_reconcile_lock.acquire(blocking=False):
+        return None
+    try:
+        monotonic_now = time.monotonic()
+        if monotonic_now - _voice_reconcile_last_run < VOICE_RECONCILE_INTERVAL_SECONDS:
+            return None
+        _voice_reconcile_last_run = monotonic_now
+        result = reconcile_expired_voice_sessions()
+        if not result["ok"]:
+            logger.warning(
+                "voice_reconciliation_failed code=voice_reconciliation_failed"
+            )
+    except Exception:
+        logger.warning("voice_reconciliation_failed code=opportunistic_reconciliation_failed")
+    finally:
+        _voice_reconcile_lock.release()
+    return None
+
+
+@app.cli.command("reconcile-voice-sessions")
+def reconcile_voice_sessions_command():
+    counts = reconcile_expired_voice_sessions()
+    if not counts["ok"]:
+        raise click.ClickException(
+            "Voice-session reconciliation failed safely."
+        )
+    print(
+        "Voice reconciliation complete: "
+        f"ended={counts['total']} "
+        f"handshake_expired={counts['handshake_expired']} "
+        f"server_expired={counts['server_expired']} "
+        f"legacy_session_expired={counts['legacy_session_expired']} "
+        f"invalid_timestamp={counts['invalid_session_timestamp']} "
+        f"duplicates={counts['duplicate_session_reconciled']}"
+    )
+
+
+def voice_safety_identifier(user_id, hmac_secret=None):
+    secret = hmac_secret
+    if secret is None:
+        secret = os.getenv("VOICE_SAFETY_HMAC_SECRET", "").strip() or app.secret_key
+    message = f"businessbuilder-ai:voice-realtime:user:{user_id}".encode("utf-8")
+    return hmac.new(str(secret).encode("utf-8"), message, hashlib.sha256).hexdigest()
 
 
 def realtime_voice_instructions():
     return (
-        "You are Builder, the original voice interface for BusinessBuilder AI. "
-        "Be calm, concise, respectful, analytical, quietly confident, and occasionally witty. "
-        "Do not imitate JARVIS, Marvel, Iron Man, celebrities, or real people. "
-        "Do not perform business reasoning or external actions independently. "
-        "Use voice for transcription, brief acknowledgements, interruption, and speaking canonical responses "
-        "provided by the BusinessBuilder backend. Do not read raw JSON, IDs, HTML, stack traces, hidden checkpoints, "
-        "or internal schemas. If approval is required, say the user must review the approval card first."
+        "You are only the audio transport and rendering layer for BusinessBuilder AI. "
+        "The authenticated BusinessBuilder backend owns all reasoning and the canonical response meaning. "
+        "Do not perform BusinessBuilder reasoning, call tools, approve actions, connect accounts, send or publish "
+        "anything, or claim that an external action occurred. Do not alter, summarize, or contradict the canonical "
+        "response supplied by the backend. Never imitate a real person, celebrity, character, or protected identity. "
+        "Do not read raw JSON, IDs, HTML, stack traces, hidden checkpoints, or internal schemas."
     )
 
 
-def create_realtime_sdp_answer(user_id, offer_sdp):
+def build_realtime_session_config(user_id, voice_name=None):
     config = get_voice_config()
-    api_key = os.getenv("OPENAI_API_KEY")
-    endpoint = os.getenv("OPENAI_REALTIME_WEBRTC_URL", "https://api.openai.com/v1/realtime/calls")
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "X-OpenAI-Safety-Identifier": voice_safety_identifier(user_id)
-    }
-    # Server-controlled session settings. The client cannot override these.
-    session_config = {
+    if config["model"] not in OPENAI_REALTIME_MODEL_ALLOWLIST:
+        raise ValueError("invalid_realtime_configuration")
+    voice_name = voice_name or resolve_realtime_voice(user_id)
+    if voice_name not in OPENAI_REALTIME_VOICE_ALLOWLIST:
+        raise ValueError("invalid_voice_configuration")
+    return {
         "type": "realtime",
         "model": config["model"],
-        "instructions": realtime_voice_instructions(),
-        "voice": config["voice"],
-        "modalities": ["audio", "text"],
-        "input_audio_transcription": {"model": "gpt-4o-mini-transcribe"},
-        "turn_detection": {
-            "type": "semantic_vad",
-            "eagerness": "low",
-            "create_response": False,
-            "interrupt_response": True
+        "output_modalities": ["audio"],
+        "audio": {
+            "input": {
+                "transcription": {
+                    "model": OPENAI_REALTIME_TRANSCRIPTION_MODEL
+                },
+                "turn_detection": {
+                    "type": "semantic_vad",
+                    "eagerness": "low",
+                    "create_response": False,
+                    "interrupt_response": True
+                }
+            },
+            "output": {
+                "voice": voice_name
+            }
         },
-        "max_response_output_tokens": 900,
-        "tool_choice": "none"
+        "instructions": realtime_voice_instructions(),
+        "tools": [],
+        "tool_choice": "none",
+        "max_output_tokens": 900
     }
+
+
+def valid_sdp_document(sdp):
+    if not isinstance(sdp, str) or not sdp.strip().startswith("v=0"):
+        return False
+    normalized = sdp.replace("\r\n", "\n")
+    return all(
+        re.search(rf"(?m)^{re.escape(prefix)}", normalized)
+        for prefix in ("o=", "s=", "t=")
+    )
+
+
+def valid_realtime_call_id(call_id):
+    if not isinstance(call_id, str) or not call_id:
+        return False
+    try:
+        if len(call_id.encode("utf-8")) > VOICE_UPSTREAM_CALL_ID_MAX_BYTES:
+            return False
+    except UnicodeError:
+        return False
+    if call_id in {".", ".."}:
+        return False
+    if any(
+        character.isspace()
+        or unicodedata.category(character) in {"Cc", "Cf"}
+        or character in "/\\?#%;"
+        for character in call_id
+    ):
+        return False
+    return True
+
+
+def extract_realtime_call_id(location_value):
+    """Extract an opaque ID without following or retaining Location.
+
+    OpenAI documents a relative Location path. Canonical absolute support is
+    a defensive compatibility inference and remains pinned to api.openai.com.
+    """
+    if not isinstance(location_value, str) or not location_value:
+        return None
+    if any(character.isspace() or unicodedata.category(character) in {"Cc", "Cf"}
+           for character in location_value):
+        return None
+    if "%" in location_value:
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(location_value)
+    except ValueError:
+        return None
+    if parsed.query or parsed.fragment:
+        return None
+    if parsed.scheme or parsed.netloc:
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "api.openai.com"
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            return None
+        try:
+            if parsed.port is not None:
+                return None
+        except ValueError:
+            return None
+    elif not location_value.startswith("/"):
+        return None
+    expected_prefix = "/v1/realtime/calls/"
+    if not parsed.path.startswith(expected_prefix):
+        return None
+    call_id = parsed.path[len(expected_prefix):]
+    if "/" in call_id or "\\" in call_id:
+        return None
+    return call_id if valid_realtime_call_id(call_id) else None
+
+
+def _realtime_handshake_result(
+    ok, answer_sdp=None, call_id=None, error_code="",
+    disconnect_reason=None
+):
+    return {
+        "ok": bool(ok),
+        "answer_sdp": answer_sdp if ok else None,
+        "call_id": call_id if ok else None,
+        "error_code": error_code,
+        "disconnect_reason": disconnect_reason or error_code
+    }
+
+
+def create_realtime_sdp_answer(user_id, offer_sdp, voice_name=None):
+    config = get_voice_config()
+    api_key = os.getenv("OPENAI_API_KEY")
+    try:
+        session_config = build_realtime_session_config(user_id, voice_name)
+    except ValueError as error:
+        return _realtime_handshake_result(False, error_code=str(error))
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "OpenAI-Safety-Identifier": voice_safety_identifier(user_id)
+    }
+    correlation_id = secrets.token_hex(8)
     try:
         response = requests.post(
-            endpoint,
+            OPENAI_REALTIME_WEBRTC_ENDPOINT,
             headers=headers,
             files={
                 "sdp": ("offer.sdp", offer_sdp, "application/sdp"),
                 "session": (None, safe_json_dumps(session_config), "application/json")
             },
-            timeout=config["handshake_timeout_seconds"]
+            timeout=config["handshake_timeout_seconds"],
+            allow_redirects=False
         )
+    except requests.Timeout:
+        logger.warning("voice_realtime_handshake_failed code=upstream_timeout correlation_id=%s", correlation_id)
+        return _realtime_handshake_result(False, error_code="upstream_timeout")
+    except requests.ConnectionError:
+        logger.warning("voice_realtime_handshake_failed code=upstream_unavailable correlation_id=%s", correlation_id)
+        return _realtime_handshake_result(False, error_code="upstream_unavailable")
     except requests.RequestException:
-        return None, "Voice could not connect quickly enough. Text mode is still available."
+        logger.warning("voice_realtime_handshake_failed code=upstream_unavailable correlation_id=%s", correlation_id)
+        return _realtime_handshake_result(False, error_code="upstream_unavailable")
     if response.status_code >= 400:
-        if response.status_code == 401:
-            return None, "Voice authentication failed on the server. Check the OpenAI API key."
-        if response.status_code == 429:
-            return None, "Voice is temporarily rate limited. Text mode is still available."
-        return None, "OpenAI Realtime could not start this voice session."
+        if response.status_code in {401, 403}:
+            error_code = "upstream_authentication_failed"
+        elif response.status_code == 429:
+            error_code = "upstream_rate_limited"
+        elif response.status_code >= 500:
+            error_code = "upstream_unavailable"
+        else:
+            error_code = "invalid_realtime_configuration"
+        logger.warning("voice_realtime_handshake_failed code=%s correlation_id=%s", error_code, correlation_id)
+        return _realtime_handshake_result(False, error_code=error_code)
+    if response.status_code != 201:
+        logger.warning("voice_realtime_handshake_failed code=invalid_upstream_response correlation_id=%s", correlation_id)
+        return _realtime_handshake_result(
+            False, error_code="invalid_upstream_response"
+        )
     answer = response.text or ""
-    if "v=" not in answer[:20]:
-        return None, "OpenAI Realtime returned an unexpected handshake response."
-    return answer, None
+    if len(answer.encode("utf-8")) > VOICE_SESSION_MAX_SDP_BYTES or not valid_sdp_document(answer):
+        logger.warning("voice_realtime_handshake_failed code=invalid_upstream_response correlation_id=%s", correlation_id)
+        return _realtime_handshake_result(
+            False, error_code="invalid_upstream_response"
+        )
+    call_id = extract_realtime_call_id(response.headers.get("Location"))
+    if not call_id:
+        logger.warning(
+            "voice_realtime_handshake_failed "
+            "code=invalid_upstream_call_location correlation_id=%s",
+            correlation_id
+        )
+        return _realtime_handshake_result(
+            False,
+            error_code="invalid_upstream_response",
+            disconnect_reason="upstream_call_unidentified"
+        )
+    return _realtime_handshake_result(
+        True, answer_sdp=answer, call_id=call_id
+    )
+
+
+VOICE_ERROR_DETAILS = {
+    "voice_runtime_disabled": ("Voice runtime is not available yet. Text mode remains available.", 503),
+    "voice_preference_disabled": ("Voice is disabled in your BusinessBuilder settings.", 403),
+    "voice_not_configured": ("Voice is not configured on the server. Text mode remains available.", 503),
+    "invalid_voice_configuration": ("Voice configuration is not available. Text mode remains available.", 503),
+    "invalid_realtime_configuration": ("Voice configuration is not available. Text mode remains available.", 503),
+    "invalid_origin": ("This request must come from BusinessBuilder.", 403),
+    "csrf_failed": ("Voice request verification failed.", 403),
+    "invalid_content_type": ("The request Content-Type is not supported.", 415),
+    "voice_request_id_required": ("A voice request ID is required.", 400),
+    "invalid_voice_request_id": ("The voice request ID is invalid.", 400),
+    "voice_handshake_in_progress": ("This voice handshake is already processing.", 409),
+    "voice_request_id_reused": ("Use a new voice request ID for a new SDP offer.", 409),
+    "voice_session_active": ("Another voice session is already starting or active.", 409),
+    "voice_admission_busy": ("Voice admission is busy. Please retry.", 503),
+    "voice_session_expired": ("The local voice session expired.", 409),
+    "voice_activation_failed": ("Voice could not activate its local session.", 503),
+    "upstream_call_unidentified": ("Voice received an incomplete upstream session response. Text mode remains available.", 502),
+    "invalid_upstream_call_location": ("Voice received an invalid upstream session response. Text mode remains available.", 502),
+    "duplicate_upstream_call_id": ("Voice could not safely identify the upstream session. Text mode remains available.", 503),
+    "upstream_call_identity_conflict": ("Voice could not safely attribute the upstream session. Text mode remains available.", 503),
+    "voice_termination_pending": ("Voice ended locally and upstream termination is pending.", 202),
+    "voice_termination_in_progress": ("Voice ended locally and upstream termination is in progress.", 202),
+    "voice_termination_accepted": ("Voice termination was accepted upstream.", 200),
+    "voice_termination_retry_scheduled": ("Voice ended locally and upstream termination will be retried.", 202),
+    "voice_termination_failed": ("Voice ended locally but upstream termination could not be confirmed.", 200),
+    "voice_termination_claim_lost": ("Voice termination is being handled by another process.", 202),
+    "voice_session_not_found": ("The voice session was not found.", 404),
+    "invalid_sdp": ("A valid SDP offer is required.", 400),
+    "sdp_too_large": ("The SDP offer is too large.", 413),
+    "upstream_authentication_failed": ("Voice authentication is temporarily unavailable. Text mode remains available.", 502),
+    "upstream_rate_limited": ("Voice is temporarily rate limited. Text mode remains available.", 429),
+    "upstream_timeout": ("Voice could not connect in time. Text mode remains available.", 504),
+    "upstream_unavailable": ("Voice is temporarily unavailable. Text mode remains available.", 503),
+    "invalid_upstream_response": ("Voice received an invalid handshake response. Text mode remains available.", 502)
+}
+
+
+def voice_error_response(code, message=None, status=None):
+    default_message, default_status = VOICE_ERROR_DETAILS.get(
+        code,
+        ("Voice is temporarily unavailable. Text mode remains available.", 503)
+    )
+    response = jsonify({"error": message or default_message, "code": code})
+    response.headers["Cache-Control"] = "no-store"
+    return response, status or default_status
 
 
 def sanitize_source_url(url):
@@ -5950,8 +8822,8 @@ For legal, tax, financial, payment, health, or compliance topics, prefer officia
         save_memory(user_id, job[2], "tool_result", f"research_{job_id}_summary", summary, 0.65)
         create_agent_alert(user_id, job[2], "research_completed", "Research task completed", f"Research completed for: {job[5][:160]}", "success")
         return result, None
-    except Exception as error:
-        logger.warning("Research job failed: %s", error)
+    except Exception:
+        logger.warning("research_job_failed")
         update_research_job(user_id, job_id, status="failed", error_message="Research failed. Text and voice chat are still available.")
         return None, "Research failed. Text and voice chat are still available."
 
@@ -6058,9 +8930,9 @@ def run_background_job_once(worker_id="worker"):
         elif job[3] == "monitor_rule_check":
             run_monitor_rule(job[1], job[4])
         complete_background_job(job[0])
-    except Exception as error:
+    except Exception:
         fail_background_job(job[0], "Background job failed.")
-        logger.warning("Background job failed: %s", error)
+        logger.warning("background_job_failed")
     return True
 
 
@@ -6509,8 +9381,8 @@ User request:
                 ]
             )
             reply = response.choices[0].message.content
-        except Exception as error:
-            logger.warning("Command Center agent fallback used: %s", error)
+        except Exception:
+            logger.warning("command_center_agent_fallback code=upstream_generation_failed")
 
     if not reply:
         reply = local_agent_reply(user_message, active_project, memories, approval_needed)
@@ -9546,10 +12418,15 @@ def signup():
             message="Enter a valid email address."
         ), 400
 
-    if not raw_password:
+    if len(raw_password) < AUTH_PASSWORD_MIN_LENGTH:
         return render_template(
             "signup.html",
-            message="Enter a password."
+            message=f"Use a password with at least {AUTH_PASSWORD_MIN_LENGTH} characters."
+        ), 400
+    if len(raw_password) > AUTH_PASSWORD_MAX_LENGTH:
+        return render_template(
+            "signup.html",
+            message="That password is too long."
         ), 400
 
     password = generate_password_hash(raw_password)
@@ -9601,7 +12478,9 @@ def signup():
         if not user:
             raise RuntimeError("Created user could not be loaded.")
 
+        session.clear()
         session["user_id"] = user[0]
+        session.permanent = True
 
         send_email(
             email,
@@ -9639,6 +12518,14 @@ def login():
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "")
 
+    limited, retry_after = auth_rate_limit_status(email)
+    if limited:
+        response = render_template(
+            "login.html",
+            message="Too many sign-in attempts. Wait a few minutes and try again."
+        ), 429
+        return response[0], response[1], {"Retry-After": str(retry_after)}
+
     if not is_valid_email(email) or not password:
         return render_template(
             "login.html",
@@ -9661,17 +12548,23 @@ def login():
     conn.close()
 
     if user and check_password_hash(user[1], password):
+        clear_auth_failures(email)
+        session.clear()
         session["user_id"] = user[0]
+        session.permanent = True
         return redirect("/command-center")
 
+    record_auth_failure(email)
     return render_template(
         "login.html",
         message="Invalid email or password."
     ), 401
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["GET", "POST"])
 def logout():
+    if request.method == "GET":
+        return render_template("logout.html")
     session.clear()
     return redirect("/login")
 
@@ -10841,7 +13734,7 @@ def ai_store_agent():
     )
 
 
-@app.route("/generate_store_agent_task/<task_type>", methods=["GET", "POST"])
+@app.route("/generate_store_agent_task/<task_type>", methods=["POST"])
 def generate_store_agent_task(task_type):
     if "user_id" not in session:
         return redirect("/login")
@@ -11337,7 +14230,7 @@ def product_finder():
     )
 
 
-@app.route("/generate_product_research", methods=["GET", "POST"])
+@app.route("/generate_product_research", methods=["POST"])
 def generate_product_research():
     if "user_id" not in session:
         return redirect("/login")
@@ -11346,9 +14239,6 @@ def generate_product_research():
 
     if not user_has_paid(user_id):
         return redirect("/dashboard")
-
-    if request.method == "GET":
-        return redirect("/product_finder")
 
     if usage_limit_reached(user_id, "product_research"):
         return usage_limit_redirect("product_research", "/product_finder")
@@ -11475,7 +14365,7 @@ def product_research_detail(research_id):
     )
 
 
-@app.route("/create_product_research_shopify_products")
+@app.route("/create_product_research_shopify_products", methods=["POST"])
 def create_product_research_shopify_products():
     if "user_id" not in session:
         return redirect("/login")
@@ -11645,21 +14535,12 @@ def launch_package():
     if not user_package_at_least(user_id, "Pro"):
         return package_access_redirect("Pro")
 
-    if usage_limit_reached(user_id, "launch_package"):
-        return usage_limit_redirect("launch_package")
-
-    send_launch_package_email_once(user_id)
-
     launch_data = get_launch_package_data(user_id)
     launch_data["premium_build"] = user_package_at_least(user_id, "Premium Build")
-    response = render_template("launch_package.html", **launch_data)
-
-    log_usage(user_id, "launch_package")
-
-    return response
+    return render_template("launch_package.html", **launch_data)
 
 
-@app.route("/download_launch_package")
+@app.route("/download_launch_package", methods=["POST"])
 def download_launch_package():
     if "user_id" not in session:
         return redirect("/login")
@@ -11705,7 +14586,7 @@ def business_plan(plan_id):
     )
 
 
-@app.route("/download_business_plan/<int:plan_id>")
+@app.route("/download_business_plan/<int:plan_id>", methods=["POST"])
 def download_business_plan(plan_id):
     if "user_id" not in session:
         return redirect("/login")
@@ -11980,7 +14861,7 @@ def update_settings():
     return redirect("/settings?settings_notice=saved")
 
 
-@app.route("/connect_canva")
+@app.route("/connect_canva", methods=["POST"])
 def connect_canva():
     if "user_id" not in session:
         return redirect("/login")
@@ -12152,6 +15033,22 @@ def health_check():
     })
 
 
+@app.route("/healthz")
+def healthz():
+    connection = None
+    try:
+        connection = db()
+        cursor = connection.cursor()
+        cursor.execute(sql("SELECT 1"))
+        ready = cursor.fetchone() is not None
+    except (sqlite3.Error, psycopg2.Error):
+        ready = False
+    finally:
+        if connection:
+            connection.close()
+    return jsonify({"status": "ok" if ready else "unavailable"}), 200 if ready else 503
+
+
 @app.route("/app_connection_agent")
 def app_connection_agent():
     if "user_id" not in session:
@@ -12186,15 +15083,12 @@ def recommend_apps():
     )
 
 
-@app.route("/generate_app_recommendations", methods=["GET", "POST"])
+@app.route("/generate_app_recommendations", methods=["POST"])
 def generate_app_recommendations():
     if "user_id" not in session:
         return redirect("/login")
     if not user_package_at_least(session["user_id"], "Pro"):
         return package_access_redirect("Pro")
-    if request.method == "GET":
-        return redirect("/recommend_apps")
-
     user_id = session["user_id"]
     data = {
         "business_type": request.form.get("business_type", "").strip(),
@@ -12349,7 +15243,7 @@ Safety rules:
 """
 
 
-@app.route("/create_app_action_draft/<platform>/<action_type>", methods=["GET", "POST"])
+@app.route("/create_app_action_draft/<platform>/<action_type>", methods=["POST"])
 def create_app_action_draft(platform, action_type):
     if "user_id" not in session:
         return redirect("/login")
@@ -12503,16 +15397,13 @@ def email_marketing():
     )
 
 
-@app.route("/generate_email_campaign", methods=["GET", "POST"])
+@app.route("/generate_email_campaign", methods=["POST"])
 def generate_email_campaign():
     if "user_id" not in session:
         return redirect("/login")
 
     if not user_package_at_least(session["user_id"], "Pro"):
         return package_access_redirect("Pro")
-    if request.method == "GET":
-        return redirect("/email_marketing")
-
     user_id = session["user_id"]
     if usage_limit_reached(user_id, "email_campaign"):
         return usage_limit_redirect("email_campaign", "/email_marketing")
@@ -12616,13 +15507,10 @@ def domain_helper():
     )
 
 
-@app.route("/generate_domain_advice", methods=["GET", "POST"])
+@app.route("/generate_domain_advice", methods=["POST"])
 def generate_domain_advice():
     if "user_id" not in session:
         return redirect("/login")
-
-    if request.method == "GET":
-        return redirect("/domain_helper")
 
     user_id = session["user_id"]
     if usage_limit_reached(user_id, "domain_guide"):
@@ -12899,13 +15787,10 @@ def generate_marketing_launch_plan(): return generate_launch_tool("marketing_lau
 def marketing_launch_plan(output_id): return render_launch_tool_result("marketing_launch_agent", output_id)
 
 
-@app.route("/generate_domain_buying_plan", methods=["GET", "POST"])
+@app.route("/generate_domain_buying_plan", methods=["POST"])
 def generate_domain_buying_plan():
     if "user_id" not in session:
         return redirect("/login")
-    if request.method == "GET":
-        return redirect("/domain_buying_assistant")
-
     user_id = session["user_id"]
     data = {
         "business_name": request.form.get("business_name", "").strip(),
@@ -12995,13 +15880,10 @@ def business_setup_agent():
     )
 
 
-@app.route("/generate_business_setup_plan", methods=["GET", "POST"])
+@app.route("/generate_business_setup_plan", methods=["POST"])
 def generate_business_setup_plan():
     if "user_id" not in session:
         return redirect("/login")
-    if request.method == "GET":
-        return redirect("/business_setup_agent")
-
     user_id = session["user_id"]
     data = {
         "business_name": request.form.get("business_name", "").strip(),
@@ -13250,13 +16132,10 @@ def pricing_advisor():
     )
 
 
-@app.route("/generate_pricing_advice", methods=["GET", "POST"])
+@app.route("/generate_pricing_advice", methods=["POST"])
 def generate_pricing_advice():
     if "user_id" not in session:
         return redirect("/login")
-
-    if request.method == "GET":
-        return redirect("/pricing_advisor")
 
     user_id = session["user_id"]
     if usage_limit_reached(user_id, "pricing_advice"):
@@ -13340,13 +16219,10 @@ def payment_guide():
     )
 
 
-@app.route("/generate_payment_guide", methods=["GET", "POST"])
+@app.route("/generate_payment_guide", methods=["POST"])
 def generate_payment_guide():
     if "user_id" not in session:
         return redirect("/login")
-
-    if request.method == "GET":
-        return redirect("/payment_guide")
 
     user_id = session["user_id"]
     if usage_limit_reached(user_id, "payment_guide"):
@@ -13429,13 +16305,10 @@ def supplier_finder():
     )
 
 
-@app.route("/generate_supplier_recommendations", methods=["GET", "POST"])
+@app.route("/generate_supplier_recommendations", methods=["POST"])
 def generate_supplier_recommendations():
     if "user_id" not in session:
         return redirect("/login")
-
-    if request.method == "GET":
-        return redirect("/supplier_finder")
 
     user_id = session["user_id"]
     if usage_limit_reached(user_id, "supplier_guide"):
@@ -13741,7 +16614,7 @@ def create_business_project():
     return redirect(f"/project/{project_id}")
 
 
-@app.route("/switch_business_project/<int:project_id>")
+@app.route("/switch_business_project/<int:project_id>", methods=["POST"])
 def switch_business_project(project_id):
     if "user_id" not in session:
         return redirect("/login")
@@ -13843,33 +16716,70 @@ def upload_file():
 
     if not user_has_paid(session["user_id"]):
         return redirect("/dashboard")
+    if not UPLOADS_ENABLED:
+        return render_error(
+            "Uploads are unavailable until durable storage is configured.",
+            503,
+            "/dashboard"
+        )
 
     file = request.files.get("file")
 
     if not file:
         return redirect("/dashboard")
 
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(
+    original_filename = secure_filename(file.filename or "")
+    extension = os.path.splitext(original_filename)[1].lower()
+    if not original_filename or extension not in ALLOWED_UPLOAD_EXTENSIONS:
+        return redirect("/dashboard?upload_error=unsupported_file")
+
+    user_upload_root = os.path.abspath(os.path.join(
         app.config["UPLOAD_FOLDER"],
-        filename
-    )
+        str(session["user_id"])
+    ))
+    upload_root = os.path.abspath(app.config["UPLOAD_FOLDER"])
+    if os.path.commonpath([upload_root, user_upload_root]) != upload_root:
+        return redirect("/dashboard?upload_error=invalid_path")
+    os.makedirs(user_upload_root, exist_ok=True)
+    stored_filename = f"{uuid.uuid4().hex}{extension}"
+    filepath = os.path.join(user_upload_root, stored_filename)
 
-    file.save(filepath)
+    try:
+        file.save(filepath)
+        if not validate_uploaded_file(filepath, extension):
+            os.remove(filepath)
+            return redirect("/dashboard?upload_error=invalid_file")
+    except OSError:
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except OSError:
+                pass
+        return redirect("/dashboard?upload_error=save_failed")
 
-    conn = db()
-    cur = conn.cursor()
-
-    cur.execute(
-        sql("""
-            INSERT INTO uploads (user_id, filename, filepath)
-            VALUES (?, ?, ?)
-        """),
-        (session["user_id"], filename, filepath)
-    )
-
-    conn.commit()
-    conn.close()
+    conn = None
+    try:
+        conn = db()
+        cur = conn.cursor()
+        cur.execute(
+            sql("""
+                INSERT INTO uploads (user_id, filename, filepath)
+                VALUES (?, ?, ?)
+            """),
+            (session["user_id"], original_filename, filepath)
+        )
+        conn.commit()
+    except Exception:
+        if conn:
+            conn.rollback()
+        try:
+            os.remove(filepath)
+        except OSError:
+            pass
+        raise
+    finally:
+        if conn:
+            conn.close()
 
     return redirect("/dashboard")
 
@@ -13878,7 +16788,7 @@ def upload_file():
 # CHAT ROUTES
 # -----------------------------
 
-@app.route("/new_chat")
+@app.route("/new_chat", methods=["POST"])
 def new_chat():
     if "user_id" not in session:
         return redirect("/login")
@@ -13920,12 +16830,12 @@ def messages():
 # PAYMENT ROUTES
 # -----------------------------
 
-@app.route("/paystack_checkout")
+@app.route("/paystack_checkout", methods=["POST"])
 def paystack_checkout():
     if "user_id" not in session:
         return redirect("/login")
 
-    plan_name = request.args.get("plan", "starter")
+    plan_name = request.form.get("plan", "starter")
     plan = get_paystack_plan(plan_name)
 
     if not plan:
@@ -13937,8 +16847,9 @@ def paystack_checkout():
 
     plan_slug = plan_name.strip().lower()
     paystack_secret = os.getenv("PAYSTACK_SECRET_KEY")
+    public_base_url = get_public_base_url()
 
-    if not paystack_secret:
+    if not paystack_secret or not public_base_url:
         return render_error(
             "Payment checkout is temporarily unavailable. Please try again later.",
             503
@@ -13975,8 +16886,8 @@ def paystack_checkout():
         "amount": amount,
         "currency": plan["currency"],
         "callback_url": (
-            request.host_url
-            + "payment_success?"
+            public_base_url
+            + "/payment_success?"
             + urllib.parse.urlencode({"plan": plan_slug})
         ),
         "metadata": {
@@ -14226,16 +17137,15 @@ def build_approval():
     if requested_action not in BUILD_APPROVAL_ACTIONS:
         requested_action = "full_build"
 
-    if requested_action == "product_research_products" and request.values.get("research_id"):
-        session["product_research_id"] = request.values.get("research_id")
-
     if not user_package_at_least(user_id, "Pro"):
         return package_access_redirect("Pro")
 
     if request.method == "POST":
+        if requested_action == "product_research_products" and request.form.get("research_id"):
+            session["product_research_id"] = request.form.get("research_id")
         grant_build_approval(requested_action)
 
-        return redirect(BUILD_APPROVAL_ACTIONS[requested_action])
+        return redirect(BUILD_APPROVAL_ACTIONS[requested_action], code=307)
 
     workflow_answers = get_nonempty_workflow_answers(user_id)
     shopify_plans = get_shopify_plans(user_id)
@@ -14244,6 +17154,7 @@ def build_approval():
     return render_template(
         "build_approval.html",
         requested_action=requested_action,
+        requested_research_id=request.args.get("research_id", ""),
         workflow_answers=workflow_answers,
         latest_shopify_plan=shopify_plans[0] if shopify_plans else None,
         latest_canva_design_brief=latest_canva_design_brief,
@@ -14283,7 +17194,7 @@ def build_approval():
     )
 
 
-@app.route("/complete_step/<int:step_number>/<step_name>")
+@app.route("/complete_step/<int:step_number>/<step_name>", methods=["POST"])
 def complete_step(step_number, step_name):
     if "user_id" not in session:
         return redirect("/login")
@@ -14359,7 +17270,7 @@ def workflow_step(step_number):
     )
 
 
-@app.route("/generate_business_plan")
+@app.route("/generate_business_plan", methods=["POST"])
 def generate_business_plan():
     if "user_id" not in session:
         return redirect("/login")
@@ -14447,7 +17358,7 @@ User workflow answers:
     return redirect(f"/business_plan/{plan_id}")
 
 
-@app.route("/generate_shopify_plan")
+@app.route("/generate_shopify_plan", methods=["POST"])
 def generate_shopify_plan():
     if "user_id" not in session:
         return redirect("/login")
@@ -14524,7 +17435,7 @@ User workflow answers:
     return redirect(f"/shopify_plan/{plan_id}")
 
 
-@app.route("/generate_canva_branding")
+@app.route("/generate_canva_branding", methods=["POST"])
 def generate_canva_branding():
     if "user_id" not in session:
         return redirect("/login")
@@ -14603,7 +17514,7 @@ User workflow answers:
     return redirect(f"/canva_branding/{package_id}")
 
 
-@app.route("/generate_canva_design_brief")
+@app.route("/generate_canva_design_brief", methods=["POST"])
 def generate_canva_design_brief():
     if "user_id" not in session:
         return redirect("/login")
@@ -14695,7 +17606,7 @@ User workflow answers:
     return redirect(f"/canva_design_brief/{brief_id}")
 
 
-@app.route("/create_canva_design")
+@app.route("/create_canva_design", methods=["POST"])
 def create_canva_design_from_brief():
     if "user_id" not in session:
         return redirect("/login")
@@ -14746,7 +17657,7 @@ def create_canva_design_from_brief():
     return redirect("/dashboard?canva_design=created")
 
 
-@app.route("/create_canva_designs")
+@app.route("/create_canva_designs", methods=["POST"])
 def create_canva_designs_from_brief():
     if "user_id" not in session:
         return redirect("/login")
@@ -14826,7 +17737,7 @@ def create_canva_designs_from_brief():
     )
 
 
-@app.route("/generate_build_quote")
+@app.route("/generate_build_quote", methods=["POST"])
 def generate_build_quote():
     if "user_id" not in session:
         return redirect("/login")
@@ -15144,7 +18055,7 @@ def create_shopify_assets_from_store_package(user_id, store_package):
     return created_assets, failed_actions
 
 
-@app.route("/generate_full_store")
+@app.route("/generate_full_store", methods=["POST"])
 def generate_full_store():
     if "user_id" not in session:
         return redirect("/login")
@@ -15320,7 +18231,7 @@ def store_build(build_id):
     )
 
 
-@app.route("/download_store_build/<int:build_id>")
+@app.route("/download_store_build/<int:build_id>", methods=["POST"])
 def download_store_build(build_id):
     if "user_id" not in session:
         return redirect("/login")
@@ -15353,7 +18264,7 @@ def download_store_build(build_id):
     return response
 
 
-@app.route("/create_shopify_product")
+@app.route("/create_shopify_product", methods=["POST"])
 def create_shopify_product_from_workflow():
     if "user_id" not in session:
         return redirect("/login")
@@ -15454,7 +18365,7 @@ User workflow answers:
     return redirect("/dashboard?shopify_product=created")
 
 
-@app.route("/build_shopify_store_draft")
+@app.route("/build_shopify_store_draft", methods=["POST"])
 def build_shopify_store_draft():
     if "user_id" not in session:
         return redirect("/login")
@@ -15688,7 +18599,7 @@ User workflow answers:
         return redirect("/business_workflow?store_draft_error=create_failed")
 
     if continue_full_build:
-        return redirect("/create_canva_designs")
+        return redirect("/create_canva_designs", code=307)
 
     return redirect(
         f"/shopify_build_summary?draft_store=created"
@@ -15699,7 +18610,7 @@ User workflow answers:
     )
 
 
-@app.route("/create_shopify_products")
+@app.route("/create_shopify_products", methods=["POST"])
 def create_shopify_products_from_workflow():
     if "user_id" not in session:
         return redirect("/login")
@@ -15878,6 +18789,7 @@ def build_command_center_context(user_id):
         "current_package": current_package,
         "connections": connections,
         "voice_config": get_voice_config(),
+        "voice_csrf_token": get_voice_csrf_token(),
         "browser_config": get_browser_config(),
         "visual_preferences": visual_preferences,
         "visual_state": visual_state,
@@ -15999,11 +18911,27 @@ def api_agent_message():
     if "user_id" not in session:
         return jsonify({"error": "Login required."}), 401
 
+    if request.mimetype != "application/json":
+        return jsonify({
+            "error": "Builder messages must use application/json.",
+            "code": "invalid_content_type"
+        }), 415
+    if not request_is_same_origin():
+        return jsonify({
+            "error": "This request must come from BusinessBuilder.",
+            "code": "invalid_origin"
+        }), 403
+
     user_id = session["user_id"]
     data = request.get_json(silent=True) or {}
     user_message = str(data.get("message", "")).strip()
     if not user_message:
         return jsonify({"error": "Enter a message first."}), 400
+    if len(user_message) > AGENT_MESSAGE_MAX_CHARS:
+        return jsonify({
+            "error": f"Builder messages must be {AGENT_MESSAGE_MAX_CHARS} characters or fewer.",
+            "code": "agent_message_too_long"
+        }), 413
     request_id = normalize_agent_request_id(data.get("request_id"))
     reserved, existing_request = reserve_agent_message_request(user_id, request_id)
     if not reserved:
@@ -16146,35 +19074,86 @@ def api_agent_stop():
 @app.route("/api/realtime/session", methods=["POST"])
 def api_realtime_session():
     if "user_id" not in session:
-        return jsonify({"error": "Login required."}), 401
+        return voice_error_response("authentication_required", "Login required.", 401)
 
     user_id = session["user_id"]
-    finish_stale_voice_sessions(user_id)
-    content_type = (request.content_type or "").split(";", 1)[0].strip().lower()
-    if content_type != "application/sdp":
-        return jsonify({"error": "Voice session requests must use Content-Type: application/sdp."}), 415
+    if not request_is_same_origin():
+        return voice_error_response("invalid_origin")
+    if not voice_csrf_is_valid():
+        return voice_error_response("csrf_failed")
+    if request.mimetype != "application/sdp":
+        return voice_error_response("invalid_content_type")
+
+    handshake_request_id, request_id_error = normalize_voice_request_id(
+        request.headers.get(VOICE_REQUEST_ID_HEADER)
+    )
+    if request_id_error:
+        return voice_error_response(request_id_error)
 
     offer_sdp = request.get_data(as_text=True)
-    if not offer_sdp or not offer_sdp.strip().startswith("v="):
-        return jsonify({"error": "A valid SDP offer is required."}), 400
     if len(offer_sdp.encode("utf-8")) > VOICE_SESSION_MAX_SDP_BYTES:
-        return jsonify({"error": "The SDP offer is too large."}), 413
-
-    allowed, message = can_start_voice_session(user_id)
-    if not allowed:
-        return jsonify({"error": message}), 429 if "limit" in message.lower() or "active" in message.lower() else 503
+        return voice_error_response("sdp_too_large")
+    if not valid_sdp_document(offer_sdp):
+        return voice_error_response("invalid_sdp")
 
     active_project = get_active_project(user_id)
     project_id = active_project[0] if active_project else None
     conversation = get_or_create_agent_conversation(user_id, project_id)
-    voice_session_id = start_voice_session(user_id, conversation[0], project_id)
+    admission = admit_voice_session(
+        user_id, conversation[0], project_id, handshake_request_id
+    )
+    if not admission["ok"]:
+        return voice_error_response(
+            admission["code"], admission["message"], admission["status"]
+        )
+    voice_session_id = admission["voice_session_id"]
+    voice_name = admission["voice_name"]
 
-    answer_sdp, error = create_realtime_sdp_answer(user_id, offer_sdp)
-    if error:
-        finish_voice_session(user_id, voice_session_id, "realtime_handshake_failed")
-        return jsonify({"error": error}), 503
+    try:
+        handshake = create_realtime_sdp_answer(
+            user_id, offer_sdp, voice_name
+        )
+    except Exception:
+        correlation_id = secrets.token_hex(8)
+        logger.warning(
+            "voice_realtime_handshake_failed "
+            "code=upstream_unexpected_error correlation_id=%s",
+            correlation_id
+        )
+        finish_voice_session(
+            user_id,
+            voice_session_id,
+            "upstream_unexpected_error",
+            handshake_request_id=handshake_request_id
+        )
+        return voice_error_response("upstream_unavailable")
+    if not handshake["ok"]:
+        finish_voice_session(
+            user_id,
+            voice_session_id,
+            handshake["disconnect_reason"],
+            handshake_request_id=handshake_request_id
+        )
+        return voice_error_response(handshake["error_code"])
+    activation = activate_voice_session(
+        user_id,
+        voice_session_id,
+        handshake_request_id,
+        handshake["call_id"]
+    )
+    if not activation["ok"]:
+        cleanup = handle_voice_activation_failure(
+            user_id,
+            voice_session_id,
+            handshake_request_id,
+            handshake["call_id"],
+            activation["code"]
+        )
+        return voice_error_response(cleanup["code"] or activation["code"])
 
-    response = app.response_class(answer_sdp, mimetype="application/sdp")
+    response = app.response_class(
+        handshake["answer_sdp"], mimetype="application/sdp"
+    )
     config = get_voice_config()
     response.headers["X-BusinessBuilder-Voice-Session"] = str(voice_session_id)
     response.headers["X-BusinessBuilder-Conversation"] = str(conversation[0])
@@ -16186,7 +19165,13 @@ def api_realtime_session():
 @app.route("/api/realtime/session/end", methods=["POST"])
 def api_realtime_session_end():
     if "user_id" not in session:
-        return jsonify({"error": "Login required."}), 401
+        return voice_error_response("authentication_required", "Login required.", 401)
+    if request.mimetype != "application/json":
+        return voice_error_response("invalid_content_type")
+    if not request_is_same_origin():
+        return voice_error_response("invalid_origin")
+    if not voice_csrf_is_valid():
+        return voice_error_response("csrf_failed")
 
     data = request.get_json(silent=True) or {}
     voice_session_id = data.get("voice_session_id")
@@ -16196,8 +19181,26 @@ def api_realtime_session_end():
         return jsonify({"error": "Valid voice_session_id required."}), 400
 
     reason = str(data.get("reason", "client_disconnected"))[:120]
-    finish_voice_session(session["user_id"], voice_session_id, reason)
-    return jsonify({"status": "ended"})
+    finalization = request_voice_termination(
+        session["user_id"], voice_session_id, reason
+    )
+    if not finalization["found"]:
+        return voice_error_response("voice_session_not_found")
+    termination_status = finalization["termination_status"]
+    if termination_status == "pending":
+        immediate = attempt_voice_termination_for_session(voice_session_id)
+        termination_status = immediate["status"]
+    public_termination = {
+        "accepted": "accepted",
+        "failed_permanent": "failed",
+        "not_applicable": "not_applicable"
+    }.get(termination_status, "pending")
+    response = jsonify({
+        "status": "ended",
+        "termination": public_termination
+    })
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.route("/api/conversations")

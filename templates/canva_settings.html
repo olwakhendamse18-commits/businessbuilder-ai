@@ -72,7 +72,7 @@
             {% endif %}
 
             {% if not connection or connection["status"] != "connected" %}
-                <a href="/connect_canva" class="primary-button">Connect Canva</a>
+                <form method="POST" action="/connect_canva"><button type="submit" class="primary-button">Connect Canva</button></form>
             {% endif %}
         </section>
 

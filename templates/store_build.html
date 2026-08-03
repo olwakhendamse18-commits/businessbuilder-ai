@@ -5,6 +5,7 @@
     <title>{{ build[2] }} - BusinessBuilder AI</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
 </head>
 
 <body>
@@ -53,7 +54,7 @@
             <a href="/store_builder" class="secondary-button">Back to Store Builder</a>
             <a href="/ai_store_agent" class="secondary-button">Open AI Store Agent</a>
             <a href="/build_center" class="secondary-button">Back to Build Center</a>
-            <a href="/download_store_build/{{ build[0] }}" class="primary-button">Download Store Build PDF</a>
+            <form method="POST" action="/download_store_build/{{ build[0] }}"><button type="submit" class="primary-button">Download Store Build PDF</button></form>
         </div>
 
         {% if build_data %}

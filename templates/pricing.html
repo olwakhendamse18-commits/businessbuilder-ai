@@ -31,7 +31,7 @@
             <p class="pricing-copy">For beginners who need business planning, product ideas, and launch guidance.</p>
             <h3>What you get</h3><ul class="pricing-list"><li>AI business advice and first-time onboarding</li><li>Business workflow and plan generator</li><li>Basic product research and supplier suggestions</li><li>Basic pricing and payment setup guidance</li><li>Basic domain guidance</li><li>Basic launch readiness checklist</li><li>PDF downloads and support access</li></ul>
             <h3>Limits</h3><ul class="pricing-list pricing-limits"><li>3 business plans</li><li>3 product research reports</li><li>3 pricing advice reports</li><li>3 supplier, payment, and domain guides each</li><li>3 AI Store Agent drafts</li><li>No Shopify or Canva auto-creation</li><li>No app connection actions or advanced marketing automation</li></ul>
-            {% if current_package == "Starter" %}<span class="secondary-button pricing-button current-plan-button">Current Plan</span>{% else %}<a href="/paystack_checkout?plan=starter" class="primary-button pricing-button">{{ "Choose Starter" if not current_package else "Switch to Starter" }}</a>{% endif %}
+            {% if current_package == "Starter" %}<span class="secondary-button pricing-button current-plan-button">Current Plan</span>{% else %}<form method="POST" action="/paystack_checkout"><input type="hidden" name="plan" value="starter"><button type="submit" class="primary-button pricing-button">{{ "Choose Starter" if not current_package else "Switch to Starter" }}</button></form>{% endif %}
         </article>
 
         <article class="pricing-card featured-package">
@@ -40,7 +40,7 @@
             <p class="pricing-copy">For entrepreneurs who want AI-generated Shopify, Canva, product, pricing, and marketing assets.</p>
             <h3>What you get</h3><ul class="pricing-list"><li>Everything in Starter</li><li>AI Store Builder and AI Store Agent</li><li>Product, Supplier, Pricing, Payment, and Domain tools</li><li>Email Marketing Assistant</li><li>Shopify draft products and store asset drafts</li><li>Canva branding and marketing briefs</li><li>Launch package view</li><li>App recommendation engine and basic connection guides</li></ul>
             <h3>Limits</h3><ul class="pricing-list pricing-limits"><li>10 business plans and product reports</li><li>10 pricing, payment, supplier, and domain guides each</li><li>20 AI Store Agent tasks</li><li>Up to 10 Shopify draft products</li><li>Up to 10 email campaign drafts</li><li>No paid-ad automation or advanced app-action applying</li></ul>
-            {% if current_package == "Pro" %}<span class="secondary-button pricing-button current-plan-button">Current Plan</span>{% else %}<a href="/paystack_checkout?plan=pro" class="primary-button pricing-button">{{ "Choose Pro" if not current_package else "Upgrade to Pro" }}</a>{% endif %}
+            {% if current_package == "Pro" %}<span class="secondary-button pricing-button current-plan-button">Current Plan</span>{% else %}<form method="POST" action="/paystack_checkout"><input type="hidden" name="plan" value="pro"><button type="submit" class="primary-button pricing-button">{{ "Choose Pro" if not current_package else "Upgrade to Pro" }}</button></form>{% endif %}
         </article>
 
         <article class="pricing-card premium-package-card">
@@ -49,7 +49,7 @@
             <p class="pricing-copy">For users who want the most complete AI-assisted store and business launch package.</p>
             <h3>What you get</h3><ul class="pricing-list"><li>Everything in Pro</li><li>Full AI Store Agent and Generate My Store workflows</li><li>Advanced sourcing and competitor discovery</li><li>Advanced Shopify and Canva draft assets</li><li>Advanced email campaign package</li><li>App Connection Agent and platform recommendations</li><li>Connected-app draft actions where supported</li><li>Advanced readiness review and premium launch PDF</li><li>Priority support</li></ul>
             <h3>Limits</h3><ul class="pricing-list pricing-limits"><li>Fair-use business plans, research, guides, and Store Agent tasks</li><li>Up to 30 Shopify draft products</li><li>Up to 30 email campaign drafts</li><li>Fair-use advanced app connection drafts</li><li>Priority support</li></ul>
-            {% if current_package == "Premium Build" %}<span class="secondary-button pricing-button current-plan-button">Current Plan</span>{% else %}<a href="/paystack_checkout?plan=premium" class="primary-button pricing-button">{{ "Choose Premium Build" if not current_package else "Upgrade to Premium Build" }}</a>{% endif %}
+            {% if current_package == "Premium Build" %}<span class="secondary-button pricing-button current-plan-button">Current Plan</span>{% else %}<form method="POST" action="/paystack_checkout"><input type="hidden" name="plan" value="premium"><button type="submit" class="primary-button pricing-button">{{ "Choose Premium Build" if not current_package else "Upgrade to Premium Build" }}</button></form>{% endif %}
         </article>
     </section>
 

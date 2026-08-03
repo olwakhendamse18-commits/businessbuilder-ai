@@ -36,7 +36,7 @@
                     <a class="secondary-button" id="voiceModeButton" data-mode="voice" aria-describedby="voiceModeNote" href="/command-center/voice">Voice</a>
                     <a href="/build_center" class="secondary-button">Open Build Center</a>
                 </div>
-                <small id="voiceModeNote">Open the dedicated Voice Command Center prototype. Phase 1 does not request microphone access.</small>
+                <small id="voiceModeNote">Open the dedicated voice-only workspace. Live microphone access stays off unless both your preference and the protected server runtime are enabled.</small>
             </div>
             <div class="command-orb-card command-status-summary" aria-label="Builder agent state summary">
                 <p class="eyebrow">Live state</p>
@@ -328,7 +328,7 @@
                     </label>
                     <label class="checkbox-line">
                         <input type="checkbox" name="voice_enabled" {% if profile[4] %}checked{% endif %}>
-                        Enable voice when Milestone 2 is ready
+                        Allow voice when the protected server runtime is available
                     </label>
                     <button type="submit" class="secondary-button">Save agent settings</button>
                 </form>
@@ -599,6 +599,9 @@
 <script>
 window.BB_COMMAND_CENTER = {
     conversationId: {{ conversation[0] }},
+    voiceRuntimeEnabled: {{ "true" if voice_config.enabled else "false" }},
+    voicePreferenceEnabled: {{ "true" if profile[4] else "false" }},
+    voiceCsrfToken: {{ voice_csrf_token|tojson }},
     realtimeSessionUrl: "/api/realtime/session",
     realtimeEndUrl: "/api/realtime/session/end",
     agentMessageUrl: "/api/agent/message",

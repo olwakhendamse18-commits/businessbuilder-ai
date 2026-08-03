@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log out - BusinessBuilder AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    {% include "_pwa_head.html" %}
+</head>
+<body class="auth-page">
+    <main class="auth-card">
+        <h1>Log out?</h1>
+        <p>Confirm that you want to end this session.</p>
+        <form method="POST" action="/logout">
+            <button type="submit" class="primary-button">Log out</button>
+            <a href="/dashboard" class="secondary-button">Cancel</a>
+        </form>
+    </main>
+    {% include "_app_scripts.html" %}
+</body>
+</html>

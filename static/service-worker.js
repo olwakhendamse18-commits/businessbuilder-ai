@@ -1,7 +1,5 @@
-const CACHE_NAME = "businessbuilder-ai-v3";
+const CACHE_NAME = "businessbuilder-ai-v4-security";
 const CORE_ASSETS = [
-  "/landing",
-  "/pricing",
   "/static/style.css",
   "/static/logo.png",
   "/static/icon-192.png",
@@ -37,10 +35,16 @@ self.addEventListener("fetch", (event) => {
   }
 
   const isStatic = url.pathname.startsWith("/static/");
-  const isPublicPage = ["/landing", "/pricing"].includes(url.pathname);
   const isCodeAsset = url.pathname.endsWith(".css") || url.pathname.endsWith(".js");
 
-  if (!isStatic && !isPublicPage) {
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request).catch(() => caches.match("/static/offline.html"))
+    );
+    return;
+  }
+
+  if (!isStatic) {
     return;
   }
 

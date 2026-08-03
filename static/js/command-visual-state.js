@@ -64,6 +64,10 @@
             return this.state;
         }
 
+        setState(nextState, options) {
+            return this.update(nextState, options);
+        }
+
         setPreferences(preferences) {
             this.preferences = preferences || {};
             document.body.dataset.visualMode = this.preferences.visual_mode || "balanced";

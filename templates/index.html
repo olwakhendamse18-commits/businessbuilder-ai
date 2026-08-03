@@ -35,7 +35,7 @@
 
         <div class="tool-box">
 
-            <a href="/new_chat">+ New Chat</a>
+            <form method="POST" action="/new_chat"><button type="submit" class="text-button">+ New Chat</button></form>
 
             <h3>Chat History</h3>
 
@@ -106,6 +106,14 @@
 
 <script>
 
+function appendChatMessage(chatBox, role, content) {
+    const messageElement = document.createElement("div");
+    messageElement.classList.add("message", role === "user" ? "user" : "ai");
+    messageElement.textContent = String(content || "");
+    chatBox.appendChild(messageElement);
+    return messageElement;
+}
+
 async function sendMessage() {
 
     const input = document.getElementById("userInput");
@@ -116,19 +124,11 @@ async function sendMessage() {
 
     if (!message) return;
 
-    chatBox.innerHTML += `
-        <div class="message user">
-            ${message}
-        </div>
-    `;
+    appendChatMessage(chatBox, "user", message);
 
     input.value = "";
 
-    chatBox.innerHTML += `
-        <div class="message ai">
-            Thinking...
-        </div>
-    `;
+    const aiMessage = appendChatMessage(chatBox, "assistant", "Thinking...");
 
     chatBox.scrollTop = chatBox.scrollHeight;
 
@@ -151,12 +151,6 @@ async function sendMessage() {
             reply: "I could not complete that request. Please try again."
         };
     }
-
-    const thinkingMessages =
-        document.querySelectorAll(".message.ai");
-
-    const aiMessage =
-        thinkingMessages[thinkingMessages.length - 1];
 
     aiMessage.innerText = "";
 
@@ -194,17 +188,10 @@ async function loadMessages() {
         return;
     }
 
-    chatBox.innerHTML = "";
+    chatBox.replaceChildren();
 
     messages.forEach(function(message) {
-        const cssClass =
-            message.role === "user" ? "user" : "ai";
-
-        chatBox.innerHTML += `
-            <div class="message ${cssClass}">
-                ${message.content}
-            </div>
-        `;
+        appendChatMessage(chatBox, message.role, message.content);
     });
 
     chatBox.scrollTop = chatBox.scrollHeight;

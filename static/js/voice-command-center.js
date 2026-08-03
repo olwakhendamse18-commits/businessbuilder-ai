@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const config = window.BB_VOICE_PROTOTYPE || {};
+    const config = window.BB_VOICE_COMMAND_CENTER || {};
     const body = document.body;
     const shell = document.getElementById("voiceShell");
     const canvas = document.getElementById("voiceCoreCanvas");
@@ -12,89 +12,123 @@
     const connectionChip = document.getElementById("voiceConnectionChip");
     const microphoneLabel = document.getElementById("microphoneLabel");
     const coreMicStatus = document.getElementById("coreMicStatus");
+    const coreConnectionStatus = document.getElementById("coreConnectionStatus");
     const topState = document.getElementById("voiceTopState");
     const localTime = document.getElementById("voiceLocalTime");
     const screenReaderState = document.getElementById("voiceScreenReaderState");
     const toast = document.getElementById("voiceToast");
     const demoState = document.getElementById("voiceDemoState");
+    const startVoiceButton = document.getElementById("startVoice");
+    const muteVoiceButton = document.getElementById("muteVoice");
+    const stopSpeakingButton = document.getElementById("stopSpeaking");
+    const stopVoiceButton = document.getElementById("stopVoice");
+    const remoteAudio = document.getElementById("voiceRemoteAudio");
+    const conversationFeed = document.getElementById("voiceConversationFeed");
+    const conversationEmpty = document.getElementById("voiceConversationEmpty");
     const backdrop = document.getElementById("voicePanelBackdrop");
     const panels = Array.from(document.querySelectorAll(".voice-panel"));
     const panelButtons = Array.from(document.querySelectorAll("[data-panel-target]"));
+    const phaseSteps = Array.from(document.querySelectorAll("[data-voice-phase-step]"));
+    const cinematicToggle = document.getElementById("voiceCinematicToggle");
     const reduceMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const drawerMediaQuery = window.matchMedia("(max-width: 980px)");
+    const cinematicStorageKey = "bbai-voice-cinematic";
 
     const states = {
         idle: {
-            title: "Voice Preview",
-            caption: "Voice connection will be enabled in Phase 2.",
+            title: "Voice Ready",
+            caption: "Press Start Voice when you are ready to request microphone permission.",
             connection: "Not Connected",
             chip: "Not Connected",
             microphone: "Not requested",
-            announcement: "Voice Preview is disconnected. Microphone access has not been requested."
+            announcement: "Voice is disconnected. Microphone access has not been requested."
+        },
+        unavailable: {
+            title: "Safe Standby",
+            caption: "Live voice is unavailable. Your text Command Center still works.",
+            connection: "Unavailable",
+            chip: "Safe standby",
+            microphone: "Not requested",
+            announcement: "Live voice is unavailable. Microphone access has not been requested."
         },
         requesting_microphone: {
             title: "Microphone Request",
-            caption: "Demo state only. Phase 1 never requests microphone permission.",
-            connection: "Demo · permission step",
-            chip: "No permission request sent",
-            microphone: "Demo state",
-            announcement: "Visual demonstration of a future microphone permission request. No request was sent."
+            caption: "Choose Allow to start the voice-only Builder session.",
+            connection: "Permission request",
+            chip: "Waiting for permission",
+            microphone: "Permission requested",
+            announcement: "Microphone permission has been requested."
         },
         connecting: {
             title: "Connecting",
-            caption: "Demo state only. No Realtime session or network request is active.",
-            connection: "Demo · connecting",
-            chip: "No network session",
-            microphone: "Not connected",
-            announcement: "Visual demonstration of a future connection state. No network session exists."
+            caption: "Connecting a protected voice session.",
+            connection: "Connecting",
+            chip: "Secure handshake",
+            microphone: "Ready",
+            announcement: "Connecting a protected voice session."
+        },
+        connected: {
+            title: "Connected",
+            caption: "Voice connected. I’m listening for your business question.",
+            connection: "Connected",
+            chip: "Session active",
+            microphone: "Listening",
+            announcement: "Voice connected and listening."
         },
         listening: {
             title: "Listening",
-            caption: "Demo state only. No microphone stream is being captured.",
-            connection: "Demo · listening",
-            chip: "No audio capture",
-            microphone: "Demo state",
-            announcement: "Visual listening demonstration. No audio is being captured."
+            caption: "Ask a business question or say, “What should I do next?”",
+            connection: "Connected",
+            chip: "Listening",
+            microphone: "Listening",
+            announcement: "Voice is connected and listening."
         },
         user_speaking: {
             title: "You’re Speaking",
-            caption: "Demo waveform only. No raw audio exists or is stored.",
-            connection: "Demo · user speaking",
-            chip: "Visual simulation",
-            microphone: "No audio capture",
-            announcement: "Visual user speaking demonstration. No raw audio exists."
+            caption: "I can hear you. Finish your thought when you’re ready.",
+            connection: "Connected",
+            chip: "Speech detected",
+            microphone: "Receiving speech",
+            announcement: "Your speech is being received. Raw audio is not saved."
+        },
+        processing_transcript: {
+            title: "Processing",
+            caption: "Turning your speech into one secure text request.",
+            connection: "Connected",
+            chip: "Transcript processing",
+            microphone: "Ready",
+            announcement: "Completed speech is being converted into one text request."
         },
         thinking: {
             title: "Thinking",
-            caption: "Demo state only. No AI model request has been made.",
-            connection: "Demo · processing",
-            chip: "No model request",
-            microphone: "Not active",
-            announcement: "Visual thinking demonstration. No AI model request was made."
+            caption: "Builder is checking your project and choosing the safest next step.",
+            connection: "Connected",
+            chip: "Builder working",
+            microphone: "Ready",
+            announcement: "Builder is preparing a response."
         },
         speaking: {
             title: "Builder Speaking",
-            caption: "Demo state only. No synthesized voice or remote audio is playing.",
-            connection: "Demo · speaking",
-            chip: "No audio playback",
-            microphone: "Not active",
-            announcement: "Visual Builder speaking demonstration. No audio is playing."
+            caption: "Builder is speaking the response produced by your protected business agent.",
+            connection: "Connected",
+            chip: "Speaking",
+            microphone: "Ready",
+            announcement: "Builder is speaking."
         },
         muted: {
             title: "Muted",
-            caption: "Demo state only. Phase 1 has no microphone stream to mute.",
-            connection: "Demo · muted",
-            chip: "Prototype muted",
-            microphone: "No stream",
-            announcement: "Visual muted demonstration. There is no microphone stream."
+            caption: "Your microphone is muted. Unmute when you want to continue.",
+            connection: "Connected",
+            chip: "Microphone muted",
+            microphone: "Muted",
+            announcement: "Microphone muted."
         },
         waiting_for_approval: {
             title: "Approval Required",
-            caption: "A future voice action would pause here until you explicitly approve it.",
-            connection: "Demo · approval gate",
+            caption: "The proposed action is paused until you review it.",
+            connection: "Connected",
             chip: "Action paused",
-            microphone: "Not active",
-            announcement: "Visual approval gate. No external action has been performed."
+            microphone: "Ready",
+            announcement: "Approval is required. No external action has been performed."
         },
         completed: {
             title: "Completed",
@@ -106,11 +140,27 @@
         },
         error: {
             title: "Error",
-            caption: "Demo error state. The prototype remains safe and disconnected.",
-            connection: "Demo · error",
-            chip: "Prototype error",
+            caption: "Voice stopped safely. Your text workspace remains available.",
+            connection: "Error",
+            chip: "Stopped safely",
             microphone: "Not active",
-            announcement: "Visual error state. The prototype remains disconnected."
+            announcement: "Voice stopped safely after an error."
+        },
+        disconnected: {
+            title: "Disconnected",
+            caption: "Voice disconnected. Your saved business work is unchanged.",
+            connection: "Disconnected",
+            chip: "Session closed",
+            microphone: "Not active",
+            announcement: "Voice disconnected."
+        },
+        stopped: {
+            title: "Session Ended",
+            caption: "Voice stopped. Start a new session whenever you are ready.",
+            connection: "Not Connected",
+            chip: "Session ended",
+            microphone: "Stopped",
+            announcement: "Voice session ended."
         },
         exiting: {
             title: "Exiting",
@@ -122,6 +172,26 @@
         }
     };
 
+    const livePhaseByState = {
+        requesting_microphone: "listening",
+        connecting: "listening",
+        connected: "listening",
+        listening: "listening",
+        user_speaking: "listening",
+        muted: "listening",
+        processing_transcript: "thinking",
+        thinking: "thinking",
+        speaking: "speaking",
+        waiting_for_approval: "approval"
+    };
+
+    const livePhaseTitles = {
+        listening: "Listening",
+        thinking: "Thinking",
+        speaking: "Speaking",
+        approval: "Approval Required"
+    };
+
     let currentState = "idle";
     let toastTimer = null;
     let exitStarted = false;
@@ -130,6 +200,8 @@
     let canvasHeight = 0;
     let particles = [];
     let activePanelTrigger = null;
+    let voice = null;
+    let muted = false;
 
     function titleCase(value) {
         return String(value || "").replace(/_/g, " ").replace(/\b\w/g, function (letter) {
@@ -137,20 +209,31 @@
         });
     }
 
-    function setState(nextState) {
+    function setState(nextState, detail) {
         if (!states[nextState]) return;
         currentState = nextState;
         const details = states[nextState];
+        const livePhase = livePhaseByState[nextState] || "ready";
+        const visibleTitle = livePhaseTitles[livePhase] || details.title || titleCase(nextState);
         body.dataset.voiceState = nextState;
-        if (stateTitle) stateTitle.textContent = details.title || titleCase(nextState);
-        if (caption) caption.textContent = details.caption;
+        body.dataset.voicePhase = livePhase;
+        if (stateTitle) stateTitle.textContent = visibleTitle;
+        if (caption) caption.textContent = detail || details.caption;
         if (connectionLabel) connectionLabel.textContent = details.connection;
         if (connectionChip) connectionChip.lastChild.textContent = " " + details.chip;
         if (microphoneLabel) microphoneLabel.textContent = details.microphone;
         if (coreMicStatus) coreMicStatus.textContent = details.microphone;
-        if (topState) topState.textContent = details.title || titleCase(nextState);
+        if (coreConnectionStatus) coreConnectionStatus.textContent = details.connection;
+        if (topState) topState.textContent = visibleTitle;
         if (screenReaderState) screenReaderState.textContent = details.announcement;
         if (demoState && demoState.value !== nextState) demoState.value = nextState;
+        phaseSteps.forEach(function (step) {
+            const active = step.dataset.voicePhaseStep === livePhase;
+            step.classList.toggle("is-active", active);
+            if (active) step.setAttribute("aria-current", "step");
+            else step.removeAttribute("aria-current");
+        });
+        syncVoiceControls(nextState);
         drawStaticFrame();
     }
 
@@ -164,15 +247,63 @@
         }, 4200);
     }
 
-    function prototypeOnly(controlName) {
-        setState("idle");
-        showToast(controlName + " will be enabled in Phase 2. No microphone, audio, AI, or network connection was started.");
+    function voiceAvailable() {
+        return Boolean(config.voiceRuntimeEnabled && config.voicePreferenceEnabled);
     }
 
-    function exitVoicePanel() {
+    function syncVoiceControls(state) {
+        const active = ["connected", "listening", "user_speaking", "processing_transcript", "thinking", "speaking", "muted", "waiting_for_approval"].includes(state);
+        const liveActive = active && Boolean(voice && voice.peerConnection);
+        if (startVoiceButton) {
+            startVoiceButton.disabled = liveActive || !voiceAvailable() || state === "connecting" || state === "requesting_microphone";
+            startVoiceButton.classList.toggle("is-disabled", startVoiceButton.disabled);
+        }
+        [muteVoiceButton, stopSpeakingButton, stopVoiceButton].forEach(function (button) {
+            if (!button) return;
+            button.disabled = !liveActive;
+            button.classList.toggle("is-disabled", !liveActive);
+            button.setAttribute("aria-disabled", button.disabled ? "true" : "false");
+        });
+    }
+
+    function appendConversation(role, message) {
+        if (!conversationFeed || !message) return;
+        if (conversationEmpty) conversationEmpty.remove();
+        const entry = document.createElement("article");
+        entry.className = "voice-conversation-entry voice-conversation-" + role;
+        const label = document.createElement("small");
+        label.textContent = role === "user" ? "You said" : "Builder";
+        const text = document.createElement("p");
+        text.textContent = message;
+        entry.append(label, text);
+        conversationFeed.appendChild(entry);
+        conversationFeed.scrollTop = conversationFeed.scrollHeight;
+    }
+
+    function ensureVoice() {
+        if (!voice && window.BusinessBuilderRealtimeVoice) {
+            voice = new window.BusinessBuilderRealtimeVoice({
+                remoteAudio: remoteAudio,
+                onState: setState,
+                onTranscript: function (message) { appendConversation("user", message); },
+                onCanonicalResponse: function (payload) {
+                    appendConversation("assistant", payload.reply || "");
+                },
+                onDuration: function (seconds) {
+                    const formatted = String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+                    document.getElementById("voiceDuration")?.replaceChildren(formatted);
+                    document.getElementById("voiceTopDuration")?.replaceChildren(formatted);
+                }
+            });
+        }
+        return voice;
+    }
+
+    async function exitVoicePanel() {
         if (exitStarted) return;
         exitStarted = true;
         closePanels();
+        if (voice) await voice.stop("user_exited_voice_panel", true);
         setState("exiting");
         window.setTimeout(function () {
             window.location.assign("/command-center");
@@ -181,14 +312,6 @@
 
     function setPanelAccessibility(panel, isOpen) {
         const closeButton = panel.querySelector("[data-close-panel]");
-        if (!drawerMediaQuery.matches) {
-            panel.removeAttribute("aria-hidden");
-            panel.removeAttribute("inert");
-            panel.removeAttribute("role");
-            panel.removeAttribute("aria-modal");
-            if (closeButton) closeButton.removeAttribute("tabindex");
-            return;
-        }
         panel.setAttribute("aria-hidden", isOpen ? "false" : "true");
         panel.toggleAttribute("inert", !isOpen);
         if (isOpen) {
@@ -203,17 +326,6 @@
     }
 
     function syncDrawerLayout() {
-        if (!drawerMediaQuery.matches) {
-            panels.forEach(function (panel) {
-                panel.classList.remove("is-open");
-                setPanelAccessibility(panel, false);
-            });
-            panelButtons.forEach(function (button) { button.setAttribute("aria-expanded", "false"); });
-            body.classList.remove("voice-drawer-open");
-            if (backdrop) backdrop.hidden = true;
-            activePanelTrigger = null;
-            return;
-        }
         const openPanelElement = panels.find(function (panel) { return panel.classList.contains("is-open"); });
         panels.forEach(function (panel) { setPanelAccessibility(panel, panel === openPanelElement); });
         body.classList.toggle("voice-drawer-open", Boolean(openPanelElement));
@@ -232,7 +344,7 @@
 
     function openPanel(panelId, button) {
         const panel = document.getElementById(panelId);
-        if (!panel || !drawerMediaQuery.matches) return;
+        if (!panel) return;
         closePanels(false);
         activePanelTrigger = button;
         panel.classList.add("is-open");
@@ -242,6 +354,37 @@
         if (backdrop) backdrop.hidden = false;
         const closeButton = panel.querySelector("[data-close-panel]");
         if (closeButton) closeButton.focus();
+    }
+
+    function readCinematicPreference() {
+        try {
+            return window.localStorage.getItem(cinematicStorageKey) === "on";
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function setCinematicMode(enabled, announce) {
+        const cinematicEnabled = Boolean(enabled);
+        body.classList.toggle("voice-cinematic", cinematicEnabled);
+        body.dataset.cinematicMode = cinematicEnabled ? "on" : "off";
+        if (cinematicToggle) {
+            cinematicToggle.setAttribute("aria-pressed", cinematicEnabled ? "true" : "false");
+            const label = cinematicToggle.querySelector("strong");
+            if (label) label.textContent = "Cinematic: " + (cinematicEnabled ? "On" : "Off");
+        }
+        try {
+            window.localStorage.setItem(cinematicStorageKey, cinematicEnabled ? "on" : "off");
+        } catch (error) {}
+        resizeCanvas();
+        updateAnimationPreference();
+        if (announce) {
+            showToast(
+                cinematicEnabled
+                    ? "Cinematic mode enabled. Voice safety and approvals are unchanged."
+                    : "Focus mode restored. Voice safety and approvals are unchanged."
+            );
+        }
     }
 
     function resizeCanvas() {
@@ -345,14 +488,34 @@
         }).format(new Date());
     }
 
-    document.getElementById("startVoicePrototype")?.addEventListener("click", function () {
-        prototypeOnly("Voice connection");
+    startVoiceButton?.addEventListener("click", async function () {
+        const client = ensureVoice();
+        if (!client) {
+            setState("error", "Voice controls could not load. Text mode remains available.");
+            return;
+        }
+        await client.start();
     });
-    document.getElementById("muteVoicePrototype")?.addEventListener("click", function () {
-        prototypeOnly("Mute control");
+    muteVoiceButton?.addEventListener("click", function () {
+        const client = ensureVoice();
+        if (!client) return;
+        muted = !muted;
+        client.setMuted(muted);
+        muteVoiceButton.setAttribute("aria-pressed", muted ? "true" : "false");
+        const label = muteVoiceButton.querySelector("strong");
+        if (label) label.textContent = muted ? "Unmute" : "Mute";
     });
-    document.getElementById("stopSpeakingPrototype")?.addEventListener("click", function () {
-        prototypeOnly("Stop Speaking");
+    stopSpeakingButton?.addEventListener("click", function () {
+        ensureVoice()?.stopSpeaking();
+    });
+    stopVoiceButton?.addEventListener("click", async function () {
+        if (voice) await voice.stop("user_stopped");
+        muted = false;
+        if (muteVoiceButton) {
+            muteVoiceButton.setAttribute("aria-pressed", "false");
+            const label = muteVoiceButton.querySelector("strong");
+            if (label) label.textContent = "Mute";
+        }
     });
     document.getElementById("exitVoiceButton")?.addEventListener("click", exitVoicePanel);
     document.getElementById("exitVoiceSecondary")?.addEventListener("click", exitVoicePanel);
@@ -366,6 +529,9 @@
     panelButtons.forEach(function (button) {
         button.addEventListener("click", function () { openPanel(button.dataset.panelTarget, button); });
     });
+    cinematicToggle?.addEventListener("click", function () {
+        setCinematicMode(body.dataset.cinematicMode !== "on", true);
+    });
     document.querySelectorAll("[data-close-panel]").forEach(function (button) {
         button.addEventListener("click", function () { closePanels(true); });
     });
@@ -378,7 +544,22 @@
             else exitVoicePanel();
             return;
         }
-        if (event.key !== "Tab" || !openPanelElement || !drawerMediaQuery.matches) return;
+        if (!openPanelElement && event.key.toLowerCase() === "m" && !muteVoiceButton?.disabled) {
+            event.preventDefault();
+            muteVoiceButton.click();
+            return;
+        }
+        if (!openPanelElement && event.code === "Space" && !stopSpeakingButton?.disabled && !/INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement?.tagName || "")) {
+            event.preventDefault();
+            stopSpeakingButton.click();
+            return;
+        }
+        if (!openPanelElement && event.key.toLowerCase() === "c" && !/INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement?.tagName || "")) {
+            event.preventDefault();
+            cinematicToggle?.click();
+            return;
+        }
+        if (event.key !== "Tab" || !openPanelElement) return;
         const focusable = Array.from(openPanelElement.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"));
         if (!focusable.length) return;
         const first = focusable[0];
@@ -394,21 +575,21 @@
 
     window.addEventListener("pageshow", function () {
         exitStarted = false;
-        setState("idle");
+        setState(voiceAvailable() ? "idle" : "unavailable");
         body.classList.add("is-booted");
     });
     window.addEventListener("resize", resizeCanvas, { passive: true });
     reduceMotionQuery.addEventListener?.("change", updateAnimationPreference);
-    drawerMediaQuery.addEventListener?.("change", syncDrawerLayout);
 
     body.dataset.motionLevel = config.motionLevel || body.dataset.motionLevel || "normal";
+    setCinematicMode(readCinematicPreference(), false);
     updateGreetingPeriod();
     updateLocalTime();
     window.setInterval(updateLocalTime, 60000);
     syncDrawerLayout();
     resizeCanvas();
     updateAnimationPreference();
-    setState("idle");
+    setState(voiceAvailable() ? "idle" : "unavailable");
     window.requestAnimationFrame(function () {
         body.classList.add("is-booted");
         shell?.setAttribute("data-ready", "true");

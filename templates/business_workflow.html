@@ -196,13 +196,13 @@
                 <h3>Generate your business foundation</h3>
                 <p>Turn your saved answers into clear strategy documents you can review and reuse.</p>
                 <div class="generator-actions">
-                    <a href="/generate_business_plan" class="primary-button">Generate Business Plan</a>
+                    <form method="POST" action="/generate_business_plan"><button type="submit" class="primary-button">Generate Business Plan</button></form>
                     <a href="/store_builder" class="primary-button">Generate My Store</a>
                     <a href="/product_finder" class="secondary-button">Find Products</a>
                     <a href="/ai_store_agent" class="secondary-button">Open AI Store Agent</a>
-                    <a href="/generate_shopify_plan" class="secondary-button">Generate Shopify Setup Plan</a>
-                    <a href="/generate_canva_branding" class="secondary-button">Generate Canva Branding Package</a>
-                    <a href="/generate_build_quote" class="secondary-button">Generate Store + Branding Quote</a>
+                    <form method="POST" action="/generate_shopify_plan"><button type="submit" class="secondary-button">Generate Shopify Setup Plan</button></form>
+                    <form method="POST" action="/generate_canva_branding"><button type="submit" class="secondary-button">Generate Canva Branding Package</button></form>
+                    <form method="POST" action="/generate_build_quote"><button type="submit" class="secondary-button">Generate Store + Branding Quote</button></form>
                 </div>
             </div>
 
@@ -212,7 +212,7 @@
                 <p>Review the approval screen before the app creates draft assets in connected services.</p>
                 {% if pro_package %}
                     <div class="generator-actions">
-                        <a href="/generate_canva_design_brief" class="primary-button">Generate Canva Design Brief</a>
+                        <form method="POST" action="/generate_canva_design_brief"><button type="submit" class="primary-button">Generate Canva Design Brief</button></form>
                         <a href="/build_approval?action=shopify_products" class="secondary-button">Create Shopify Products</a>
                         <a href="/build_approval?action=shopify_store" class="secondary-button">Build Shopify Store Draft</a>
                         <a href="/build_approval?action=canva_designs" class="secondary-button">Create Canva Design Drafts</a>
@@ -275,7 +275,7 @@
                         <div class="card-actions">
                             <a href="/workflow_step/{{ step_number }}" class="primary-button">Open Step</a>
                             {% if step_number not in completed_steps %}
-                                <a href="/complete_step/{{ step_number }}/{{ step_slug }}" class="secondary-button">Mark Complete</a>
+                                <form method="POST" action="/complete_step/{{ step_number }}/{{ step_slug }}"><button type="submit" class="secondary-button">Mark Complete</button></form>
                             {% endif %}
                         </div>
                     </article>

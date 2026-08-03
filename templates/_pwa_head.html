@@ -3,6 +3,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="BusinessBuilder">
 <link rel="apple-touch-icon" href="/static/logo.png">
+<meta name="csrf-token" content="{{ csrf_token }}">
+<script src="/static/js/security.js" defer></script>
 <!-- Versioned UI stylesheet bypasses previously installed cache-first workers. -->
 <link rel="stylesheet" href="/static/style.css?v=20260701-mascot-fix">
 <script>

@@ -72,7 +72,7 @@
                     <a href="/product_finder" class="secondary-button">Find Products</a>
                     <a href="/ai_store_agent" class="secondary-button">Open AI Store Agent</a>
                 {% elif has_workflow_answers %}
-                    <a href="{{ generate_url }}" class="primary-button">Generate My Store</a>
+                    <form method="POST" action="{{ generate_url }}"><button type="submit" class="primary-button">Generate My Store</button></form>
                     <a href="/product_finder" class="secondary-button">Find Products</a>
                     <a href="/ai_store_agent" class="secondary-button">Open AI Store Agent</a>
                 {% else %}
@@ -142,7 +142,7 @@
                         {% endif %}
                         <div class="card-actions">
                             <a href="/store_build/{{ build[0] }}" class="primary-button">View Store Build</a>
-                            <a href="/download_store_build/{{ build[0] }}" class="secondary-button">Download PDF</a>
+                            <form method="POST" action="/download_store_build/{{ build[0] }}"><button type="submit" class="secondary-button">Download PDF</button></form>
                         </div>
                     </div>
                 {% else %}

@@ -5,6 +5,7 @@
     <title>Business Plan - BusinessBuilder AI</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/favicon.png">
+    {% include "_pwa_head.html" %}
 </head>
 
 <body>
@@ -58,7 +59,7 @@
 
         <div class="plan-actions">
             <a href="/dashboard" class="secondary-button">Back to Dashboard</a>
-            <a href="/download_business_plan/{{ plan[0] }}" class="secondary-button">Download PDF</a>
+            <form method="POST" action="/download_business_plan/{{ plan[0] }}"><button type="submit" class="secondary-button">Download PDF</button></form>
             <a href="/business_workflow" class="primary-button">Open Workflow</a>
         </div>
 
